@@ -3,19 +3,26 @@
    ========================================================================= */
 
 import {
-  ARC_WAVE_INTERVAL,
-  ARC_WAVE_MAX,
   ARC_WAVE_SPEED,
   CANNON_AOE_RADIUS,
   CANNON_SHOT_SPEED,
   COLORS,
   FIRE_COOLDOWN,
   HOMING_MISSILE_SPEED,
+  LEGACY_RIBBON_BULLET_SLOW,
   LOGICAL_H,
-  LOGICAL_W
+  LOGICAL_W,
+  PLAYER_BULLET_SPEED,
+  RED_LASER_DRAIN_PER_SEC,
+  SLOWED_BULLET_DISSOLVE_TIME
 } from './config.js';
 import { clamp, distToSeg, lerp, verticalRaySegIntersectY } from './utils.js';
-import { destroyAndCollectCapsule, resetArcWaveState } from './powerups.js';
+import {
+  consumePowerupEnergy,
+  destroyAndCollectCapsule,
+  hasPowerup,
+  removePowerupSlot
+} from './powerups.js';
 import { damageLightwing, shatterRibbonTrail } from './recognizers.js';
 import { damageEnemy } from './enemies.js';
 
@@ -29,8 +36,8 @@ export function spawnArcWaveFromPlayer(game) {
     x: p.x,
     y: p.y - 20,
     vy: -ARC_WAVE_SPEED,
-    radius: p.dual ? 52 : 42,
-    maxRadius: p.dual ? 72 : 58,
+    radius: p.dual ? 86 : 68,
+    maxRadius: p.dual ? 132 : 108,
     dmg: baseDmg,
     weakened,
     hitEnemyIds: new Set(),
@@ -175,17 +182,18 @@ export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
 }
 
 /**
- * RED BOXED CAPSULE — True Continuous Straight Laser Beam:
- * Evaluates EVERY frame after movement/enemies/capsules update so the beam
- * stays pixel-locked straight up from the fighter's exact nose (zero lag/chasing).
+ * RED BOXED CAPSULE — Piercing Continuous Straight Laser Beam:
+ * Shoots straight through ALL enemy ships, lightwings & capsules!
+ * Stopped ONLY by Red (Ares) ribbons (chips -1/tick) or Cyan (Legacy) ribbons
+ * (converts into slowed red laser-bullets that dissolve after 2.0s).
+ * In Dual-Fighter mode, each individual fighter's beam evaluates and counts hits independently.
  */
-export function updateContinuousLaserBeams(game) {
+export function updateContinuousLaserBeams(game, dt = 0) {
   const p = game.player;
   if (
     !p.alive ||
     p.capturedById ||
-    game.powerup.type !== 'RED' ||
-    game.powerup.timer <= 0 ||
+    !hasPowerup(game, 'RED') ||
     !game.redLaserActive
   ) {
     game.activeLaserBeams = [];
@@ -194,25 +202,23 @@ export function updateContinuousLaserBeams(game) {
 
   const weakened = p.dmgDebuffTimer > 0;
   const baseDmg = weakened ? 0.8 : 1.0;
-  const beamDmg = baseDmg * 2.0; // 2x damage of regular bullets
+  const beamDmg = baseDmg * 2.0; // 2x damage of regular bullets per individual fighter beam
   const shipOffsets = p.dual ? [-14, 14] : [0];
-  const shouldDamageTick = p.fireCooldown <= 0;
+  const shouldDamageTick = p.laserTickCooldown <= 0;
 
   if (shouldDamageTick) {
-    p.fireCooldown = FIRE_COOLDOWN; // Exact regular hitspeed
+    p.laserTickCooldown = FIRE_COOLDOWN; // Exact regular hitspeed, independent of stacked missiles
   }
 
   game.activeLaserBeams = [];
-  let switchedAwayFromRed = false;
 
   for (const ox of shipOffsets) {
     const beamX = p.x + ox;
     const beamBottomY = p.y - 16;
     let stopY = 0;
-    let bestHit = null; // { y, kind, idx }
+    let ribbonBlock = null; // { y, kind: 'ARES_RIBBON' | 'LEGACY_RIBBON', idx, trailId }
 
-    // 1) Immediately shatter Legacy cyan ribbons swept by the laser beam;
-    //    check Ares crimson ribbons as solid blockers until their 3 hits are exhausted.
+    // 1) Find the closest Light Ribbon blocking or refracting this fighter's beam
     for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
       const trail = game.ribbonTrails[ti];
       let hitSegY = null;
@@ -222,48 +228,99 @@ export function updateContinuousLaserBeams(game) {
           hitSegY = yCross;
         }
       }
-      if (hitSegY !== null) {
-        if (trail.variant === 'LEGACY') {
-          shatterRibbonTrail(game, ti, beamX, hitSegY, COLORS.cyan);
-        } else if (!bestHit || hitSegY > bestHit.y) {
-          bestHit = { y: hitSegY, kind: 'ARES_RIBBON', idx: ti };
-        }
+      if (hitSegY !== null && (!ribbonBlock || hitSegY > ribbonBlock.y)) {
+        ribbonBlock = {
+          y: hitSegY,
+          kind: trail.variant === 'ARES' ? 'ARES_RIBBON' : 'LEGACY_RIBBON',
+          idx: ti,
+          trailId: trail.id
+        };
       }
     }
 
-    // 2) Check destructible mid-arena Power-Up Capsules
+    if (ribbonBlock) {
+      stopY = ribbonBlock.y;
+    }
+
+    // 2) Pop any floating Power-Up Capsules pierced by the beam (stacks without canceling laser)
     for (let ci = game.capsules.length - 1; ci >= 0; ci--) {
       const cap = game.capsules[ci];
-      if (cap.y <= beamBottomY && Math.abs(cap.x - beamX) <= cap.hitRadius + 4) {
-        if (!bestHit || cap.y > bestHit.y) {
-          bestHit = { y: cap.y, kind: 'CAPSULE', idx: ci };
-        }
+      if (cap.y <= beamBottomY && cap.y >= stopY && Math.abs(cap.x - beamX) <= cap.hitRadius + 4) {
+        game.shotsHit++;
+        destroyAndCollectCapsule(game, ci);
       }
     }
 
-    // 3) Check Lightwings in the beam line
-    for (let li = 0; li < game.lightwings.length; li++) {
+    const impacts = [];
+
+    // 3) Pierce ALL Lightwings along the beam segment [stopY .. beamBottomY]
+    for (let li = game.lightwings.length - 1; li >= 0; li--) {
       const lw = game.lightwings[li];
-      if (lw.y <= beamBottomY && Math.abs(lw.x - beamX) <= 18) {
-        if (!bestHit || lw.y > bestHit.y) {
-          bestHit = { y: lw.y, kind: 'LIGHTWING', idx: li };
+      if (lw.y <= beamBottomY && lw.y >= stopY && Math.abs(lw.x - beamX) <= 18) {
+        impacts.push(lw.y);
+        if (shouldDamageTick) {
+          game.shotsHit++;
+          damageLightwing(game, li, beamDmg);
         }
       }
     }
 
-    // 4) Check Enemies in the beam line
-    for (let ei = 0; ei < game.enemies.length; ei++) {
+    // 4) Pierce ALL Enemy Ships along the beam segment [stopY .. beamBottomY]
+    for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
       const e = game.enemies[ei];
       const beamHalfW = e.hitRadius + 5;
-      if (e.y <= beamBottomY && Math.abs(e.x - beamX) <= beamHalfW) {
-        if (!bestHit || e.y > bestHit.y) {
-          bestHit = { y: e.y, kind: 'ENEMY', idx: ei };
+      if (e.y <= beamBottomY && e.y >= stopY && Math.abs(e.x - beamX) <= beamHalfW) {
+        impacts.push(e.y);
+        if (shouldDamageTick) {
+          game.shotsHit++;
+          const isLegacyBoss = e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC';
+          const finalDmg = isLegacyBoss ? beamDmg * 1.3 : beamDmg;
+          damageEnemy(
+            game,
+            ei,
+            finalDmg,
+            beamX,
+            e.y,
+            isLegacyBoss ? COLORS.aresRed : COLORS.white
+          );
         }
       }
     }
 
-    if (bestHit) {
-      stopY = bestHit.y;
+    // 5) Resolve ribbon interaction on tick (chip Red ribbon OR refract through Cyan ribbon into slowed red bolts!)
+    if (shouldDamageTick) {
+      game.shotsFired++;
+      if (ribbonBlock) {
+        if (ribbonBlock.kind === 'ARES_RIBBON') {
+          const trail = game.ribbonTrails[ribbonBlock.idx];
+          if (trail && trail.id === ribbonBlock.trailId) {
+            trail.hitsRemaining -= 1;
+            trail.flashTimer = 0.14;
+            if (trail.hitsRemaining <= 0) {
+              shatterRibbonTrail(game, ribbonBlock.idx, beamX, stopY, COLORS.aresRed);
+            } else {
+              game.synth.playRibbonDeflect();
+              game.spawnDerez(beamX, stopY, COLORS.amber, 5, 95);
+            }
+          }
+        } else if (ribbonBlock.kind === 'LEGACY_RIBBON') {
+          // Beam refracts through cyan ribbon into slowed red bullets that dissolve after 2.0s!
+          game.playerBullets.push({
+            x: beamX,
+            y: stopY - 6,
+            vy: -PLAYER_BULLET_SPEED / LEGACY_RIBBON_BULLET_SLOW,
+            dmg: beamDmg,
+            weakened,
+            purple: false,
+            redLaserBullet: true,
+            slowedByLegacy: true,
+            dissolveTimer: SLOWED_BULLET_DISSOLVE_TIME,
+            dissolveMax: SLOWED_BULLET_DISSOLVE_TIME
+          });
+          game.synth.playShotSlow();
+          game.spawnDerez(beamX, stopY, COLORS.aresRed, 4, 68);
+        }
+      }
     }
 
     game.activeLaserBeams.push({
@@ -272,70 +329,19 @@ export function updateContinuousLaserBeams(game) {
       y1: beamBottomY,
       y2: stopY,
       weakened,
-      hit: !!bestHit
+      hit: !!ribbonBlock,
+      hitColor: ribbonBlock && ribbonBlock.kind === 'LEGACY_RIBBON' ? COLORS.cyan : COLORS.aresRed,
+      impacts
     });
-
-    // 5) Pop destructible capsule on sweep, or resolve damage on the regular hitspeed tick
-    if (bestHit && bestHit.kind === 'CAPSULE') {
-      const cap = game.capsules[bestHit.idx];
-      if (cap) {
-        const capType = cap.type;
-        game.shotsHit++;
-        destroyAndCollectCapsule(game, bestHit.idx);
-        if (capType !== 'RED') {
-          switchedAwayFromRed = true;
-          break;
-        }
-      }
-    } else if (shouldDamageTick) {
-      game.shotsFired++;
-      if (bestHit) {
-        if (bestHit.kind === 'ARES_RIBBON') {
-          const trail = game.ribbonTrails[bestHit.idx];
-          if (trail) {
-            trail.hitsRemaining -= 1;
-            trail.flashTimer = 0.14;
-            if (trail.hitsRemaining <= 0) {
-              shatterRibbonTrail(game, bestHit.idx, beamX, stopY, COLORS.aresRed);
-            } else {
-              game.synth.playRibbonDeflect();
-              game.spawnDerez(beamX, stopY, COLORS.amber, 5, 95);
-            }
-          }
-        } else if (bestHit.kind === 'LIGHTWING') {
-          const lw = game.lightwings[bestHit.idx];
-          if (lw) {
-            game.shotsHit++;
-            damageLightwing(game, bestHit.idx, beamDmg);
-          }
-        } else if (bestHit.kind === 'ENEMY') {
-          const e = game.enemies[bestHit.idx];
-          if (e) {
-            game.shotsHit++;
-            // 1.3x damage bonus against Legacy Recognizers
-            const finalDmg = e.type === 'LEGACY_REC' ? beamDmg * 1.3 : beamDmg;
-            damageEnemy(
-              game,
-              bestHit.idx,
-              finalDmg,
-              beamX,
-              stopY,
-              e.type === 'LEGACY_REC' ? COLORS.aresRed : COLORS.white
-            );
-          }
-        }
-      }
-    }
-  }
-
-  if (switchedAwayFromRed) {
-    game.activeLaserBeams = [];
-    game.redLaserActive = false;
-    return;
   }
 
   if (shouldDamageTick) {
     game.synth.playContinuousLaserTick();
+  }
+
+  // Drain Red Laser slot ONLY while actively firing (single rate even in Dual-Fighter!)
+  if (dt > 0) {
+    consumePowerupEnergy(game, 'RED', RED_LASER_DRAIN_PER_SEC * dt);
   }
 }
 
@@ -343,50 +349,30 @@ export function updateArcWavesAndCannon(game, dt) {
   const aw = game.arcWaveState;
   if (aw.auraFade > 0) aw.auraFade = Math.max(0, aw.auraFade - dt);
 
-  // Advance Purple Boxed Capsule 3-wave auto-fire & Purple Aura Cannon cycle
-  if (game.powerup.type === 'PURPLE' && game.player.alive && !game.player.capturedById) {
-    if (aw.triggerGrace > 0) aw.triggerGrace = Math.max(0, aw.triggerGrace - dt);
-
-    if (aw.phase === 'ACTIVE') {
-      aw.waveTimer -= dt;
-      if (aw.waveTimer <= 0) {
-        aw.wavesFired++;
-        spawnArcWaveFromPlayer(game);
-        if (aw.wavesFired < ARC_WAVE_MAX) {
-          aw.waveTimer = ARC_WAVE_INTERVAL;
-        } else if (!aw.firedBulletDuringWaves) {
-          aw.phase = 'CANNON_AURA';
-          aw.cannonTimer = 0.62;
-          game.synth.playCannonCharge();
-          game.spawnPopup(game.player.x, game.player.y - 36, 'PURPLE AURA!', COLORS.purpleBright, 1.3);
-        } else {
-          aw.phase = 'FINISHING';
-          aw.waveTimer = 0.85;
-        }
-      }
-    } else if (aw.phase === 'FINISHING') {
-      aw.waveTimer -= dt;
-      if (aw.waveTimer <= 0) {
-        resetArcWaveState(game);
-        game.powerup.type = null;
-        game.spawnPopup(game.player.x, game.player.y - 28, 'STANDARD PULSE RESTORED', COLORS.cyan, 1.0);
-      }
-    } else if (aw.phase === 'CANNON_AURA') {
-      aw.cannonTimer -= dt;
-      if (aw.cannonTimer <= 0) {
-        fireCannonShot(game);
-        resetArcWaveState(game);
-        aw.auraFade = 0.55;
-        game.powerup.type = null;
-      }
+  // Double-tap Cannon Overcharge: 3.0s auto-fire fallback if user doesn't tap a 2nd time
+  if (aw.phase === 'CANNON_CHARGING' && game.player.alive && !game.player.capturedById) {
+    aw.cannonTimer -= dt;
+    if (Math.random() < 0.35) {
+      game.spawnDerez(
+        game.player.x + (Math.random() - 0.5) * 26,
+        game.player.y + (Math.random() - 0.5) * 20,
+        COLORS.purpleBright,
+        1,
+        55
+      );
+    }
+    if (aw.cannonTimer <= 0) {
+      fireCannonShot(game);
+      aw.auraFade = 0.55;
+      removePowerupSlot(game, 'PURPLE', true);
     }
   }
 
-  // Update active Arc Waves (void enemy projectiles + regular bullet damage)
+  // Update active wider Arc Waves (void enemy projectiles + regular bullet damage)
   for (let i = game.arcWaves.length - 1; i >= 0; i--) {
     const w = game.arcWaves[i];
     w.y += w.vy * dt;
-    w.radius = Math.min(w.maxRadius, w.radius + 32 * dt);
+    w.radius = Math.min(w.maxRadius, w.radius + 48 * dt);
 
     if (w.y < -50) {
       game.arcWaves.splice(i, 1);
@@ -513,6 +499,17 @@ export function updatePlayerBullets(game, dt) {
   for (let i = game.playerBullets.length - 1; i >= 0; i--) {
     const b = game.playerBullets[i];
     b.y += b.vy * dt;
+
+    // Bullets slowed by a cyan light ribbon dissolve after 2.0 seconds
+    if (b.slowedByLegacy) {
+      b.dissolveTimer -= dt;
+      if (b.dissolveTimer <= 0) {
+        game.spawnDerez(b.x, b.y, b.redLaserBullet ? COLORS.aresRed : COLORS.cyan, 3, 45);
+        game.playerBullets.splice(i, 1);
+        continue;
+      }
+    }
+
     if (b.y < -20) {
       game.playerBullets.splice(i, 1);
       continue;
@@ -534,12 +531,14 @@ export function updatePlayerBullets(game, dt) {
         if (trail.variant === 'LEGACY') {
           if (!b.slowedByLegacy) {
             b.slowedByLegacy = true;
-            b.vy *= 0.5;
+            b.vy /= LEGACY_RIBBON_BULLET_SLOW;
+            b.dissolveTimer = SLOWED_BULLET_DISSOLVE_TIME;
+            b.dissolveMax = SLOWED_BULLET_DISSOLVE_TIME;
             game.synth.playShotSlow();
             game.spawnDerez(b.x, b.y, COLORS.cyan, 4, 55);
           }
         } else {
-          // Ares crimson ribbons block regular/purple shots (3 hits to shatter)
+          // Ares crimson ribbons block regular/purple/laser-bolt shots (6 hits to shatter)
           trail.hitsRemaining -= 1;
           trail.flashTimer = 0.14;
           removed = true;
@@ -566,7 +565,7 @@ export function updatePlayerBullets(game, dt) {
     ) {
       const owner = game.enemies.find(e => e.id === game.capturedFighter.ownerId);
       if (owner) owner.hasCapturedShip = false;
-      game.spawnDerez(game.capturedFighter.x, game.capturedFighter.y, COLORS.cyan, 22, 190);
+      game.spawnDerez(game.capturedFighter.x, game.capturedFighter.y, '#ffffff', 22, 190);
       game.spawnPopup(game.capturedFighter.x, game.capturedFighter.y, 'CAPTURED SHIP DESTROYED', COLORS.aresRed, 1.3);
       game.capturedFighter = null;
       game.synth.playDerez(true);
@@ -609,7 +608,9 @@ export function updatePlayerBullets(game, dt) {
       const e = game.enemies[ei];
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.hitRadius) {
         game.shotsHit++;
-        damageEnemy(game, ei, b.dmg, b.x, b.y);
+        const isLegacyBoss = e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC';
+        const finalDmg = (b.redLaserBullet && isLegacyBoss) ? b.dmg * 1.3 : b.dmg;
+        damageEnemy(game, ei, finalDmg, b.x, b.y, b.redLaserBullet ? COLORS.aresRed : COLORS.white);
         removed = true;
         break;
       }
@@ -667,7 +668,7 @@ export function updateHomingMissiles(game, dt) {
     m.y += m.vy * dt;
 
     m.trail.push({ x: m.x, y: m.y });
-    if (m.trail.length > 7) m.trail.shift();
+    if (m.trail.length > 12) m.trail.shift();
 
     if (m.life <= 0 || m.y < -30 || m.y > LOGICAL_H + 30 || m.x < -30 || m.x > LOGICAL_W + 30) {
       game.homingMissiles.splice(i, 1);
@@ -728,12 +729,13 @@ export function updateHomingMissiles(game, dt) {
       continue;
     }
 
-    // 3) Check Enemies (1.3x damage bonus against Ares Recognizers)
+    // 3) Check Enemies (1.3x damage bonus against Elite & Master Ares Recognizers)
     for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
       const e = game.enemies[ei];
       if (Math.hypot(m.x - e.x, m.y - e.y) < e.hitRadius + 3) {
         game.shotsHit++;
-        const finalDmg = e.type === 'ARES_REC' ? m.dmg * 1.3 : m.dmg;
+        const isAresBoss = e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC';
+        const finalDmg = isAresBoss ? m.dmg * 1.3 : m.dmg;
         damageEnemy(game, ei, finalDmg, m.x, m.y, COLORS.cyan);
         removed = true;
         break;

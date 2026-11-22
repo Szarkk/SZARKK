@@ -1,24 +1,36 @@
 /* =========================================================================
-   UI SYNCHRONIZATION, OVERLAYS, GRID ARCHIVE & MULTI-TOUCH INPUT BINDING
+   UI SYNCHRONIZATION, OVERLAYS, ARCHIVE, LEADERBOARD & 2D DIRECT-DRAG INPUT
    ========================================================================= */
 
 import {
   ARCHIVE_ENTRIES,
-  ARC_WAVE_INTERVAL,
   ARC_WAVE_MAX,
+  CANNON_AUTO_FIRE_DELAY,
+  CYAN_SHOT_ENERGY_COST,
   GAME_VERSION,
   LOGICAL_H,
   LOGICAL_W,
+  POWERUP_MAX_ENERGY,
+  RED_LASER_DRAIN_PER_SEC,
   STORAGE_KEYS,
   TAP_BUFFER_TIME
 } from './config.js';
 import { clamp, writeLS } from './utils.js';
+import { getActivePowerups } from './powerups.js';
 import {
   drawEnemySprite,
   drawLightwingSprite,
   drawPixelCapsule,
   drawPlayerFighter
 } from './sprites.js';
+import {
+  clearLeaderboard,
+  getSavedCallsign,
+  getTopLeaderboardScore,
+  hasAnyLeaderboardEntries,
+  loadLeaderboard,
+  saveLeaderboardEntry
+} from './leaderboard.js';
 
 export function cacheDomElements(game) {
   game.canvas = document.getElementById('game-canvas');
@@ -33,10 +45,9 @@ export function cacheDomElements(game) {
   game.elStartHigh = document.getElementById('start-high-val');
   game.elMenuCtrlChip = document.getElementById('menu-ctrl-chip');
 
-  game.pillPwr = document.getElementById('pill-powerup');
-  game.pillPwrLabel = document.getElementById('pill-pwr-label');
-  game.pillPwrTime = document.getElementById('pill-pwr-time');
-  game.pillPwrFill = document.getElementById('pill-pwr-fill');
+  game.pwrGaugeBar = document.getElementById('powerup-gauge-bar');
+  game._pwrGaugeKey = '';
+  game._pwrSlotEls = {};
 
   game.pillSlow = document.getElementById('pill-slow');
   game.pillSlowTime = document.getElementById('pill-slow-time');
@@ -46,7 +57,6 @@ export function cacheDomElements(game) {
   game.pillDmgTime = document.getElementById('pill-dmg-time');
   game.pillDmgFill = document.getElementById('pill-dmg-fill');
 
-  game.btnCtrl = document.getElementById('btn-ctrl');
   game.btnAuto = document.getElementById('btn-auto');
   game.btnCrt = document.getElementById('btn-crt');
   game.btnSfx = document.getElementById('btn-sfx');
@@ -55,21 +65,32 @@ export function cacheDomElements(game) {
   game.overlayStart = document.getElementById('overlay-start');
   game.overlayControls = document.getElementById('overlay-controls');
   game.overlayArchive = document.getElementById('overlay-archive');
+  game.overlayLeaderboard = document.getElementById('overlay-leaderboard');
   game.overlayPause = document.getElementById('overlay-pause');
   game.overlayGameOver = document.getElementById('overlay-gameover');
 
+  game.leaderboardList = document.getElementById('leaderboard-list');
+  game.btnLbTabNormal = document.getElementById('btn-lb-tab-normal');
+  game.btnLbTabHard = document.getElementById('btn-lb-tab-hard');
+  game.lbClearWrap = document.getElementById('lb-clear-wrap');
+  game.lbClearStep0 = document.getElementById('lb-clear-step0');
+  game.lbClearStep1 = document.getElementById('lb-clear-step1');
+  game.lbClearStep2 = document.getElementById('lb-clear-step2');
+
+  game.btnModeNormal = document.getElementById('btn-mode-normal');
+  game.btnModeHard = document.getElementById('btn-mode-hard');
+  game.goModeBadge = document.getElementById('go-mode-badge');
+  game.goSavePanel = document.getElementById('go-save-panel');
+  game.goCallsignInput = document.getElementById('go-callsign-input');
+  game.btnSaveScore = document.getElementById('btn-save-score');
+  game.goSaveStatus = document.getElementById('go-save-status');
+
   game.dockDot = document.getElementById('dock-dot');
   game.dockStatusText = document.getElementById('dock-status-text');
-  game.lrFirePill = document.getElementById('lr-fire-pill');
-  game.dockBtnRow = document.getElementById('dock-btn-row');
-  game.touchLeft = document.getElementById('touch-left');
-  game.touchRight = document.getElementById('touch-right');
   game.touchFire = document.getElementById('touch-fire');
-  game.dragRow = document.getElementById('drag-row');
-  game.dragPad = document.getElementById('drag-pad');
-  game.dragSub = document.getElementById('drag-sub');
-  game.dragThumb = document.getElementById('drag-thumb');
-  game.dragFire = document.getElementById('drag-fire');
+  game.desktopBar = document.getElementById('desktop-bar');
+  game.btnShowTouch = document.getElementById('btn-show-touch');
+  game.btnHideTouch = document.getElementById('btn-hide-touch');
 
   const menuVer = document.getElementById('menu-version');
   const pauseVer = document.getElementById('pause-version');
@@ -151,111 +172,157 @@ export function renderArchivePreviews(game) {
       drawLightwingSprite(c, { variant: 'LEGACY', x: 22, y: 30 + bob, angle: -Math.PI / 2 });
       drawLightwingSprite(c, { variant: 'ARES', x: 46, y: 30 - bob, angle: -Math.PI / 2 });
     } else {
-      const isElite = p.id === 'LEGACY_REC' || p.id === 'ARES_REC';
+      const isMaster = p.id === 'MASTER_LEGACY_REC' || p.id === 'MASTER_ARES_REC';
+      const isElite = isMaster || p.id === 'LEGACY_REC' || p.id === 'ARES_REC';
       drawEnemySprite(c, {
         type: p.id,
         x: 34,
         y: 30 + bob,
-        hp: 3,
-        maxHp: 3,
+        hp: isMaster ? 15 : 6,
+        maxHp: isMaster ? 15 : 6,
         hitFlash: 0,
         angle: 0
-      }, t, isElite ? 0.96 : 0.92);
+      }, t, isMaster ? 0.78 : (isElite ? 0.96 : 0.92));
     }
   }
 }
 
+export function setLeaderboardClearStep(game, step) {
+  if (!game.lbClearStep0) return;
+  game.lbClearStep0.classList.toggle('hidden', step !== 0);
+  game.lbClearStep1.classList.toggle('hidden', step !== 1);
+  game.lbClearStep2.classList.toggle('hidden', step !== 2);
+}
+
+export function renderLeaderboard(game) {
+  if (!game.leaderboardList) return;
+  const viewMode = game.lbViewMode === 'HARD' ? 'HARD' : 'NORMAL';
+  if (game.btnLbTabNormal) game.btnLbTabNormal.classList.toggle('selected', viewMode === 'NORMAL');
+  if (game.btnLbTabHard) game.btnLbTabHard.classList.toggle('selected', viewMode === 'HARD');
+
+  const entries = loadLeaderboard(viewMode);
+  game.leaderboardList.innerHTML = '';
+  setLeaderboardClearStep(game, 0);
+
+  if (game.lbClearWrap) {
+    game.lbClearWrap.classList.toggle('hidden', !hasAnyLeaderboardEntries());
+  }
+
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'lb-empty';
+    empty.textContent = viewMode === 'HARD'
+      ? 'NO HARD MODE RECORDS YET. SURVIVE SEC 21+ INTENSITY AND SAVE YOUR CALLSIGN.'
+      : 'NO NORMAL RECORDS YET. COMPLETE A RUN AND SAVE YOUR CALLSIGN TO CLAIM #01.';
+    game.leaderboardList.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry, idx) => {
+    const rank = idx + 1;
+    const row = document.createElement('div');
+    const rankCls = rank <= 3 ? ` rank-${rank}` : '';
+    const recentCls = game.lastSavedEntryId && entry.id === game.lastSavedEntryId ? ' is-recent' : '';
+    row.className = `lb-row${rankCls}${recentCls}`;
+
+    const elRank = document.createElement('span');
+    elRank.className = 'lb-rank';
+    elRank.textContent = `#${String(rank).padStart(2, '0')}`;
+
+    const elTag = document.createElement('span');
+    elTag.className = 'lb-tag';
+    elTag.textContent = entry.tag;
+
+    const elScore = document.createElement('span');
+    elScore.className = 'lb-score';
+    elScore.textContent = String(entry.score).padStart(6, '0');
+
+    const elSec = document.createElement('span');
+    elSec.className = 'lb-sec';
+    elSec.textContent = `${viewMode === 'HARD' ? 'H' : 'S'}${String(entry.sector).padStart(2, '0')}`;
+
+    const elAcc = document.createElement('span');
+    elAcc.className = 'lb-acc';
+    elAcc.textContent = entry.accuracy;
+
+    row.append(elRank, elTag, elScore, elSec, elAcc);
+    game.leaderboardList.appendChild(row);
+  });
+}
+
 export function resetInputs(game) {
   game.keys.clear();
-  game.dirPointerMap.clear();
   game.firePointerIds.clear();
   game.dragPointerId = null;
   game.dragActive = false;
   game.tapFireBuffer = 0;
+  game.freshFirePress = false;
   updateControlPressVisuals(game);
 }
 
 export function updateControlPressVisuals(game) {
-  let l = false;
-  let r = false;
-  for (const d of game.dirPointerMap.values()) {
-    if (d === 'LEFT') l = true;
-    if (d === 'RIGHT') r = true;
-  }
-  game.touchLeft.classList.toggle('active', l);
-  game.touchRight.classList.toggle('active', r);
   const f = game.firePointerIds.size > 0;
-  game.touchFire.classList.toggle('active', f);
-  game.dragFire.classList.toggle('active', f);
-  game.lrFirePill.classList.toggle('active', f);
-  game.dragPad.classList.toggle('dragging', game.dragActive);
+  if (game.touchFire) game.touchFire.classList.toggle('active', f);
 }
 
 export function resizeCanvas(game) {
   const rect = game.stageContainer.getBoundingClientRect();
-  const w = Math.max(240, Math.floor(rect.width));
-  const h = Math.max(240, Math.floor(rect.height));
+  const availW = Math.max(180, rect.width);
+  const availH = Math.max(240, rect.height);
+  const aspect = LOGICAL_W / LOGICAL_H;
+
+  let cssW = availW;
+  let cssH = cssW / aspect;
+  if (cssH > availH) {
+    cssH = availH;
+    cssW = cssH * aspect;
+  }
+
+  cssW = Math.max(180, Math.floor(cssW));
+  cssH = Math.max(240, Math.floor(cssH));
+
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  game.canvas.width = Math.floor(w * dpr);
-  game.canvas.height = Math.floor(h * dpr);
-  game.ctx.setTransform((w * dpr) / LOGICAL_W, 0, 0, (h * dpr) / LOGICAL_H, 0, 0);
+  game.canvas.style.width = `${cssW}px`;
+  game.canvas.style.height = `${cssH}px`;
+  game.canvas.width = Math.floor(cssW * dpr);
+  game.canvas.height = Math.floor(cssH * dpr);
+
+  game.ctx.setTransform(game.canvas.width / LOGICAL_W, 0, 0, game.canvas.height / LOGICAL_H, 0, 0);
 }
 
 export function syncControlsUI(game) {
-  const modeLabel = game.controlMode === 'DRAG' ? 'DRAG' : (game.controlMode === 'TOUCH_LR' ? 'L/R' : '3-BTN');
-  const modeLong = game.controlMode === 'DRAG' ? 'DRAG' : (game.controlMode === 'TOUCH_LR' ? 'TOUCH L/R' : '3-BTN');
+  document.body.classList.toggle('desktop-mode', game.desktopMode);
+  if (game.desktopBar) game.desktopBar.classList.toggle('hidden', !game.desktopMode);
+  if (game.btnHideTouch) game.btnHideTouch.classList.toggle('hidden', game.isTouch || game.desktopMode);
 
-  game.btnCtrl.textContent = modeLabel;
   game.btnAuto.textContent = `AUTO:${game.autoFire ? 'ON' : 'OFF'}`;
   game.btnAuto.className = `hud-pill ${game.autoFire ? 'auto-on' : 'auto-off'}`;
   game.btnCrt.className = `hud-pill ${game.crtEnabled ? '' : 'is-off'}`;
   game.btnSfx.className = `hud-pill ${game.sfxEnabled ? '' : 'is-off'}`;
   game.crtOverlay.classList.toggle('crt-off', !game.crtEnabled);
 
-  game.elMenuCtrlChip.textContent = `${modeLong} • AUTO: ${game.autoFire ? 'ON' : 'OFF'}`;
-  game.canvas.classList.toggle('drag-cursor', game.controlMode === 'DRAG');
+  if (game.btnModeNormal) game.btnModeNormal.classList.toggle('selected', !game.hardMode);
+  if (game.btnModeHard) game.btnModeHard.classList.toggle('selected', game.hardMode);
 
-  const isDrag = game.controlMode === 'DRAG';
-  game.dragRow.classList.toggle('hidden', !isDrag);
-  game.dockBtnRow.classList.toggle('hidden', isDrag);
-  game.touchFire.classList.toggle('hidden', game.controlMode !== 'THREE_BTN');
-  game.lrFirePill.classList.toggle('hidden', !(game.controlMode === 'TOUCH_LR' && !game.autoFire));
+  game.elMenuCtrlChip.textContent = game.desktopMode
+    ? `PC 2D KEYS • AUTO: ${game.autoFire ? 'ON' : 'OFF'}`
+    : `2D DRAG • AUTO: ${game.autoFire ? 'ON' : 'OFF'}`;
 
   game.dockDot.className = `status-dot ${game.autoFire ? '' : 'manual'}`;
-  if (isDrag) {
-    game.dockStatusText.textContent = game.autoFire
-      ? 'DRAG MODE // AUTO-FIRE WHILE TOUCHING'
-      : 'DRAG + HOLD FIRE // INDEPENDENT 2-THUMB';
-    game.dragSub.textContent = game.autoFire ? 'TOUCH TO STEER & FIRE' : 'DRAG HERE OR ON SCREEN';
-  } else if (game.controlMode === 'TOUCH_LR') {
-    game.dockStatusText.textContent = game.autoFire
-      ? 'TOUCH L/R // SLIDE THUMB + AUTO-FIRE'
-      : 'TOUCH L/R // SLIDE THUMB + FIRE PILL';
-  } else {
-    game.dockStatusText.textContent = game.autoFire
-      ? '3-BTN ARCADE // AUTO-FIRE ENABLED'
-      : '3-BTN ARCADE // INDEPENDENT HOLD-TO-FIRE';
-  }
+  game.dockStatusText.textContent = game.autoFire
+    ? 'DRAG BELOW SHIP TO DODGE // AUTO-FIRE ON'
+    : 'DRAG BELOW SHIP TO DODGE // HOLD FIRE';
 
-  document.querySelectorAll('.seg-btn').forEach((btn) => {
-    btn.classList.toggle('selected', btn.dataset.mode === game.controlMode);
-  });
   const modalAuto = document.getElementById('btn-ctrl-auto');
-  modalAuto.textContent = `AUTO-FIRE: ${game.autoFire ? 'ON' : 'OFF'}`;
-  modalAuto.className = `auto-toggle-btn ${game.autoFire ? 'on' : 'off'}`;
-  document.getElementById('btn-ctrl-crt').textContent = `CRT: ${game.crtEnabled ? 'ON' : 'OFF'}`;
-  document.getElementById('btn-ctrl-sfx').textContent = `SFX: ${game.sfxEnabled ? 'ON' : 'OFF'}`;
-
-  const hint = document.getElementById('ctrl-modal-hint');
-  if (game.controlMode === 'DRAG') {
-    hint.textContent = 'Independent 2-thumb drag + hold-to-fire rapid pulse cannon.';
-  } else if (game.controlMode === 'TOUCH_LR') {
-    hint.textContent = '2 large Left/Right pads (or tap screen halves) with smooth thumb sliding.';
-  } else {
-    hint.textContent = 'Classic Left / Right / Hold-to-Fire arcade buttons.';
+  if (modalAuto) {
+    modalAuto.textContent = `AUTO-FIRE: ${game.autoFire ? 'ON' : 'OFF'}`;
+    modalAuto.className = `auto-toggle-btn ${game.autoFire ? 'on' : 'off'}`;
   }
+  const btnCtrlCrt = document.getElementById('btn-ctrl-crt');
+  if (btnCtrlCrt) btnCtrlCrt.textContent = `CRT: ${game.crtEnabled ? 'ON' : 'OFF'}`;
+  const btnCtrlSfx = document.getElementById('btn-ctrl-sfx');
+  if (btnCtrlSfx) btnCtrlSfx.textContent = `SFX: ${game.sfxEnabled ? 'ON' : 'OFF'}`;
 
-  writeLS(STORAGE_KEYS.ctrl, game.controlMode);
   writeLS(STORAGE_KEYS.auto, game.autoFire ? '1' : '0');
   writeLS(STORAGE_KEYS.crt, game.crtEnabled ? '1' : '0');
   writeLS(STORAGE_KEYS.sfx, game.sfxEnabled ? '1' : '0');
@@ -265,46 +332,120 @@ export function updateHUD(game) {
   game.elScore.textContent = String(game.score).padStart(6, '0');
   game.elHigh.textContent = String(game.highScore).padStart(6, '0');
   game.elStartHigh.textContent = String(game.highScore).padStart(6, '0');
-  game.elSector.textContent = String(game.sector).padStart(2, '0');
+  game.elSector.textContent = `${game.hardMode ? 'H' : ''}${String(game.sector).padStart(2, '0')}`;
+  game.elSector.classList.toggle('is-hard', game.hardMode);
 
   let html = '';
   for (let i = 0; i < Math.max(0, game.lives); i++) {
-    html += `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(0,246,255,0.22)" stroke="#00f6ff" stroke-width="1.8"/></svg>`;
+    html += `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(235,245,255,0.85)" stroke="#ffffff" stroke-width="1.8"/></svg>`;
   }
   game.elLives.innerHTML = html;
 }
 
+function buildPowerupGaugeSlots(game, activeTypes) {
+  const bar = game.pwrGaugeBar;
+  bar.innerHTML = '';
+  game._pwrSlotEls = {};
+
+  if (activeTypes.length === 0) {
+    bar.className = 'pwr-empty';
+    const slot = document.createElement('div');
+    slot.className = 'pwr-slot pwr-empty';
+    slot.innerHTML = `
+      <div class="pwr-gauge-meta">
+        <span class="pwr-gauge-name">POWER-UP GAUGE</span>
+        <span class="pwr-gauge-val">STANDBY</span>
+      </div>
+      <div class="pwr-gauge-track">
+        <div class="pwr-gauge-fill" style="width:0%"></div>
+        <div class="pwr-gauge-ticks" aria-hidden="true"></div>
+      </div>
+    `;
+    bar.appendChild(slot);
+    return;
+  }
+
+  bar.className = activeTypes.length > 1
+    ? 'pwr-multi'
+    : (activeTypes[0] === 'CYAN' ? 'pwr-cyan' : (activeTypes[0] === 'RED' ? 'pwr-red' : 'pwr-purple'));
+
+  for (const type of activeTypes) {
+    const slot = document.createElement('div');
+    const colorCls = type === 'CYAN' ? 'pwr-cyan' : (type === 'RED' ? 'pwr-red' : 'pwr-purple seg-9');
+    slot.className = `pwr-slot ${colorCls}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'pwr-gauge-meta';
+    const elName = document.createElement('span');
+    elName.className = 'pwr-gauge-name';
+    const elVal = document.createElement('span');
+    elVal.className = 'pwr-gauge-val';
+    meta.append(elName, elVal);
+
+    const track = document.createElement('div');
+    track.className = 'pwr-gauge-track';
+    const fill = document.createElement('div');
+    fill.className = 'pwr-gauge-fill';
+    const ticks = document.createElement('div');
+    ticks.className = 'pwr-gauge-ticks';
+    ticks.setAttribute('aria-hidden', 'true');
+    track.append(fill, ticks);
+
+    slot.append(meta, track);
+    bar.appendChild(slot);
+    game._pwrSlotEls[type] = { elName, elVal, fill };
+  }
+}
+
 export function updateStatusPills(game) {
   const p = game.player;
-  if (game.powerup.type === 'PURPLE') {
-    const aw = game.arcWaveState;
-    game.pillPwr.classList.remove('hidden');
-    game.pillPwr.className = 'status-pill pwr-purple';
-    if (aw.phase === 'READY') {
-      game.pillPwrLabel.textContent = 'ARC WAVE: TAP FIRE';
-      game.pillPwrTime.textContent = '3 WAVES';
-      game.pillPwrFill.style.width = '100%';
-    } else if (aw.phase === 'CANNON_AURA') {
-      game.pillPwrLabel.textContent = 'PURPLE AURA // CANNON';
-      game.pillPwrTime.textContent = 'AOE';
-      game.pillPwrFill.style.width = `${clamp((1 - aw.cannonTimer / 0.62) * 100, 0, 100)}%`;
-    } else {
-      const left = Math.max(0, ARC_WAVE_MAX - aw.wavesFired);
-      game.pillPwrLabel.textContent = aw.firedBulletDuringWaves
-        ? 'PURPLE SHOTS 1.5x'
-        : 'ARC WAVE (HOLD FIRE!)';
-      game.pillPwrTime.textContent = `${aw.wavesFired}/${ARC_WAVE_MAX}`;
-      game.pillPwrFill.style.width = `${clamp(((left + (aw.waveTimer / ARC_WAVE_INTERVAL)) / ARC_WAVE_MAX) * 100, 8, 100)}%`;
+
+  if (game.pwrGaugeBar) {
+    const activeTypes = getActivePowerups(game);
+    const key = activeTypes.length > 0 ? activeTypes.join('|') : 'EMPTY';
+    if (key !== game._pwrGaugeKey) {
+      game._pwrGaugeKey = key;
+      buildPowerupGaugeSlots(game, activeTypes);
     }
-  } else if (game.powerup.type && game.powerup.timer > 0) {
-    game.pillPwr.classList.remove('hidden');
-    const isCyan = game.powerup.type === 'CYAN';
-    game.pillPwr.className = `status-pill ${isCyan ? 'pwr-cyan' : 'pwr-red'}`;
-    game.pillPwrLabel.textContent = isCyan ? 'HOMING MISSILES' : 'CONTINUOUS LASER';
-    game.pillPwrTime.textContent = `${game.powerup.timer.toFixed(1)}s`;
-    game.pillPwrFill.style.width = `${clamp((game.powerup.timer / game.powerup.maxTimer) * 100, 0, 100)}%`;
-  } else {
-    game.pillPwr.classList.add('hidden');
+
+    const compact = activeTypes.length >= 2;
+    for (const type of activeTypes) {
+      const refs = game._pwrSlotEls[type];
+      if (!refs) continue;
+      const energy = game.powerup.slots[type] || 0;
+      const pct = clamp((energy / POWERUP_MAX_ENERGY) * 100, 0, 100);
+
+      if (type === 'PURPLE') {
+        const aw = game.arcWaveState;
+        if (aw.phase === 'CANNON_CHARGING') {
+          refs.elName.textContent = compact ? 'TAP FIRE!' : 'OVERCHARGE // TAP TO FIRE';
+          refs.elVal.textContent = `${aw.cannonTimer.toFixed(1)}s`;
+          refs.fill.style.width = `${clamp((aw.cannonTimer / CANNON_AUTO_FIRE_DELAY) * 100, 4, 100)}%`;
+        } else if (aw.phase === 'CANNON_READY') {
+          refs.elName.textContent = compact ? 'CANNON 2x' : 'CANNON PRIMED // 2x TAP';
+          refs.elVal.textContent = 'READY';
+          refs.fill.style.width = '100%';
+        } else {
+          const left = Math.max(0, ARC_WAVE_MAX - aw.wavesFired);
+          refs.elName.textContent = compact
+            ? 'ARC WAVE'
+            : (game.autoFire ? 'ARC WAVE // AUTO' : 'ARC WAVE // CONSERVE');
+          refs.elVal.textContent = compact ? `${left}/${ARC_WAVE_MAX}` : `${left}/${ARC_WAVE_MAX} WAVES`;
+          refs.fill.style.width = `${pct}%`;
+        }
+      } else if (type === 'CYAN') {
+        const maxShots = Math.round(POWERUP_MAX_ENERGY / CYAN_SHOT_ENERGY_COST);
+        const shotsLeft = Math.ceil(energy / CYAN_SHOT_ENERGY_COST);
+        refs.elName.textContent = compact ? 'HOMING' : 'HOMING MISSILES';
+        refs.elVal.textContent = compact ? `${shotsLeft}/${maxShots}` : `${shotsLeft}/${maxShots} SHOTS`;
+        refs.fill.style.width = `${pct}%`;
+      } else if (type === 'RED') {
+        const secLeft = energy / RED_LASER_DRAIN_PER_SEC;
+        refs.elName.textContent = compact ? 'LASER' : 'CONTINUOUS LASER';
+        refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
+        refs.fill.style.width = `${pct}%`;
+      }
+    }
   }
 
   if (p.slowTimer > 0) {
@@ -328,6 +469,7 @@ export function hideAllOverlays(game) {
   game.overlayStart.classList.add('hidden');
   game.overlayControls.classList.add('hidden');
   game.overlayArchive.classList.add('hidden');
+  if (game.overlayLeaderboard) game.overlayLeaderboard.classList.add('hidden');
   game.overlayPause.classList.add('hidden');
   game.overlayGameOver.classList.add('hidden');
 }
@@ -335,13 +477,22 @@ export function hideAllOverlays(game) {
 export function openModal(game, which, returnTo) {
   game.modalReturnTo = returnTo;
   hideAllOverlays(game);
-  if (which === 'ARCHIVE') game.overlayArchive.classList.remove('hidden');
-  else game.overlayControls.classList.remove('hidden');
+  if (which === 'ARCHIVE') {
+    game.overlayArchive.classList.remove('hidden');
+  } else if (which === 'LEADERBOARD') {
+    game.lbViewMode = game.hardMode ? 'HARD' : 'NORMAL';
+    renderLeaderboard(game);
+    game.overlayLeaderboard.classList.remove('hidden');
+  } else {
+    game.overlayControls.classList.remove('hidden');
+  }
 }
 
 export function closeModal(game) {
+  setLeaderboardClearStep(game, 0);
   hideAllOverlays(game);
   if (game.modalReturnTo === 'PAUSED') game.overlayPause.classList.remove('hidden');
+  else if (game.modalReturnTo === 'GAMEOVER') game.overlayGameOver.classList.remove('hidden');
   else game.overlayStart.classList.remove('hidden');
 }
 
@@ -349,13 +500,68 @@ export function showGameOverOverlay(game) {
   const acc = game.shotsFired > 0 ? ((game.shotsHit / game.shotsFired) * 100).toFixed(1) : '0.0';
   document.getElementById('go-score').textContent = String(game.score).padStart(6, '0');
   document.getElementById('go-high').textContent = String(game.highScore).padStart(6, '0');
-  document.getElementById('go-sector').textContent = String(game.sector).padStart(2, '0');
+  document.getElementById('go-sector').textContent = `${game.hardMode ? 'H' : ''}${String(game.sector).padStart(2, '0')}`;
   document.getElementById('go-acc').textContent = `${acc}%`;
   document.getElementById('go-shots').textContent = String(game.shotsFired);
   document.getElementById('go-hits').textContent = String(game.shotsHit);
   document.getElementById('go-rescues').textContent = String(game.dualRescues);
   document.getElementById('go-record-badge').classList.toggle('hidden', !game.newRecord);
+  if (game.goModeBadge) game.goModeBadge.classList.toggle('hidden', !game.hardMode);
+
+  game.roundScoreSaved = false;
+  if (game.goCallsignInput) {
+    game.goCallsignInput.value = getSavedCallsign();
+  }
+  if (game.score > 0) {
+    if (game.goSavePanel) game.goSavePanel.classList.remove('hidden');
+    if (game.goSaveStatus) game.goSaveStatus.classList.add('hidden');
+  } else {
+    if (game.goSavePanel) game.goSavePanel.classList.add('hidden');
+    if (game.goSaveStatus) {
+      game.goSaveStatus.textContent = 'SCORE POINTS TO LOG A RUN ON THE LEADERBOARD';
+      game.goSaveStatus.classList.remove('hidden');
+    }
+  }
+
   game.overlayGameOver.classList.remove('hidden');
+}
+
+function submitRoundScore(game) {
+  if (game.roundScoreSaved || game.score <= 0) return;
+  const mode = game.hardMode ? 'HARD' : 'NORMAL';
+  const rawTag = game.goCallsignInput ? game.goCallsignInput.value : 'PILOT';
+  const acc = game.shotsFired > 0 ? `${((game.shotsHit / game.shotsFired) * 100).toFixed(1)}%` : '0.0%';
+
+  const result = saveLeaderboardEntry({
+    tag: rawTag,
+    score: game.score,
+    sector: game.sector,
+    accuracy: acc,
+    mode
+  });
+
+  game.roundScoreSaved = true;
+  game.lastSavedEntryId = result.entry.id;
+  game.lbViewMode = mode;
+  game.highScore = Math.max(game.highScore, result.entry.score, getTopLeaderboardScore(mode));
+  if (game.hardMode) {
+    game.highScoreHard = game.highScore;
+    writeLS(STORAGE_KEYS.hiHard, game.highScoreHard);
+  } else {
+    game.highScoreNormal = game.highScore;
+    writeLS(STORAGE_KEYS.hi, game.highScoreNormal);
+  }
+  updateHUD(game);
+  document.getElementById('go-high').textContent = String(game.highScore).padStart(6, '0');
+
+  if (game.goSavePanel) game.goSavePanel.classList.add('hidden');
+  if (game.goSaveStatus) {
+    game.goSaveStatus.textContent = result.rank
+      ? `SAVED (${mode}) AS ${result.entry.tag} // RANK #${String(result.rank).padStart(2, '0')}`
+      : `SAVED (${mode}) AS ${result.entry.tag} (OUTSIDE TOP 10)`;
+    game.goSaveStatus.classList.remove('hidden');
+  }
+  game.synth.playRescue();
 }
 
 export function bindEvents(game) {
@@ -365,35 +571,81 @@ export function bindEvents(game) {
   window.addEventListener('resize', () => resizeCanvas(game));
 
   // Top HUD buttons
-  game.btnCtrl.addEventListener('click', () => {
-    game.synth.unlock();
-    const order = ['DRAG', 'TOUCH_LR', 'THREE_BTN'];
-    game.controlMode = order[(order.indexOf(game.controlMode) + 1) % order.length];
-    resetInputs(game);
-    syncControlsUI(game);
-  });
-
-  game.btnAuto.addEventListener('click', () => {
+  game.btnAuto.addEventListener('click', (e) => {
+    e.currentTarget.blur();
     game.synth.unlock();
     game.autoFire = !game.autoFire;
     syncControlsUI(game);
   });
 
-  game.btnCrt.addEventListener('click', () => {
+  game.btnCrt.addEventListener('click', (e) => {
+    e.currentTarget.blur();
     game.crtEnabled = !game.crtEnabled;
     syncControlsUI(game);
   });
 
-  game.btnSfx.addEventListener('click', () => {
+  game.btnSfx.addEventListener('click', (e) => {
+    e.currentTarget.blur();
     game.sfxEnabled = !game.sfxEnabled;
     game.synth.setEnabled(game.sfxEnabled);
     syncControlsUI(game);
   });
 
-  game.btnPause.addEventListener('click', () => {
+  game.btnPause.addEventListener('click', (e) => {
+    e.currentTarget.blur();
     if (game.state === 'PLAYING') game.pauseGame();
     else if (game.state === 'PAUSED') game.resumeGame();
   });
+
+  // Desktop <-> Touch UI manual toggle
+  if (game.btnShowTouch) {
+    game.btnShowTouch.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.desktopMode = false;
+      // Show subtle touch-ready glow ONLY when user willingly toggles Touch UI
+      game.touchHintState = 'GLOWING';
+      game.touchHintTimer = 0;
+      game.touchHintMoved = false;
+      resetInputs(game);
+      syncControlsUI(game);
+      resizeCanvas(game);
+    });
+  }
+
+  if (game.btnHideTouch) {
+    game.btnHideTouch.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.desktopMode = true;
+      game.touchHintState = 'OFF';
+      game.touchHintTimer = 0;
+      game.touchHintMoved = false;
+      resetInputs(game);
+      syncControlsUI(game);
+      resizeCanvas(game);
+    });
+  }
+
+  // Difficulty Mode Toggle (Normal vs Hard Mode [Sec 21+])
+  if (game.btnModeNormal) {
+    game.btnModeNormal.addEventListener('click', () => game.setHardMode(false));
+  }
+  if (game.btnModeHard) {
+    game.btnModeHard.addEventListener('click', () => game.setHardMode(true));
+  }
+
+  // Leaderboard Mode Tabs (Normal vs Hard)
+  if (game.btnLbTabNormal) {
+    game.btnLbTabNormal.addEventListener('click', () => {
+      game.lbViewMode = 'NORMAL';
+      renderLeaderboard(game);
+    });
+  }
+  if (game.btnLbTabHard) {
+    game.btnLbTabHard.addEventListener('click', () => {
+      game.lbViewMode = 'HARD';
+      renderLeaderboard(game);
+    });
+  }
 
   // Main Menu, Pause, Game Over buttons
   document.getElementById('btn-start').addEventListener('click', () => game.startNewGame());
@@ -403,7 +655,7 @@ export function bindEvents(game) {
   document.getElementById('btn-pause-menu').addEventListener('click', () => game.returnToMainMenu());
   document.getElementById('btn-go-menu').addEventListener('click', () => game.returnToMainMenu());
 
-  // Archive & Controls modals
+  // Archive, Controls & Leaderboard modals
   document.getElementById('btn-open-archive').addEventListener('click', () => openModal(game, 'ARCHIVE', 'MENU'));
   document.getElementById('btn-pause-archive').addEventListener('click', () => openModal(game, 'ARCHIVE', 'PAUSED'));
   document.getElementById('btn-archive-back').addEventListener('click', () => closeModal(game));
@@ -412,12 +664,53 @@ export function bindEvents(game) {
   document.getElementById('btn-pause-controls').addEventListener('click', () => openModal(game, 'CONTROLS', 'PAUSED'));
   document.getElementById('btn-ctrl-back').addEventListener('click', () => closeModal(game));
 
-  document.querySelectorAll('.seg-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      game.controlMode = btn.dataset.mode;
-      resetInputs(game);
-      syncControlsUI(game);
+  document.getElementById('btn-open-leaderboard').addEventListener('click', () => openModal(game, 'LEADERBOARD', 'MENU'));
+  document.getElementById('btn-pause-leaderboard').addEventListener('click', () => openModal(game, 'LEADERBOARD', 'PAUSED'));
+  document.getElementById('btn-go-leaderboard').addEventListener('click', () => openModal(game, 'LEADERBOARD', 'GAMEOVER'));
+  document.getElementById('btn-lb-back').addEventListener('click', () => closeModal(game));
+
+  // Game Over Save Score
+  if (game.btnSaveScore) {
+    game.btnSaveScore.addEventListener('click', () => {
+      game.synth.unlock();
+      submitRoundScore(game);
     });
+  }
+  if (game.goCallsignInput) {
+    game.goCallsignInput.addEventListener('keydown', (e) => {
+      if (e.code === 'Enter') {
+        e.preventDefault();
+        game.synth.unlock();
+        submitRoundScore(game);
+      }
+    });
+  }
+
+  // Leaderboard 2-Step Double Confirmation Clear UI
+  document.getElementById('btn-lb-clear-init').addEventListener('click', () => {
+    setLeaderboardClearStep(game, 1);
+  });
+  document.getElementById('btn-lb-clear-cancel1').addEventListener('click', () => {
+    setLeaderboardClearStep(game, 0);
+  });
+  document.getElementById('btn-lb-clear-step1').addEventListener('click', () => {
+    setLeaderboardClearStep(game, 2);
+  });
+  document.getElementById('btn-lb-clear-cancel2').addEventListener('click', () => {
+    setLeaderboardClearStep(game, 0);
+  });
+  document.getElementById('btn-lb-clear-confirm').addEventListener('click', () => {
+    clearLeaderboard();
+    game.highScore = 0;
+    game.highScoreNormal = 0;
+    game.highScoreHard = 0;
+    game.newRecord = false;
+    game.lastSavedEntryId = null;
+    updateHUD(game);
+    const goHigh = document.getElementById('go-high');
+    if (goHigh) goHigh.textContent = '000000';
+    game.synth.playDerez(true);
+    renderLeaderboard(game);
   });
 
   document.getElementById('btn-ctrl-auto').addEventListener('click', () => {
@@ -434,91 +727,85 @@ export function bindEvents(game) {
     syncControlsUI(game);
   });
 
-  // Sliding directional buttons (TOUCH_LR & THREE_BTN)
-  const getDirFromBtnRow = (clientX) => {
-    const leftRect = game.touchLeft.getBoundingClientRect();
-    const rightRect = game.touchRight.getBoundingClientRect();
-    const mid = (leftRect.right + rightRect.left) * 0.5;
-    return clientX < mid ? 'LEFT' : 'RIGHT';
-  };
-
-  game.dockBtnRow.addEventListener('pointerdown', (e) => {
-    if (e.target === game.touchFire || game.touchFire.contains(e.target)) return;
-    e.preventDefault();
-    game.synth.unlock();
-    game.dirPointerMap.set(e.pointerId, getDirFromBtnRow(e.clientX));
-    try { game.dockBtnRow.setPointerCapture(e.pointerId); } catch {}
-    updateControlPressVisuals(game);
-  }, { passive: false });
-
-  game.dockBtnRow.addEventListener('pointermove', (e) => {
-    if (!game.dirPointerMap.has(e.pointerId)) return;
-    e.preventDefault();
-    game.dirPointerMap.set(e.pointerId, getDirFromBtnRow(e.clientX));
-    updateControlPressVisuals(game);
-  }, { passive: false });
-
-  // Independent Hold-to-Fire Buttons
-  const bindFireEl = (el) => {
-    el.addEventListener('pointerdown', (e) => {
+  // Independent Mobile Hold-to-Fire Button (only bottom button remaining!)
+  if (game.touchFire) {
+    game.touchFire.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       e.stopPropagation();
       game.synth.unlock();
       game.firePointerIds.add(e.pointerId);
       game.tapFireBuffer = TAP_BUFFER_TIME;
-      try { el.setPointerCapture(e.pointerId); } catch {}
+      game.freshFirePress = true;
+      try { game.touchFire.setPointerCapture(e.pointerId); } catch {}
       updateControlPressVisuals(game);
     }, { passive: false });
-  };
-  bindFireEl(game.touchFire);
-  bindFireEl(game.dragFire);
-  bindFireEl(game.lrFirePill);
+  }
 
-  // Independent Drag Start (Trackpad & Canvas)
-  const startDrag = (e) => {
-    if (game.state !== 'PLAYING' || game.controlMode !== 'DRAG') return;
-    if (game.firePointerIds.has(e.pointerId)) return;
-    if (game.dragPointerId !== null && game.dragPointerId !== e.pointerId) return;
-    e.preventDefault();
-    game.synth.unlock();
-    game.dragPointerId = e.pointerId;
-    game.dragLastX = e.clientX;
-    game.dragActive = true;
-    updateControlPressVisuals(game);
+  // Extended Bottom Touch-Grab Hitbox for Direct 2D Ship Dragging (keeps finger below fighter!)
+  const isWithinShipTouchZone = (clientX, clientY) => {
+    const p = game.player;
+    if (!p.alive || p.capturedById) return false;
+    const rect = game.canvas.getBoundingClientRect();
+    const lx = ((clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
+    const ly = ((clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
+    const halfW = p.dual ? 78 : 64;
+    const topY = p.y - 44;
+    const bottomY = Math.min(LOGICAL_H + 16, p.y + 138);
+    return Math.abs(lx - p.x) <= halfW && ly >= topY && ly <= bottomY;
   };
-  game.dragPad.addEventListener('pointerdown', startDrag, { passive: false });
 
   game.canvas.addEventListener('pointerdown', (e) => {
     if (game.state !== 'PLAYING') return;
     game.synth.unlock();
-    if (game.controlMode === 'DRAG') {
-      startDrag(e);
-    } else if (game.controlMode === 'TOUCH_LR') {
+
+    if (e.pointerType === 'touch' && game.desktopMode) {
+      game.desktopMode = false;
+      syncControlsUI(game);
+      resizeCanvas(game);
+    }
+
+    // In Desktop Mode, left-click on canvas fires; in Touch UI mode, drag ship directly in 2D
+    if (game.desktopMode && e.pointerType === 'mouse') {
+      if (e.button === 0) {
+        e.preventDefault();
+        game.firePointerIds.add(e.pointerId);
+        game.tapFireBuffer = TAP_BUFFER_TIME;
+        game.freshFirePress = true;
+      }
+      return;
+    }
+
+    if (game.firePointerIds.has(e.pointerId)) return;
+    if (game.dragPointerId !== null && game.dragPointerId !== e.pointerId) return;
+
+    if (isWithinShipTouchZone(e.clientX, e.clientY)) {
       e.preventDefault();
-      const rect = game.canvas.getBoundingClientRect();
-      game.dirPointerMap.set(e.pointerId, e.clientX < rect.left + rect.width * 0.5 ? 'LEFT' : 'RIGHT');
-      updateControlPressVisuals(game);
+      game.dragPointerId = e.pointerId;
+      game.dragLastX = e.clientX;
+      game.dragLastY = e.clientY;
+      game.dragActive = true;
     }
   }, { passive: false });
 
-  // Global pointermove / pointerup so dragging never drops off-edge
+  // Global 2D pointermove / pointerup so direct dragging never drops off-edge
   window.addEventListener('pointermove', (e) => {
     if (e.pointerId === game.dragPointerId && game.dragActive && game.state === 'PLAYING') {
       e.preventDefault();
       const dx = e.clientX - game.dragLastX;
+      const dy = e.clientY - game.dragLastY;
       game.dragLastX = e.clientX;
+      game.dragLastY = e.clientY;
       if (game.player.alive && !game.player.capturedById) {
         const rect = game.canvas.getBoundingClientRect();
         const scaleX = LOGICAL_W / Math.max(1, rect.width);
+        const scaleY = LOGICAL_H / Math.max(1, rect.height);
         const slowMult = game.player.slowTimer > 0 ? 0.45 : 1.0;
-        game.player.x += dx * scaleX * 1.18 * slowMult;
-        game.clampPlayerX();
-      }
-    } else if (game.dirPointerMap.has(e.pointerId) && game.controlMode === 'TOUCH_LR' && game.state === 'PLAYING') {
-      const rect = game.canvas.getBoundingClientRect();
-      if (e.clientY <= rect.bottom) {
-        game.dirPointerMap.set(e.pointerId, e.clientX < rect.left + rect.width * 0.5 ? 'LEFT' : 'RIGHT');
-        updateControlPressVisuals(game);
+        game.player.x += dx * scaleX * slowMult;
+        game.player.y += dy * scaleY * slowMult;
+        game.clampPlayerPosition();
+        if (game.touchHintState === 'GLOWING' && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
+          game.touchHintMoved = true;
+        }
       }
     }
   }, { passive: false });
@@ -527,10 +814,10 @@ export function bindEvents(game) {
     if (e.pointerId === game.dragPointerId) {
       game.dragPointerId = null;
       game.dragActive = false;
-      updateControlPressVisuals(game);
-    }
-    if (game.dirPointerMap.delete(e.pointerId)) {
-      updateControlPressVisuals(game);
+      if (game.touchHintState === 'GLOWING' && game.touchHintMoved) {
+        game.touchHintState = 'FADING';
+        game.touchHintTimer = 1.0;
+      }
     }
     if (game.firePointerIds.delete(e.pointerId)) {
       updateControlPressVisuals(game);
@@ -539,19 +826,30 @@ export function bindEvents(game) {
   window.addEventListener('pointerup', releasePointer);
   window.addEventListener('pointercancel', releasePointer);
 
-  [game.canvas, game.dragPad, game.dockBtnRow].forEach((el) => {
-    el.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
-  });
+  game.canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
-  // Keyboard
+  // Keyboard (guard against active text input in Leaderboard callsign entry!)
   window.addEventListener('keydown', (e) => {
+    const tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+      if (e.code === 'Escape') e.target.blur();
+      return;
+    }
+
     const c = e.code;
-    if (['ArrowLeft', 'ArrowRight', 'Space', 'KeyA', 'KeyD', 'KeyZ'].includes(c) && game.state === 'PLAYING') {
+    if (
+      ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space', 'KeyA', 'KeyD', 'KeyW', 'KeyS', 'KeyZ', 'KeyJ'].includes(c) &&
+      game.state === 'PLAYING'
+    ) {
       e.preventDefault();
     }
     game.synth.unlock();
     if (c === 'KeyP' || c === 'Escape') {
-      if (!game.overlayControls.classList.contains('hidden') || !game.overlayArchive.classList.contains('hidden')) {
+      const modalOpen =
+        !game.overlayControls.classList.contains('hidden') ||
+        !game.overlayArchive.classList.contains('hidden') ||
+        (game.overlayLeaderboard && !game.overlayLeaderboard.classList.contains('hidden'));
+      if (modalOpen) {
         closeModal(game);
       } else if (game.state === 'PLAYING') {
         game.pauseGame();
@@ -566,13 +864,23 @@ export function bindEvents(game) {
       syncControlsUI(game);
       return;
     }
-    if ((c === 'Space' || c === 'KeyZ') && !game.keys.has(c)) {
+    if (c === 'KeyF') {
+      game.autoFire = !game.autoFire;
+      syncControlsUI(game);
+      return;
+    }
+    if ((c === 'Space' || c === 'KeyZ' || c === 'KeyJ') && !game.keys.has(c)) {
       game.tapFireBuffer = TAP_BUFFER_TIME;
+      game.freshFirePress = true;
     }
     game.keys.add(c);
   });
 
   window.addEventListener('keyup', (e) => {
     game.keys.delete(e.code);
+  });
+
+  window.addEventListener('blur', () => {
+    resetInputs(game);
   });
 }
