@@ -283,7 +283,7 @@ export function shatterRibbonTrail(game, trailIdx, fx, fy, color) {
   game.ribbonTrails.splice(trailIdx, 1);
 }
 
-export function damageLightwing(game, idx, dmg) {
+export function damageLightwing(game, idx, dmg, quiet = false) {
   const lw = game.lightwings[idx];
   if (!lw) return;
   lw.hp -= dmg;
@@ -293,7 +293,7 @@ export function damageLightwing(game, idx, dmg) {
     game.spawnDerez(lw.x, lw.y, col, 14, 150);
     game.synth.playDerez(false);
     game.lightwings.splice(idx, 1);
-  } else {
+  } else if (!quiet) {
     game.synth.playArmorPing();
   }
 }

@@ -42,10 +42,31 @@ function loadAllEntries() {
   }
 }
 
+function isBetterEntry(candidate, existing) {
+  if (!existing) return true;
+  if (candidate.score !== existing.score) return candidate.score > existing.score;
+  if ((candidate.sector || 0) !== (existing.sector || 0)) {
+    return (candidate.sector || 0) > (existing.sector || 0);
+  }
+  return (candidate.ts || 0) > (existing.ts || 0);
+}
+
+function deduplicateByTag(entries) {
+  const bestByTag = new Map();
+  for (const item of entries) {
+    const cleanTag = sanitizeCallsign(item.tag);
+    const normalized = { ...item, tag: cleanTag };
+    const prev = bestByTag.get(cleanTag);
+    if (!prev || isBetterEntry(normalized, prev)) {
+      bestByTag.set(cleanTag, normalized);
+    }
+  }
+  return Array.from(bestByTag.values());
+}
+
 export function loadLeaderboard(mode = 'NORMAL') {
   const targetMode = mode === 'HARD' ? 'HARD' : 'NORMAL';
-  return loadAllEntries()
-    .filter(item => item.mode === targetMode)
+  return deduplicateByTag(loadAllEntries().filter(item => item.mode === targetMode))
     .sort((a, b) => (b.score - a.score) || ((b.sector || 0) - (a.sector || 0)) || ((b.ts || 0) - (a.ts || 0)))
     .slice(0, LEADERBOARD_MAX_ENTRIES);
 }
@@ -69,18 +90,43 @@ export function saveLeaderboardEntry({ tag, score, sector, accuracy, mode = 'NOR
   };
 
   const otherMode = all.filter(e => e.mode !== targetMode);
-  const sameMode = all.filter(e => e.mode === targetMode);
-  sameMode.push(entry);
+  const sameMode = deduplicateByTag(all.filter(e => e.mode === targetMode));
+  const existingIdx = sameMode.findIndex(e => e.tag === cleanTag);
+
+  let status = 'NEW';
+  let savedEntry = entry;
+  let previousScore = null;
+
+  if (existingIdx >= 0) {
+    const existing = sameMode[existingIdx];
+    const beatsScore =
+      entry.score > existing.score ||
+      (entry.score === existing.score && entry.sector > (existing.sector || 0));
+    if (beatsScore) {
+      previousScore = existing.score;
+      sameMode[existingIdx] = entry;
+      status = 'REPLACED';
+      savedEntry = entry;
+    } else {
+      status = 'KEPT_BEST';
+      savedEntry = existing;
+    }
+  } else {
+    sameMode.push(entry);
+  }
+
   sameMode.sort((a, b) => (b.score - a.score) || ((b.sector || 0) - (a.sector || 0)) || ((b.ts || 0) - (a.ts || 0)));
   const trimmedSame = sameMode.slice(0, LEADERBOARD_MAX_ENTRIES);
 
   writeLS(STORAGE_KEYS.leaderboard, JSON.stringify([...otherMode, ...trimmedSame]));
 
-  const rankIndex = trimmedSame.findIndex(e => e.id === entry.id);
+  const rankIndex = trimmedSame.findIndex(e => e.id === savedEntry.id);
   return {
-    entry,
+    entry: savedEntry,
     entries: trimmedSame,
-    rank: rankIndex >= 0 ? rankIndex + 1 : null
+    rank: rankIndex >= 0 ? rankIndex + 1 : null,
+    status,
+    previousScore
   };
 }
 

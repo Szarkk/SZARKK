@@ -8,22 +8,24 @@ import {
   CHALLENGE_INTERVAL,
   CHALLENGE_MASTER_START,
   COLORS,
+  ELITE_ARES_START_SECTOR,
+  ELITE_LEGACY_START_SECTOR,
+  ELITE_LEGACY_START_WAVE,
   ELITE_REC_HP,
-  ELITE_START_SECTOR,
   ELITE_SURGE_INTERVAL,
   FLOATING_CAPSULE_CHANCE,
   LOGICAL_H,
   LOGICAL_W,
   MASTER_REC_HP,
   MASTER_START_SECTOR,
-  POWERUP_START_SECTOR,
+  STANDARD_WAVES_PER_SECTOR,
   TRACTOR_INITIAL_DELAY,
   TRACTOR_INTERVAL,
   TRACTOR_MAX_PER_SECTOR,
   TRACTOR_POST_CHALLENGE_CHANCE
 } from './config.js';
 import { clamp, evalCubic, lerp } from './utils.js';
-import { rollEnemyCapsuleDrop } from './powerups.js';
+import { getUnlockedCapsuleTypes, rollEnemyCapsuleDrop } from './powerups.js';
 import {
   handleRecognizerDestroyed,
   spawnLightwing,
@@ -47,6 +49,17 @@ const EXTRA_ROUND_MODES = [
 function pickDifferent(pool, avoid) {
   const choices = pool.filter(v => v !== avoid);
   return choices[Math.floor(Math.random() * choices.length)] || pool[0];
+}
+
+function shuffleArray(arr) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = copy[i];
+    copy[i] = copy[j];
+    copy[j] = tmp;
+  }
+  return copy;
 }
 
 function fireAimedBullet(game, x, y, speed, color, angleOffset = 0, leadFactor = 0) {
@@ -80,15 +93,51 @@ function fireDirectedBullet(game, x, y, angle, speed, color) {
   });
 }
 
+function rollFloatingCapsuleForWave(game, effSec, waveNum) {
+  const unlocked = getUnlockedCapsuleTypes(effSec, waveNum, game.hardMode, false);
+  if (unlocked.length > 0 && Math.random() < FLOATING_CAPSULE_CHANCE) {
+    game.floatingCapsulePlan = {
+      timer: 3.5 + Math.random() * 4.5,
+      spawned: false
+    };
+  } else {
+    game.floatingCapsulePlan = null;
+  }
+}
+
+export function prepareStandardWave(game, waveNum) {
+  const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+  game.sectorWave = waveNum;
+  game.waveQueue = [];
+  game.waveSpawnTimer = 0;
+  game.formationClock = 0;
+
+  // Fresh formation geometry and sway mode every wave!
+  game.formationStyle = pickDifferent(FORMATION_STYLES, game.lastFormationStyle);
+  game.lastFormationStyle = game.formationStyle;
+  game.swayMode = pickDifferent(SWAY_MODES, game.swayMode);
+
+  // 50% floating capsule roll every standard wave once unlocked
+  rollFloatingCapsuleForWave(game, effSec, waveNum);
+
+  buildStandardWaveQueue(game, effSec, waveNum);
+}
+
 export function beginSector(game, num) {
   game.sector = num;
+  game.isChallengeStage = false;
+  game.challengeNum = 0;
+  game.challengeSubRound = 0;
+  game.challengeExtraRounds = 0;
+  game.sectorWave = 1;
+  game.sectorTotalWaves = STANDARD_WAVES_PER_SECTOR;
+
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : num;
   game.enemies = [];
   game.enemyBullets = [];
   game.lightwings = [];
   game.ribbonTrails = [];
-  game.capsules = [];
-  game.pendingCapsuleDrops = [];
+  // NOTE: game.capsules & game.pendingCapsuleDrops intentionally PERSIST across sector transitions!
   game.activeBeamBoss = null;
   game.sectorTractorCount = 0;
   game.tractorTimer = TRACTOR_INITIAL_DELAY + Math.random() * 4.0;
@@ -96,129 +145,181 @@ export function beginSector(game, num) {
   game.redLaserPulseTimer = 0;
   game.activeLaserBeams = [];
   game.synth.stopTractorBeam();
-  game.waveQueue = [];
-  game.formationClock = 0;
 
-  // Starting at effective Sector 05, 66% chance per sector for a floating capsule
-  if (effSec >= POWERUP_START_SECTOR && Math.random() < FLOATING_CAPSULE_CHANCE) {
-    game.floatingCapsulePlan = {
-      timer: 4.5 + Math.random() * 5.0,
-      spawned: false
-    };
-  } else {
-    game.floatingCapsulePlan = null;
-  }
-
-  const isChallenge = num % CHALLENGE_INTERVAL === 0;
   game.postChallengeAbductionPending = false;
-  if (!isChallenge && game.justFinishedChallenge) {
+  if (game.justFinishedChallenge) {
     game.justFinishedChallenge = false;
     // After each Challenge stage, an existing Classic MCP Recognizer has an 80% chance to abduct
     if (Math.random() < TRACTOR_POST_CHALLENGE_CHANCE) {
       game.postChallengeAbductionPending = true;
     }
   }
-  game.challengeNum = isChallenge ? Math.floor(num / CHALLENGE_INTERVAL) : 0;
-  const effChallenge = isChallenge
-    ? (game.getEffectiveChallengeNum ? game.getEffectiveChallengeNum() : game.challengeNum)
-    : 0;
-  game.challengeSubRound = 0;
-  game.challengeExtraRounds = !isChallenge
-    ? 0
-    : (effChallenge >= 7 ? 3 : (effChallenge >= CHALLENGE_EXTRA_ROUND_START ? 2 : 0));
+
+  prepareStandardWave(game, 1);
+
   game.sectorPhase = 'BANNER';
   game.phaseTimer = 1.9;
+  game.bannerTitle = game.hardMode
+    ? `HARD // SECTOR ${String(num).padStart(2, '0')}`
+    : `SECTOR ${String(num).padStart(2, '0')}`;
+  game.bannerSub = game.hardMode
+    ? (num === 1
+      ? 'SEC 06+ INTENSITY // FULL WAVES & MASTERS LIVE'
+      : `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`)
+    : (effSec === 1
+      ? 'CLASSIC MCP PATROL INBOUND'
+      : (effSec === ELITE_LEGACY_START_SECTOR
+        ? 'ELITE LEGACY & CYAN CAPSULES INBOUND'
+        : (effSec === ELITE_ARES_START_SECTOR
+          ? 'ARES ELITE & RED CAPSULES ONLINE'
+          : (effSec === 4
+            ? 'PURPLE ARC WAVE CAPSULES ONLINE'
+            : (effSec === MASTER_START_SECTOR
+              ? 'WARNING: MASTER RECOGNIZERS ONLINE'
+              : (effSec > MASTER_START_SECTOR
+                ? `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`
+                : `FLEET FORMATION: ${game.formationStyle.replace('_', ' ')}`))))));
+  game.bannerColor = (game.hardMode || effSec >= MASTER_START_SECTOR)
+    ? COLORS.aresRed
+    : (effSec === ELITE_ARES_START_SECTOR ? COLORS.aresRed : (effSec === 4 ? COLORS.purple : COLORS.cyan));
 
-  if (isChallenge) {
-    game.challengeHits = 0;
-    game.bannerTitle = game.hardMode
-      ? `HARD STREAM // H-CH.${String(game.challengeNum).padStart(2, '0')}`
-      : `DATA STREAM // CH.${String(game.challengeNum).padStart(2, '0')}`;
-    game.bannerSub = effChallenge >= 7
-      ? 'OVERDRIVE: 3 GUARDED MASTERS + 3 EXTRA ROUNDS'
-      : (effChallenge >= CHALLENGE_MASTER_START
-        ? 'CRITICAL: GUARDED MASTER RECOGNIZERS + 2 EXTRA ROUNDS'
-        : (effChallenge >= CHALLENGE_EXTRA_ROUND_START
-          ? 'GAUNTLET ALERT: MASTER RAIDERS + 2 EXTRA ROUNDS'
-          : (effChallenge >= CHALLENGE_ELITE_START
-            ? 'ALERT: ELITE & MASTER RECOGNIZER RAIDERS'
-            : `CHALLENGING SECTOR ${String(num).padStart(2, '0')} // BONUS WAVE`)));
-    game.bannerColor = effChallenge >= CHALLENGE_MASTER_START
-      ? COLORS.aresRed
-      : (effChallenge >= CHALLENGE_EXTRA_ROUND_START
-        ? COLORS.purpleBright
-        : (effChallenge >= CHALLENGE_ELITE_START ? COLORS.aresRed : COLORS.gold));
-    buildChallengeWaveQueue(game, effChallenge);
-  } else {
-    game.formationStyle = pickDifferent(FORMATION_STYLES, game.lastFormationStyle);
-    game.lastFormationStyle = game.formationStyle;
-    game.swayMode = SWAY_MODES[Math.floor(Math.random() * SWAY_MODES.length)];
-
-    game.bannerTitle = game.hardMode
-      ? `HARD // SECTOR ${String(num).padStart(2, '0')}`
-      : `SECTOR ${String(num).padStart(2, '0')}`;
-    game.bannerSub = game.hardMode
-      ? (num === 1
-        ? 'SEC 21+ INTENSITY // ALL CAPSULES & MASTERS LIVE'
-        : `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`)
-      : (effSec < ELITE_START_SECTOR
-        ? (num === 1 ? 'CLASSIC MCP PATROL INBOUND' : 'MCP SQUADRON INTENSIFYING')
-        : (effSec === 3
-          ? 'WARNING: ELITE LEGACY RECOGNIZER DETECTED'
-          : (effSec === 5
-            ? 'ARES ELITE & POWER CAPSULES ONLINE'
-            : (effSec === 7
-              ? 'PURPLE ARC WAVE CAPSULES ONLINE'
-              : (effSec === MASTER_START_SECTOR + 1
-                ? 'WARNING: MASTER RECOGNIZERS ONLINE'
-                : (effSec >= MASTER_START_SECTOR
-                  ? `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`
-                  : `FLEET FORMATION: ${game.formationStyle.replace('_', ' ')}`))))));
-    game.bannerColor = (game.hardMode || effSec >= MASTER_START_SECTOR)
-      ? COLORS.aresRed
-      : (effSec === 5 ? COLORS.aresRed : (effSec === 7 ? COLORS.purple : COLORS.cyan));
-    buildStandardWaveQueue(game, effSec);
-  }
-
-  game.synth.playSectorStart(isChallenge);
+  game.synth.playSectorStart(false);
   game.updateHUD();
 }
 
-export function buildTopRowConfig(sec) {
-  if (sec < ELITE_START_SECTOR) {
-    return {
-      types: ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC'],
-      xs: [96, 192, 288, 384]
-    };
+export function beginChallengeStage(game, challengeNum) {
+  game.isChallengeStage = true;
+  game.challengeNum = challengeNum;
+  const effChallenge = game.getEffectiveChallengeNum ? game.getEffectiveChallengeNum() : challengeNum;
+
+  game.enemies = [];
+  game.enemyBullets = [];
+  game.lightwings = [];
+  game.ribbonTrails = [];
+  // Active capsules persist across sector <-> challenge transitions!
+  game.floatingCapsulePlan = null;
+  game.activeBeamBoss = null;
+  game.postChallengeAbductionPending = false;
+  game.redLaserActive = false;
+  game.redLaserPulseTimer = 0;
+  game.activeLaserBeams = [];
+  game.synth.stopTractorBeam();
+  game.waveQueue = [];
+  game.waveSpawnTimer = 0;
+  game.formationClock = 0;
+
+  game.challengeHits = 0;
+  game.challengeSubRound = 0;
+  game.challengeExtraRounds = effChallenge >= 4
+    ? 3
+    : (effChallenge >= CHALLENGE_EXTRA_ROUND_START ? 2 : 0);
+
+  game.sectorPhase = 'BANNER';
+  game.phaseTimer = 1.9;
+  game.bannerTitle = game.hardMode
+    ? `HARD STREAM // H-CH.${String(challengeNum).padStart(2, '0')}`
+    : `DATA STREAM // CH.${String(challengeNum).padStart(2, '0')}`;
+  game.bannerSub = effChallenge >= 4
+    ? 'OVERDRIVE: 3 GUARDED MASTERS + 3 EXTRA ROUNDS'
+    : (effChallenge >= CHALLENGE_MASTER_START
+      ? 'CRITICAL: GUARDED MASTER RECOGNIZERS + 2 EXTRA ROUNDS'
+      : (effChallenge >= CHALLENGE_EXTRA_ROUND_START
+        ? 'GAUNTLET ALERT: ELITE RAIDERS + 2 EXTRA ROUNDS'
+        : `BONUS STAGE // DATA STREAM 0${challengeNum}`));
+  game.bannerColor = effChallenge >= CHALLENGE_MASTER_START
+    ? COLORS.aresRed
+    : (effChallenge >= CHALLENGE_EXTRA_ROUND_START ? COLORS.purpleBright : COLORS.gold);
+
+  buildChallengeWaveQueue(game, effChallenge);
+  game.synth.playSectorStart(true);
+  game.updateHUD();
+}
+
+const TOP_ROW_XS = {
+  4: [96, 192, 288, 384],
+  5: [74, 157, 240, 323, 406],
+  6: [54, 130, 204, 276, 350, 426]
+};
+
+export function buildTopRowConfig(sec, waveNum = 4, hardMode = false) {
+  const randElite = () => (Math.random() < 0.5 ? 'LEGACY_REC' : 'ARES_REC');
+  const randMaster = () => (Math.random() < 0.5 ? 'MASTER_LEGACY_REC' : 'MASTER_ARES_REC');
+  let types;
+
+  if (hardMode) {
+    // Hard Mode (Option A): Masters front-and-center first, then Elites gradually join across Hard Sectors (capped at 5 slots max!)
+    if (sec <= MASTER_START_SECTOR) {
+      // H01 (eff. Sec 06): 2 Masters + 2 Classics (4 spacious slots)
+      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
+    } else if (sec === MASTER_START_SECTOR + 1) {
+      // H02 (eff. Sec 07): 2 Masters + 1 random Elite + 2 Classics (5 slots)
+      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', randElite(), 'CLASSIC_REC', 'CLASSIC_REC'];
+    } else {
+      // H03+ (eff. Sec 08+): 2 Masters + 2 Elites + 1 Classic (5 slots max — clean spacing!)
+      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', 'LEGACY_REC', 'ARES_REC', 'CLASSIC_REC'];
+    }
+  } else if (sec < ELITE_LEGACY_START_SECTOR) {
+    // Sector 01: Classic MCP Recognizers only
+    types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
+  } else if (sec === ELITE_LEGACY_START_SECTOR) {
+    // Sector 02: Waves 1-2 Classic only; Wave 3 debuts 1 Elite Legacy; Wave 4 escalates to 2 Elite Legacy
+    if (waveNum < ELITE_LEGACY_START_WAVE) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
+    } else if (waveNum === ELITE_LEGACY_START_WAVE) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC'];
+    } else {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'LEGACY_REC'];
+    }
+  } else if (sec === ELITE_ARES_START_SECTOR) {
+    // Sector 03: Elite Ares debuts; escalates across Waves 1 -> 4
+    if (waveNum === 1) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'ARES_REC'];
+    } else if (waveNum === 2 || waveNum === 3) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+    } else {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'ARES_REC'];
+    }
+  } else if (sec === 4) {
+    // Sector 04: Purple Capsules online; balanced Legacy & Ares escalation across Waves 1 -> 4
+    if (waveNum === 1) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', randElite()];
+    } else if (waveNum === 2) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+    } else if (waveNum === 3) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+    } else {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+    }
+  } else if (sec < MASTER_START_SECTOR) {
+    // Sector 05: Heavy Elite escalation (1 -> 2 -> 3 -> 4 Elites)
+    if (waveNum === 1) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', randElite()];
+    } else if (waveNum === 2) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+    } else if (waveNum === 3) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+    } else {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'LEGACY_REC', 'ARES_REC', 'ARES_REC'];
+    }
+  } else {
+    // Sector 06+: Master Recognizers escalate across Waves 1 -> 4 (capped at 5 clean slots!)
+    if (waveNum === 1) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+    } else if (waveNum === 2) {
+      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randMaster()];
+    } else if (waveNum === 3) {
+      types = sec >= 8
+        ? ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'MASTER_LEGACY_REC', 'MASTER_ARES_REC']
+        : ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite(), randMaster()];
+    } else {
+      types = ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'MASTER_LEGACY_REC', 'MASTER_ARES_REC'];
+    }
   }
-  if (sec === 3) {
-    return {
-      types: ['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'CLASSIC_REC'],
-      xs: [96, 192, 288, 384]
-    };
-  }
-  if (sec === 5) {
-    return {
-      types: ['CLASSIC_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC'],
-      xs: [96, 192, 288, 384]
-    };
-  }
-  if (sec <= 7) {
-    return {
-      types: ['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC'],
-      xs: [74, 157, 240, 323, 406]
-    };
-  }
-  if (sec < MASTER_START_SECTOR) {
-    return {
-      types: ['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC'],
-      xs: [64, 134, 204, 276, 346, 416]
-    };
-  }
-  // Sector 12+: Master Legacy & Master Ares Recognizers deploy alongside Elite Recognizers
+
+  // Randomize left-to-right Recognizer placement every wave so Legacy/Ares never lock into a fixed order!
   return {
-    types: ['LEGACY_REC', 'MASTER_LEGACY_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'MASTER_ARES_REC', 'ARES_REC'],
-    xs: [54, 130, 204, 276, 350, 426]
+    types: shuffleArray(types),
+    xs: TOP_ROW_XS[types.length] || TOP_ROW_XS[6]
   };
 }
 
@@ -281,19 +382,22 @@ function buildEntryPath(entryPattern, squad, homeX, homeY) {
   ];
 }
 
-export function buildStandardWaveQueue(game, sec) {
+export function buildStandardWaveQueue(game, sec, waveNum = 4) {
   const slots = [];
   const style = game.formationStyle || 'PHALANX';
-  const entryPattern = ENTRY_PATTERNS[Math.floor(Math.random() * ENTRY_PATTERNS.length)];
-  const top = buildTopRowConfig(sec);
+  const entryPattern = pickDifferent(ENTRY_PATTERNS, game.lastEntryPattern);
+  game.lastEntryPattern = entryPattern;
+  const fullFormation = !!game.hardMode || waveNum >= STANDARD_WAVES_PER_SECTOR;
+  const top = buildTopRowConfig(sec, waveNum, !!game.hardMode);
 
   top.types.forEach((type, idx) => {
     const pos = shapeSlotPosition(style, top.xs[idx], 92, 0, idx, top.types.length);
     slots.push({ type, homeX: pos.x, homeY: pos.y, rowIdx: 0, squad: idx % 2 });
   });
 
-  // 2 rows of Interceptors (6 per row)
-  for (let r = 0; r < 2; r++) {
+  // Interceptors: Wave 1 = 1 row (6); Waves 2-4 & Hard Mode = 2 full rows (12)
+  const interceptorRows = (fullFormation || waveNum >= 2) ? 2 : 1;
+  for (let r = 0; r < interceptorRows; r++) {
     for (let c = 0; c < 6; c++) {
       const pos = shapeSlotPosition(style, 80 + c * 64, 152 + r * 42, 1 + r, c, 6);
       slots.push({
@@ -306,10 +410,14 @@ export function buildStandardWaveQueue(game, sec) {
     }
   }
 
-  // 2 rows of Bit-Drones (8 per row)
-  for (let r = 0; r < 2; r++) {
-    for (let c = 0; c < 8; c++) {
-      const pos = shapeSlotPosition(style, 54 + c * 53, 238 + r * 38, 3 + r, c, 8);
+  // Bit-Drones: Wave 1-2 = 1 row (8); Wave 3 = 1 full + 4 inner (12); Wave 4 & Hard Mode = 2 full rows (16)
+  const droneRowStartY = interceptorRows === 1 ? 210 : 238;
+  const droneRows = (fullFormation || waveNum >= 3) ? 2 : 1;
+  for (let r = 0; r < droneRows; r++) {
+    const partialSecondRow = !fullFormation && waveNum === 3 && r === 1;
+    const cols = partialSecondRow ? [2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6, 7];
+    for (const c of cols) {
+      const pos = shapeSlotPosition(style, 54 + c * 53, droneRowStartY + r * 38, 3 + r, c, 8);
       slots.push({
         type: 'DRONE',
         homeX: pos.x,
@@ -321,11 +429,11 @@ export function buildStandardWaveQueue(game, sec) {
   }
 
   slots.sort((a, b) => a.squad - b.squad);
-  const entryDur = Math.max(1.15, 1.48 - sec * 0.02);
+  const entryDur = Math.max(1.12, 1.46 - sec * 0.025);
   slots.forEach((s, i) => {
     const path = buildEntryPath(entryPattern, s.squad, s.homeX, s.homeY);
     game.waveQueue.push({
-      delay: 0.22 + i * 0.095,
+      delay: 0.20 + i * 0.09,
       type: s.type,
       homeX: s.homeX,
       homeY: s.homeY,
@@ -362,34 +470,27 @@ export function buildChallengeWaveQueue(game, challengeNum) {
     }
   }
 
-  // Starting at Challenge 3 (Sector 12+): Elite Raiders + Master Recognizer Raiders;
-  // Starting at Challenge 5 (Sector 20+): Guarded Master Recognizer Battle Groups!
+  // Starting at Challenge 2 (after Sec 04): 2x HP Elite Raiders;
+  // Starting at Challenge 3 (after Sec 06) / Hard Mode H-CH.01+: Guarded Master Recognizer Battle Groups!
   if (challengeNum >= CHALLENGE_ELITE_START) {
     const eliteRaids = challengeNum === CHALLENGE_ELITE_START
       ? [
-          { delay: 2.0, type: 'LEGACY_REC', dir: 1, laneY: 96, speed: 64 },
-          { delay: 5.8, type: 'ARES_REC', dir: -1, laneY: 146, speed: 64 },
-          { delay: 8.8, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 118, speed: 58 }
+          { delay: 2.2, type: 'LEGACY_REC', dir: 1, laneY: 98, speed: 64 },
+          { delay: 6.2, type: 'ARES_REC', dir: -1, laneY: 148, speed: 64 }
         ]
-      : (challengeNum === CHALLENGE_EXTRA_ROUND_START
+      : (challengeNum >= 4
         ? [
-            { delay: 1.8, type: 'LEGACY_REC', dir: 1, laneY: 92, speed: 64 },
-            { delay: 5.0, type: 'MASTER_ARES_REC', dir: -1, laneY: 138, speed: 58 },
-            { delay: 8.4, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 184, speed: 58 }
+            // Normal Ch.4+ / Hard Mode H-CH.02+: 3 Guarded Master Recognizer Battle Groups!
+            { delay: 1.8, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 96, speed: 54, guardGroup: 'MASTER_G1' },
+            { delay: 5.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 146, speed: 54, guardGroup: 'MASTER_G2' },
+            { delay: 9.0, type: challengeNum % 2 === 0 ? 'MASTER_ARES_REC' : 'MASTER_LEGACY_REC', dir: 1, laneY: 186, speed: 56, guardGroup: 'MASTER_G3' }
           ]
-        : (challengeNum >= 7
-          ? [
-              // Hard Mode H-CH.03+ / Normal Ch.7+: 3 Guarded Master Recognizer Battle Groups!
-              { delay: 1.8, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 96, speed: 54, guardGroup: 'MASTER_G1' },
-              { delay: 5.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 146, speed: 54, guardGroup: 'MASTER_G2' },
-              { delay: 9.0, type: challengeNum % 2 === 0 ? 'MASTER_ARES_REC' : 'MASTER_LEGACY_REC', dir: 1, laneY: 186, speed: 56, guardGroup: 'MASTER_G3' }
-            ]
-          : [
-              // Challenge 5-6 (and Hard Mode H-CH.01-02): Elite Raider + 2 Guarded Master Recognizers!
-              { delay: 1.6, type: challengeNum % 2 === 0 ? 'ARES_REC' : 'LEGACY_REC', dir: 1, laneY: 86, speed: 64 },
-              { delay: 4.2, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 132, speed: 52, guardGroup: 'MASTER_G1' },
-              { delay: 8.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 158, speed: 52, guardGroup: 'MASTER_G2' }
-            ]));
+        : [
+            // Normal Ch.3 (after Sec 06) & Hard Mode H-CH.01: Elite Raider + 2 Guarded Master Recognizers!
+            { delay: 1.6, type: challengeNum % 2 === 0 ? 'ARES_REC' : 'LEGACY_REC', dir: 1, laneY: 86, speed: 64 },
+            { delay: 4.2, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 132, speed: 52, guardGroup: 'MASTER_G1' },
+            { delay: 8.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 158, speed: 52, guardGroup: 'MASTER_G2' }
+          ]);
 
     const guardOffsets = [
       { ox: 0, oy: 50, type: 'INTERCEPTOR' },
@@ -453,7 +554,7 @@ export function buildChallengeWaveQueue(game, challengeNum) {
 export function startChallengeExtraRound(game, effChallengeNum, subRound) {
   const modeIdx = ((effChallengeNum - CHALLENGE_EXTRA_ROUND_START) * 2 + (subRound - 1)) % EXTRA_ROUND_MODES.length;
   const mode = EXTRA_ROUND_MODES[modeIdx];
-  const hardEscalated = effChallengeNum >= 6; // H-CH.02+ & Ch.6+ escalate with Master escorts & faster extra rounds
+  const hardEscalated = effChallengeNum >= 4; // Normal Ch.4+ & Hard H-CH.02+ escalate with Master escorts!
 
   game.waveQueue = [];
   game.waveSpawnTimer = 0;
@@ -552,7 +653,7 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
       });
     }
     // Escort Elite Recognizer raider sweeping across the top
-    const eliteType = challengeNum % 2 === 0 ? 'LEGACY_REC' : 'ARES_REC';
+    const eliteType = effChallengeNum % 2 === 0 ? 'LEGACY_REC' : 'ARES_REC';
     items.push({
       delay: 1.4,
       type: eliteType,
@@ -567,8 +668,8 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
       raidSpeed: 64
     });
   } else {
-    // PHALANX_ASSAULT: Fortified advancing battle wall + outer S-loop flankers
-    const wallTypes = ['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC'];
+    // PHALANX_ASSAULT: Fortified advancing battle wall + outer S-loop flankers (randomized Legacy/Ares order!)
+    const wallTypes = shuffleArray(['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC']);
     const wallXs = [86, 163, 240, 317, 394];
     wallTypes.forEach((type, idx) => {
       items.push({
@@ -811,7 +912,9 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
   diver.divePattern = pattern;
 
   const baseDur = Math.max(1.45, 2.35 - effSec * 0.085);
-  diver.diveDur = baseDur * (pattern === 'LOOP' ? 1.18 : (pattern === 'WEAVE' ? 1.08 : 0.94));
+  // Elite & Master Recognizers dive heavier and slower than regular fighters
+  const tierDiveMult = diver.isMaster ? 1.65 : (diver.isElite ? 1.40 : 1.0);
+  diver.diveDur = baseDur * tierDiveMult * (pattern === 'LOOP' ? 1.18 : (pattern === 'WEAVE' ? 1.08 : 0.94));
 
   const tx = clamp(game.player.x + flankOffset + (Math.random() - 0.5) * 78, 36, LOGICAL_W - 36);
   const swingDir = diver.x < LOGICAL_W * 0.5 ? 1 : -1;
@@ -917,7 +1020,7 @@ export function updateSectorPhase(game, dt) {
   if (game.sectorPhase === 'BANNER') {
     game.phaseTimer -= dt;
     if (game.phaseTimer <= 0) {
-      game.sectorPhase = (game.sector % CHALLENGE_INTERVAL === 0) ? 'CHALLENGE' : 'ENTRY';
+      game.sectorPhase = game.isChallengeStage ? 'CHALLENGE' : 'ENTRY';
     }
     return;
   }
@@ -926,6 +1029,16 @@ export function updateSectorPhase(game, dt) {
     game.phaseTimer -= dt;
     if (game.phaseTimer <= 0) {
       game.sectorPhase = 'CHALLENGE';
+    }
+    return;
+  }
+
+  // Seamless unannounced breather between Waves 1 -> 2 -> 3 -> 4 inside a Standard Sector
+  if (game.sectorPhase === 'WAVE_GAP') {
+    game.phaseTimer -= dt;
+    if (game.phaseTimer <= 0) {
+      prepareStandardWave(game, game.sectorWave);
+      game.sectorPhase = 'ENTRY';
     }
     return;
   }
@@ -964,12 +1077,21 @@ export function updateSectorPhase(game, dt) {
   if (game.sectorPhase === 'COMBAT') {
     const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
     if (game.enemies.length === 0 && game.lightwings.length === 0) {
+      if (game.sectorWave < game.sectorTotalWaves) {
+        // Silent wave progression — NO wave banner or announcement!
+        game.sectorWave++;
+        game.sectorPhase = 'WAVE_GAP';
+        game.phaseTimer = 0.75;
+        return;
+      }
       game.sectorPhase = 'CLEARED';
       game.phaseTimer = 1.85;
       game.bannerTitle = game.hardMode
         ? `HARD // SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`
         : `SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`;
-      game.bannerSub = 'ADVANCING GRID...';
+      game.bannerSub = game.sector % CHALLENGE_INTERVAL === 0
+        ? 'INCOMING DATA STREAM...'
+        : 'ADVANCING GRID...';
       game.bannerColor = COLORS.emerald;
       return;
     }
@@ -1037,21 +1159,27 @@ export function updateSectorPhase(game, dt) {
   } else if (game.sectorPhase === 'CLEARED') {
     game.phaseTimer -= dt;
     if (game.phaseTimer <= 0) {
-      beginSector(game, game.sector + 1);
+      if (!game.isChallengeStage && game.sector % CHALLENGE_INTERVAL === 0) {
+        beginChallengeStage(game, Math.floor(game.sector / CHALLENGE_INTERVAL));
+      } else {
+        beginSector(game, game.sector + 1);
+      }
     }
   }
 }
 
-export function damageEnemy(game, idx, dmg, hitX, hitY, sparkCol = COLORS.white) {
+export function damageEnemy(game, idx, dmg, hitX, hitY, sparkCol = COLORS.white, quiet = false) {
   const e = game.enemies[idx];
   if (!e) return;
 
-  // Classic MCP Recognizer Tractor Capacitor Shield absorbs 1 hit during approach
-  if (e.state === 'BEAM_APPROACH' && e.beamShield > 0) {
-    e.beamShield -= 1;
+  // Classic MCP Recognizer Tractor Capacitor Shield absorbs 1.0 hit during approach
+  if (e.state === 'BEAM_APPROACH' && e.beamShield > 0.001) {
+    e.beamShield -= Math.min(1, dmg);
     e.hitFlash = 0.14;
-    game.synth.playRibbonDeflect();
-    game.spawnDerez(hitX, hitY, COLORS.cyan, 8, 120);
+    if (!quiet || e.beamShield <= 0.001) {
+      game.synth.playRibbonDeflect();
+      game.spawnDerez(hitX, hitY, COLORS.cyan, 8, 120);
+    }
     return;
   }
 
@@ -1059,7 +1187,7 @@ export function damageEnemy(game, idx, dmg, hitX, hitY, sparkCol = COLORS.white)
   e.hitFlash = 0.12;
   if (e.hp <= 0.001) {
     destroyEnemy(game, idx, true);
-  } else {
+  } else if (!quiet) {
     game.synth.playArmorPing();
     game.spawnDerez(hitX, hitY, sparkCol, 4, 85);
   }
@@ -1388,7 +1516,8 @@ export function updateEnemies(game, dt) {
       const dx = target.x - e.x;
       const dy = target.y - e.y;
       const dist = Math.hypot(dx, dy);
-      const step = 255 * dt;
+      const returnSpd = e.isMaster ? 155 : (e.isElite ? 185 : 255);
+      const step = returnSpd * dt;
       if (dist <= step) {
         e.x = target.x;
         e.y = target.y;

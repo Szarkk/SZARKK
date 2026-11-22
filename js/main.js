@@ -8,6 +8,7 @@ import {
   HARD_MODE_SECTOR_OFFSET,
   LOGICAL_H,
   LOGICAL_W,
+  STANDARD_WAVES_PER_SECTOR,
   STORAGE_KEYS,
   TRACTOR_INITIAL_DELAY
 } from './config.js';
@@ -151,11 +152,15 @@ export class GridGalagaGame {
     this.wingLaunchTimer = 2.2;
     this.roundScoreSaved = false;
     this.challengeNum = 0;
+    this.isChallengeStage = false;
+    this.sectorWave = 1;
+    this.sectorTotalWaves = STANDARD_WAVES_PER_SECTOR;
     this.challengeSubRound = 0;
     this.challengeExtraRounds = 0;
     this.challengeHits = 0;
     this.challengeTotal = 0;
     this.lastFormationStyle = null;
+    this.lastEntryPattern = null;
     this.formationStyle = 'PHALANX';
     this.swayMode = 'SWAY';
 
@@ -220,7 +225,7 @@ export class GridGalagaGame {
     hideAllOverlays(this);
     this.resetGameData();
     this.state = 'PLAYING';
-    this.player.invulnTimer = 1.4;
+    this.player.invulnTimer = 0; // No blinking at game start
     beginSector(this, 1);
   }
 

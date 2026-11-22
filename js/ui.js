@@ -13,7 +13,8 @@ import {
   POWERUP_MAX_ENERGY,
   RED_LASER_DRAIN_PER_SEC,
   STORAGE_KEYS,
-  TAP_BUFFER_TIME
+  TAP_BUFFER_TIME,
+  TOUCH_HINT_DURATION
 } from './config.js';
 import { clamp, writeLS } from './utils.js';
 import { getActivePowerups } from './powerups.js';
@@ -212,7 +213,7 @@ export function renderLeaderboard(game) {
     const empty = document.createElement('div');
     empty.className = 'lb-empty';
     empty.textContent = viewMode === 'HARD'
-      ? 'NO HARD MODE RECORDS YET. SURVIVE SEC 21+ INTENSITY AND SAVE YOUR CALLSIGN.'
+      ? 'NO HARD MODE RECORDS YET. SURVIVE SEC 06+ INTENSITY AND SAVE YOUR CALLSIGN.'
       : 'NO NORMAL RECORDS YET. COMPLETE A RUN AND SAVE YOUR CALLSIGN TO CLAIM #01.';
     game.leaderboardList.appendChild(empty);
     return;
@@ -332,7 +333,11 @@ export function updateHUD(game) {
   game.elScore.textContent = String(game.score).padStart(6, '0');
   game.elHigh.textContent = String(game.highScore).padStart(6, '0');
   game.elStartHigh.textContent = String(game.highScore).padStart(6, '0');
-  game.elSector.textContent = `${game.hardMode ? 'H' : ''}${String(game.sector).padStart(2, '0')}`;
+  if (game.isChallengeStage) {
+    game.elSector.textContent = `${game.hardMode ? 'HC' : 'C'}${game.challengeNum}`;
+  } else {
+    game.elSector.textContent = `${game.hardMode ? 'H' : ''}${String(game.sector).padStart(2, '0')}`;
+  }
   game.elSector.classList.toggle('is-hard', game.hardMode);
 
   let html = '';
@@ -371,7 +376,7 @@ function buildPowerupGaugeSlots(game, activeTypes) {
 
   for (const type of activeTypes) {
     const slot = document.createElement('div');
-    const colorCls = type === 'CYAN' ? 'pwr-cyan' : (type === 'RED' ? 'pwr-red' : 'pwr-purple seg-9');
+    const colorCls = type === 'CYAN' ? 'pwr-cyan' : (type === 'RED' ? 'pwr-red' : 'pwr-purple seg-6');
     slot.className = `pwr-slot ${colorCls}`;
 
     const meta = document.createElement('div');
@@ -556,9 +561,15 @@ function submitRoundScore(game) {
 
   if (game.goSavePanel) game.goSavePanel.classList.add('hidden');
   if (game.goSaveStatus) {
-    game.goSaveStatus.textContent = result.rank
-      ? `SAVED (${mode}) AS ${result.entry.tag} // RANK #${String(result.rank).padStart(2, '0')}`
-      : `SAVED (${mode}) AS ${result.entry.tag} (OUTSIDE TOP 10)`;
+    const rankStr = result.rank ? `RANK #${String(result.rank).padStart(2, '0')}` : 'OUTSIDE TOP 10';
+    if (result.status === 'REPLACED') {
+      game.goSaveStatus.textContent = `NEW BEST (${mode}) FOR ${result.entry.tag} // ${rankStr}`;
+    } else if (result.status === 'KEPT_BEST') {
+      const bestStr = String(result.entry.score).padStart(6, '0');
+      game.goSaveStatus.textContent = `EXISTING BEST KEPT FOR ${result.entry.tag} (${bestStr}) // ${rankStr}`;
+    } else {
+      game.goSaveStatus.textContent = `SAVED (${mode}) AS ${result.entry.tag} // ${rankStr}`;
+    }
     game.goSaveStatus.classList.remove('hidden');
   }
   game.synth.playRescue();
@@ -625,7 +636,7 @@ export function bindEvents(game) {
     });
   }
 
-  // Difficulty Mode Toggle (Normal vs Hard Mode [Sec 21+])
+  // Difficulty Mode Toggle (Normal vs Hard Mode [Sec 06+])
   if (game.btnModeNormal) {
     game.btnModeNormal.addEventListener('click', () => game.setHardMode(false));
   }
@@ -784,6 +795,11 @@ export function bindEvents(game) {
       game.dragLastX = e.clientX;
       game.dragLastY = e.clientY;
       game.dragActive = true;
+      // Start 1.5s touch indicator fade immediately upon touching (no need to release first)
+      if (game.touchHintState === 'GLOWING') {
+        game.touchHintState = 'FADING';
+        game.touchHintTimer = TOUCH_HINT_DURATION;
+      }
     }
   }, { passive: false });
 
@@ -803,9 +819,6 @@ export function bindEvents(game) {
         game.player.x += dx * scaleX * slowMult;
         game.player.y += dy * scaleY * slowMult;
         game.clampPlayerPosition();
-        if (game.touchHintState === 'GLOWING' && (Math.abs(dx) > 1 || Math.abs(dy) > 1)) {
-          game.touchHintMoved = true;
-        }
       }
     }
   }, { passive: false });
@@ -814,10 +827,6 @@ export function bindEvents(game) {
     if (e.pointerId === game.dragPointerId) {
       game.dragPointerId = null;
       game.dragActive = false;
-      if (game.touchHintState === 'GLOWING' && game.touchHintMoved) {
-        game.touchHintState = 'FADING';
-        game.touchHintTimer = 1.0;
-      }
     }
     if (game.firePointerIds.delete(e.pointerId)) {
       updateControlPressVisuals(game);

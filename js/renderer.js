@@ -8,6 +8,7 @@ import {
   LOGICAL_H,
   LOGICAL_W,
   PLAYER_MIN_Y,
+  TOUCH_HINT_DURATION,
   TRACTOR_BEAM_Y
 } from './config.js';
 import { clamp } from './utils.js';
@@ -261,7 +262,7 @@ export function renderFrame(game) {
   }
 
   // 8) Subtle one-time touch-ready glow ONLY when user willingly toggles Touch UI
-  //    (Never shown on mobile; fades away 1.0s after ship is dragged, moved, and released)
+  //    (Never shown on mobile; starts 1.5s fade immediately upon first touch)
   if (
     !game.desktopMode &&
     (game.touchHintState === 'GLOWING' || game.touchHintState === 'FADING') &&
@@ -271,7 +272,7 @@ export function renderFrame(game) {
     const px = game.player.x;
     const py = game.player.y;
     const glowY = Math.min(LOGICAL_H - 18, py + 34);
-    const fade = game.touchHintState === 'FADING' ? clamp(game.touchHintTimer, 0, 1) : 1;
+    const fade = game.touchHintState === 'FADING' ? clamp(game.touchHintTimer / TOUCH_HINT_DURATION, 0, 1) : 1;
     const pulse = 0.72 + Math.sin(game.clock * 6.5) * 0.28;
     const r = (game.player.dual ? 44 : 36) * (0.94 + pulse * 0.1);
     ctx.save();

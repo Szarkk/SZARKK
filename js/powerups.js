@@ -8,11 +8,13 @@ import {
   CAPSULE_BOUNDS,
   CAPSULE_DROP_DELAY,
   COLORS,
+  CYAN_POWERUP_START_SECTOR,
+  CYAN_POWERUP_START_WAVE,
   LOGICAL_H,
   LOGICAL_W,
   POWERUP_MAX_ENERGY,
-  POWERUP_START_SECTOR,
-  PURPLE_POWERUP_START_SECTOR
+  PURPLE_POWERUP_START_SECTOR,
+  RED_POWERUP_START_SECTOR
 } from './config.js';
 import { clamp } from './utils.js';
 
@@ -112,49 +114,72 @@ export function consumePowerupEnergy(game, type, amount) {
   return false;
 }
 
-export function pickRandomCapsuleType(sector) {
-  const pool = sector >= PURPLE_POWERUP_START_SECTOR
-    ? ['CYAN', 'RED', 'PURPLE']
-    : ['CYAN', 'RED'];
+export function getUnlockedCapsuleTypes(effSec, waveNum = 1, hardMode = false, inChallenge = false) {
+  if (hardMode || effSec >= PURPLE_POWERUP_START_SECTOR) {
+    return ['CYAN', 'RED', 'PURPLE'];
+  }
+  if (effSec >= RED_POWERUP_START_SECTOR) {
+    return ['CYAN', 'RED'];
+  }
+  if (
+    effSec >= CYAN_POWERUP_START_SECTOR &&
+    (inChallenge || effSec > CYAN_POWERUP_START_SECTOR || waveNum >= CYAN_POWERUP_START_WAVE)
+  ) {
+    return ['CYAN'];
+  }
+  return [];
+}
+
+export function pickRandomCapsuleType(effSec, waveNum = 4, hardMode = false, inChallenge = false) {
+  const pool = getUnlockedCapsuleTypes(effSec, waveNum, hardMode, inChallenge);
+  if (pool.length === 0) return null;
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
 export function rollEnemyCapsuleDrop(game, enemy) {
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
-  // Strictly NO power-ups before effective Sector 05 (Hard Mode starts at eff. Sec 21 so all unlock immediately!)
-  if (effSec < POWERUP_START_SECTOR) return;
+  const unlocked = getUnlockedCapsuleTypes(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
+  if (unlocked.length === 0) return;
 
-  const allowPurple = effSec >= PURPLE_POWERUP_START_SECTOR;
+  const allowCyan = unlocked.includes('CYAN');
+  const allowRed = unlocked.includes('RED');
+  const allowPurple = unlocked.includes('PURPLE');
   const drops = [];
 
   if (enemy.type === 'MASTER_LEGACY_REC') {
-    // Master Legacy Recognizer: Independent rolls — 50% Cyan, 10% Red, 30% Purple (Sec 07+)
-    if (Math.random() < 0.50) drops.push('CYAN');
-    if (Math.random() < 0.10) drops.push('RED');
+    // Master Legacy Recognizer: Independent rolls — 50% Cyan, 10% Red, 30% Purple (Sec 04+)
+    if (allowCyan && Math.random() < 0.50) drops.push('CYAN');
+    if (allowRed && Math.random() < 0.10) drops.push('RED');
     if (allowPurple && Math.random() < 0.30) drops.push('PURPLE');
   } else if (enemy.type === 'MASTER_ARES_REC') {
-    // Master Ares Recognizer: Independent rolls — 50% Red, 10% Cyan, 30% Purple (Sec 07+)
-    if (Math.random() < 0.50) drops.push('RED');
-    if (Math.random() < 0.10) drops.push('CYAN');
+    // Master Ares Recognizer: Independent rolls — 50% Red, 10% Cyan, 30% Purple (Sec 04+)
+    if (allowRed && Math.random() < 0.50) drops.push('RED');
+    if (allowCyan && Math.random() < 0.10) drops.push('CYAN');
     if (allowPurple && Math.random() < 0.30) drops.push('PURPLE');
   } else if (enemy.type === 'LEGACY_REC') {
-    // Elite Legacy Recognizer: Cyan 10%, Red 2%, Purple 2% (Sector 07+)
+    // Elite Legacy Recognizer: Cyan 10%, Red 2% (Sec 03+), Purple 2% (Sec 04+)
     const r = Math.random();
-    if (r < 0.10) drops.push('CYAN');
-    else if (r < 0.12) drops.push('RED');
+    if (allowCyan && r < 0.10) drops.push('CYAN');
+    else if (allowRed && r < 0.12) drops.push('RED');
     else if (allowPurple && r < 0.14) drops.push('PURPLE');
   } else if (enemy.type === 'ARES_REC') {
-    // Elite Ares Recognizer: Red 10%, Cyan 2%, Purple 2% (Sector 07+)
+    // Elite Ares Recognizer: Red 10%, Cyan 2%, Purple 2% (Sec 04+)
     const r = Math.random();
-    if (r < 0.10) drops.push('RED');
-    else if (r < 0.12) drops.push('CYAN');
+    if (allowRed && r < 0.10) drops.push('RED');
+    else if (allowCyan && r < 0.12) drops.push('CYAN');
     else if (allowPurple && r < 0.14) drops.push('PURPLE');
   } else if (enemy.type === 'CLASSIC_REC') {
     // Classic Recognizers: 1% total drop chance
-    if (Math.random() < 0.01) drops.push(pickRandomCapsuleType(effSec));
+    if (Math.random() < 0.01) {
+      const picked = pickRandomCapsuleType(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
+      if (picked) drops.push(picked);
+    }
   } else {
     // Normal ships (Bit-Drones, Grid-Interceptors): 0.1% drop chance
-    if (Math.random() < 0.001) drops.push(pickRandomCapsuleType(effSec));
+    if (Math.random() < 0.001) {
+      const picked = pickRandomCapsuleType(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
+      if (picked) drops.push(picked);
+    }
   }
 
   drops.forEach((dropType, idx) => {
@@ -195,6 +220,7 @@ export function spawnCapsule(game, x, y, type, mode = 'DROP') {
       enteredArena: false,
       wanderTimer: 1.0 + Math.random() * 0.9,
       age: 0,
+      driftClock: 0,
       maxLife: 16.0,
       hitRadius: 21
     });
@@ -225,6 +251,7 @@ export function spawnCapsule(game, x, y, type, mode = 'DROP') {
       enteredArena: alreadyInArena,
       wanderTimer: 0.9 + Math.random() * 1.1,
       age: 0,
+      driftClock: 0,
       maxLife: 15.0,
       hitRadius: 21
     });
@@ -287,40 +314,53 @@ export function updatePowerupTimers(_game, _dt) {
 }
 
 export function updatePowerupCapsules(game, dt) {
-  // 1) Process 66% per-sector Floating Capsule spawn (Sector 05+; Purple from Sector 07+)
+  const inTransition =
+    game.sectorPhase === 'BANNER' ||
+    game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CLEARED';
+
+  // 1) Process 50% per-wave Floating Capsule spawn (Sec 02 W3+: Cyan; Sec 03: Cyan/Red; Sec 04+/Hard: All 3)
   if (
     game.floatingCapsulePlan &&
     !game.floatingCapsulePlan.spawned &&
-    (game.sectorPhase === 'COMBAT' || game.sectorPhase === 'CHALLENGE')
+    game.sectorPhase === 'COMBAT'
   ) {
     game.floatingCapsulePlan.timer -= dt;
     if (game.floatingCapsulePlan.timer <= 0) {
       game.floatingCapsulePlan.spawned = true;
       const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
-      const type = pickRandomCapsuleType(effSec);
-      spawnCapsule(game, 0, 0, type, 'FLOAT');
+      const type = pickRandomCapsuleType(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
+      if (type) {
+        spawnCapsule(game, 0, 0, type, 'FLOAT');
+      }
     }
   }
 
-  // 2) Process 1-second delayed drops from destroyed enemies
-  for (let i = game.pendingCapsuleDrops.length - 1; i >= 0; i--) {
-    const pend = game.pendingCapsuleDrops[i];
-    pend.timer -= dt;
-    if (pend.timer <= 0) {
-      spawnCapsule(game, pend.x, pend.y, pend.type, 'DROP');
-      game.pendingCapsuleDrops.splice(i, 1);
+  // 2) Process 1-second delayed drops from destroyed enemies (paused during sector banners so none are lost)
+  if (!inTransition) {
+    for (let i = game.pendingCapsuleDrops.length - 1; i >= 0; i--) {
+      const pend = game.pendingCapsuleDrops[i];
+      pend.timer -= dt;
+      if (pend.timer <= 0) {
+        spawnCapsule(game, pend.x, pend.y, pend.type, 'DROP');
+        game.pendingCapsuleDrops.splice(i, 1);
+      }
     }
   }
 
-  // 3) Update active capsules floating randomly in the mid-arena (shoot-only activation)
+  // 3) Update active capsules floating randomly in the mid-arena (persist across sector transitions!)
   const { minX, maxX, minY, maxY } = CAPSULE_BOUNDS;
 
   for (let i = game.capsules.length - 1; i >= 0; i--) {
     const cap = game.capsules[i];
-    cap.age += dt;
-    if (cap.age >= cap.maxLife) {
-      game.capsules.splice(i, 1);
-      continue;
+    cap.driftClock = (cap.driftClock || 0) + dt;
+    // Pause despawn aging during CLEARED / BANNER screens so capsules never expire during sector transitions
+    if (!inTransition) {
+      cap.age += dt;
+      if (cap.age >= cap.maxLife) {
+        game.capsules.splice(i, 1);
+        continue;
+      }
     }
 
     if (!cap.enteredArena) {
@@ -332,7 +372,7 @@ export function updatePowerupCapsules(game, dt) {
         cap.vy = (dy / d) * 105;
       }
       cap.x += cap.vx * dt;
-      cap.y += (cap.vy + Math.sin(cap.age * 3.4) * 10) * dt;
+      cap.y += (cap.vy + Math.sin(cap.driftClock * 3.4) * 10) * dt;
 
       if (cap.x >= minX && cap.x <= maxX && cap.y >= minY && cap.y <= maxY) {
         cap.enteredArena = true;
@@ -353,7 +393,7 @@ export function updatePowerupCapsules(game, dt) {
       }
 
       cap.x += cap.vx * dt;
-      cap.y += (cap.vy + Math.sin(cap.age * 3.4) * 14) * dt;
+      cap.y += (cap.vy + Math.sin(cap.driftClock * 3.4) * 14) * dt;
 
       if (cap.x < minX) {
         cap.x = minX;

@@ -38,6 +38,7 @@ export function createPlayerState() {
     invulnTimer: 0,
     fireCooldown: 0,
     laserTickCooldown: 0,
+    laserFxCooldown: 0,
     arcWaveCooldown: 0,
     vibrateAmp: 0,
     missileVibTimer: 0,
@@ -188,7 +189,7 @@ export function updatePlayer(game, dt) {
   if (p.slowTimer > 0) p.slowTimer = Math.max(0, p.slowTimer - dt);
   if (p.dmgDebuffTimer > 0) p.dmgDebuffTimer = Math.max(0, p.dmgDebuffTimer - dt);
   if (p.fireCooldown > 0) p.fireCooldown = Math.max(0, p.fireCooldown - dt);
-  if (p.laserTickCooldown > 0) p.laserTickCooldown = Math.max(0, p.laserTickCooldown - dt);
+  if (p.laserFxCooldown > 0) p.laserFxCooldown = Math.max(0, p.laserFxCooldown - dt);
   if (p.arcWaveCooldown > 0) p.arcWaveCooldown = Math.max(0, p.arcWaveCooldown - dt);
   if (p.missileVibTimer > 0) p.missileVibTimer = Math.max(0, p.missileVibTimer - dt);
   if (aw.cannonTapGrace > 0) aw.cannonTapGrace = Math.max(0, aw.cannonTapGrace - dt);
@@ -232,7 +233,8 @@ export function updatePlayer(game, dt) {
   const inBannerOrCleared =
     game.sectorPhase === 'BANNER' ||
     game.sectorPhase === 'CHALLENGE_BANNER' ||
-    game.sectorPhase === 'CLEARED';
+    game.sectorPhase === 'CLEARED' ||
+    (game.sectorPhase === 'WAVE_GAP' && game.capsules.length === 0);
   const autoActive = game.autoFire && !inBannerOrCleared;
   const wantsFire = manualHold || autoActive || game.tapFireBuffer > 0;
 

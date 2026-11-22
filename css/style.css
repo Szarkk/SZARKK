@@ -1282,14 +1282,14 @@ button:active {
   opacity: 0;
 }
 
-.pwr-slot.seg-9 .pwr-gauge-ticks {
+.pwr-slot.seg-6 .pwr-gauge-ticks {
   opacity: 1;
   background: repeating-linear-gradient(
     90deg,
     transparent 0%,
-    transparent calc(11.111% - 1px),
-    rgba(2, 8, 18, 0.88) calc(11.111% - 1px),
-    rgba(2, 8, 18, 0.88) 11.111%
+    transparent calc(16.6667% - 1px),
+    rgba(2, 8, 18, 0.88) calc(16.6667% - 1px),
+    rgba(2, 8, 18, 0.88) 16.6667%
   );
 }
 

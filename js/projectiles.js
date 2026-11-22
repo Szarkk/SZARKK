@@ -14,6 +14,9 @@ import {
   LOGICAL_W,
   PLAYER_BULLET_SPEED,
   RED_LASER_DRAIN_PER_SEC,
+  RED_LASER_RIBBON_CHIP,
+  RED_LASER_TICK_DMG,
+  RED_LASER_TICK_MULT,
   SLOWED_BULLET_DISSOLVE_TIME
 } from './config.js';
 import { clamp, distToSeg, lerp, verticalRaySegIntersectY } from './utils.js';
@@ -142,6 +145,9 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
 export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
   const p = game.player;
   const candidates = [];
+  for (const cap of game.capsules) {
+    if (cap.y > -24 && cap.y < LOGICAL_H - 20) candidates.push({ kind: 'CAPSULE', ref: cap });
+  }
   for (const e of game.enemies) {
     if (e.y > -24 && e.y < LOGICAL_H - 20) candidates.push({ kind: 'ENEMY', ref: e });
   }
@@ -182,11 +188,12 @@ export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
 }
 
 /**
- * RED BOXED CAPSULE — Piercing Continuous Straight Laser Beam:
+ * RED BOXED CAPSULE — High-Frequency Piercing Continuous Straight Laser Beam:
  * Shoots straight through ALL enemy ships, lightwings & capsules!
- * Stopped ONLY by Red (Ares) ribbons (chips -1/tick) or Cyan (Legacy) ribbons
- * (converts into slowed red laser-bullets that dissolve after 2.0s).
- * In Dual-Fighter mode, each individual fighter's beam evaluates and counts hits independently.
+ * Deals 0.1 base dmg @ 20x tick rate (~121 ticks/sec = identical 2.0 dmg/cycle per fighter)
+ * so rapid mobile swipes never phase through targets.
+ * Stopped ONLY by Red (Ares) ribbons (chips -0.05/tick = same ~1s shatter) or Cyan (Legacy)
+ * ribbons (converts into slowed red laser-bullets that dissolve after 2.0s).
  */
 export function updateContinuousLaserBeams(game, dt = 0) {
   const p = game.player;
@@ -196,19 +203,39 @@ export function updateContinuousLaserBeams(game, dt = 0) {
     !hasPowerup(game, 'RED') ||
     !game.redLaserActive
   ) {
+    p.laserTickCooldown = 0;
+    p.laserFxCooldown = 0;
     game.activeLaserBeams = [];
     return;
   }
 
   const weakened = p.dmgDebuffTimer > 0;
   const baseDmg = weakened ? 0.8 : 1.0;
-  const beamDmg = baseDmg * 2.0; // 2x damage of regular bullets per individual fighter beam
+  const tickInterval = FIRE_COOLDOWN / RED_LASER_TICK_MULT; // 0.00825s (~121 ticks/sec)
   const shipOffsets = p.dual ? [-14, 14] : [0];
-  const shouldDamageTick = p.laserTickCooldown <= 0;
 
-  if (shouldDamageTick) {
-    p.laserTickCooldown = FIRE_COOLDOWN; // Exact regular hitspeed, independent of stacked missiles
+  // Accumulate exact sub-ticks so 30Hz, 60Hz & 120Hz all produce identical DPS with zero swipe phasing
+  p.laserTickCooldown -= dt;
+  let tickMult = 0;
+  if (p.laserTickCooldown <= 0) {
+    tickMult = 1;
+    p.laserTickCooldown += tickInterval;
+    while (p.laserTickCooldown <= 0 && tickMult < 8) {
+      tickMult++;
+      p.laserTickCooldown += tickInterval;
+    }
+    if (p.laserTickCooldown < 0) p.laserTickCooldown = 0;
   }
+
+  const shouldDamageTick = tickMult > 0;
+  const shouldFxTick = p.laserFxCooldown <= 0;
+  if (shouldFxTick) {
+    p.laserFxCooldown = FIRE_COOLDOWN; // Standard cadence for laser pulse SFX, refracted bolts & accuracy ticks
+  }
+
+  const tickBeamDmg = baseDmg * RED_LASER_TICK_DMG * tickMult; // 0.1 dmg per rapid tick (exact 2.0 dmg per 0.165s)
+  const refractBoltDmg = baseDmg * 2.0; // Full 2.0 dmg per refracted cyan-ribbon red bolt
+  const quietTick = !shouldFxTick;
 
   game.activeLaserBeams = [];
 
@@ -259,8 +286,8 @@ export function updateContinuousLaserBeams(game, dt = 0) {
       if (lw.y <= beamBottomY && lw.y >= stopY && Math.abs(lw.x - beamX) <= 18) {
         impacts.push(lw.y);
         if (shouldDamageTick) {
-          game.shotsHit++;
-          damageLightwing(game, li, beamDmg);
+          if (shouldFxTick) game.shotsHit++;
+          damageLightwing(game, li, tickBeamDmg, quietTick);
         }
       }
     }
@@ -272,54 +299,57 @@ export function updateContinuousLaserBeams(game, dt = 0) {
       if (e.y <= beamBottomY && e.y >= stopY && Math.abs(e.x - beamX) <= beamHalfW) {
         impacts.push(e.y);
         if (shouldDamageTick) {
-          game.shotsHit++;
+          if (shouldFxTick) game.shotsHit++;
           const isLegacyBoss = e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC';
-          const finalDmg = isLegacyBoss ? beamDmg * 1.3 : beamDmg;
+          const finalDmg = isLegacyBoss ? tickBeamDmg * 1.3 : tickBeamDmg;
           damageEnemy(
             game,
             ei,
             finalDmg,
             beamX,
             e.y,
-            isLegacyBoss ? COLORS.aresRed : COLORS.white
+            isLegacyBoss ? COLORS.aresRed : COLORS.white,
+            quietTick
           );
         }
       }
     }
 
-    // 5) Resolve ribbon interaction on tick (chip Red ribbon OR refract through Cyan ribbon into slowed red bolts!)
-    if (shouldDamageTick) {
+    // 5) Resolve ribbon interaction:
+    //    - Ares Red Ribbon chips proportionally on every rapid tick (same ~1s / 6-hit shatter)
+    //    - Legacy Cyan Ribbon refracts slowed red bolts on the normal FX cadence (no bullet spam)
+    if (shouldFxTick) {
       game.shotsFired++;
-      if (ribbonBlock) {
-        if (ribbonBlock.kind === 'ARES_RIBBON') {
-          const trail = game.ribbonTrails[ribbonBlock.idx];
-          if (trail && trail.id === ribbonBlock.trailId) {
-            trail.hitsRemaining -= 1;
-            trail.flashTimer = 0.14;
-            if (trail.hitsRemaining <= 0) {
-              shatterRibbonTrail(game, ribbonBlock.idx, beamX, stopY, COLORS.aresRed);
-            } else {
-              game.synth.playRibbonDeflect();
-              game.spawnDerez(beamX, stopY, COLORS.amber, 5, 95);
-            }
+    }
+    if (ribbonBlock) {
+      if (ribbonBlock.kind === 'ARES_RIBBON' && shouldDamageTick) {
+        const trail = game.ribbonTrails[ribbonBlock.idx];
+        if (trail && trail.id === ribbonBlock.trailId) {
+          trail.hitsRemaining -= RED_LASER_RIBBON_CHIP * tickMult;
+          trail.flashTimer = 0.14;
+          if (trail.hitsRemaining <= 0.001) {
+            shatterRibbonTrail(game, ribbonBlock.idx, beamX, stopY, COLORS.aresRed);
+          } else if (shouldFxTick) {
+            game.synth.playRibbonDeflect();
+            game.spawnDerez(beamX, stopY, COLORS.amber, 5, 95);
           }
-        } else if (ribbonBlock.kind === 'LEGACY_RIBBON') {
-          // Beam refracts through cyan ribbon into slowed red bullets that dissolve after 2.0s!
-          game.playerBullets.push({
-            x: beamX,
-            y: stopY - 6,
-            vy: -PLAYER_BULLET_SPEED / LEGACY_RIBBON_BULLET_SLOW,
-            dmg: beamDmg,
-            weakened,
-            purple: false,
-            redLaserBullet: true,
-            slowedByLegacy: true,
-            dissolveTimer: SLOWED_BULLET_DISSOLVE_TIME,
-            dissolveMax: SLOWED_BULLET_DISSOLVE_TIME
-          });
-          game.synth.playShotSlow();
-          game.spawnDerez(beamX, stopY, COLORS.aresRed, 4, 68);
         }
+      } else if (ribbonBlock.kind === 'LEGACY_RIBBON' && shouldFxTick) {
+        // Beam refracts through cyan ribbon into slowed red bullets that dissolve after 2.0s!
+        game.playerBullets.push({
+          x: beamX,
+          y: stopY - 6,
+          vy: -PLAYER_BULLET_SPEED / LEGACY_RIBBON_BULLET_SLOW,
+          dmg: refractBoltDmg,
+          weakened,
+          purple: false,
+          redLaserBullet: true,
+          slowedByLegacy: true,
+          dissolveTimer: SLOWED_BULLET_DISSOLVE_TIME,
+          dissolveMax: SLOWED_BULLET_DISSOLVE_TIME
+        });
+        game.synth.playShotSlow();
+        game.spawnDerez(beamX, stopY, COLORS.aresRed, 4, 68);
       }
     }
 
@@ -335,7 +365,7 @@ export function updateContinuousLaserBeams(game, dt = 0) {
     });
   }
 
-  if (shouldDamageTick) {
+  if (shouldFxTick) {
     game.synth.playContinuousLaserTick();
   }
 
@@ -627,12 +657,23 @@ export function updateHomingMissiles(game, dt) {
     m.life -= dt;
 
     let validTarget = null;
-    if (m.targetKind === 'ENEMY' && game.enemies.includes(m.targetRef)) {
+    if (m.targetKind === 'CAPSULE' && game.capsules.includes(m.targetRef)) {
+      validTarget = m.targetRef;
+    } else if (m.targetKind === 'ENEMY' && game.enemies.includes(m.targetRef)) {
       validTarget = m.targetRef;
     } else if (m.targetKind === 'LIGHTWING' && game.lightwings.includes(m.targetRef)) {
       validTarget = m.targetRef;
     } else {
       let bestD = Infinity;
+      for (const cap of game.capsules) {
+        const d = Math.hypot(cap.x - m.x, cap.y - m.y);
+        if (d < bestD) {
+          bestD = d;
+          validTarget = cap;
+          m.targetKind = 'CAPSULE';
+          m.targetRef = cap;
+        }
+      }
       for (const e of game.enemies) {
         const d = Math.hypot(e.x - m.x, e.y - m.y);
         if (d < bestD) {
