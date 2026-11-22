@@ -1,6 +1,6 @@
 # GRID GALAGA 1982
 
-Alpha Test 0.1.0 — a browser arcade shooter.
+Alpha Test 0.1.1 — a browser arcade shooter.
 
 ## Play
 

@@ -4,6 +4,8 @@
 
 import {
   COLORS,
+  HARD_MODE_CHALLENGE_OFFSET,
+  HARD_MODE_SECTOR_OFFSET,
   LOGICAL_H,
   LOGICAL_W,
   STORAGE_KEYS,
@@ -19,11 +21,12 @@ import {
 } from './powerups.js';
 import {
   applyRibbonDebuff,
-  clampPlayerX,
+  clampPlayerPosition,
   createPlayerState,
   damagePlayer,
   updatePlayer
 } from './player.js';
+import { getTopLeaderboardScore } from './leaderboard.js';
 import { updateLightwingsAndRibbons } from './recognizers.js';
 import {
   beginSector,
@@ -57,28 +60,41 @@ export class GridGalagaGame {
     cacheDomElements(this);
 
     this.synth = new SynthEngine();
-    this.isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    const isCoarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    const hasNoHover = !!(window.matchMedia && window.matchMedia('(hover: none)').matches);
+    this.isTouch = isCoarsePointer && hasNoHover;
+    this.desktopMode = !this.isTouch;
 
-    // Persistent Settings
-    const savedCtrl = readLS(STORAGE_KEYS.ctrl, this.isTouch ? 'DRAG' : 'THREE_BTN');
-    this.controlMode = ['DRAG', 'TOUCH_LR', 'THREE_BTN'].includes(savedCtrl) ? savedCtrl : 'DRAG';
-    this.autoFire = readLS(STORAGE_KEYS.auto, this.isTouch && this.controlMode === 'TOUCH_LR' ? '1' : '0') === '1';
+    // Persistent Settings & Per-Mode High Scores
+    this.hardMode = false;
+    this.lbViewMode = 'NORMAL';
+    this.autoFire = readLS(STORAGE_KEYS.auto, '0') === '1';
     this.crtEnabled = readLS(STORAGE_KEYS.crt, '1') === '1';
     this.sfxEnabled = readLS(STORAGE_KEYS.sfx, '1') === '1';
     this.synth.setEnabled(this.sfxEnabled);
-    this.highScore = parseInt(readLS(STORAGE_KEYS.hi, '0'), 10) || 0;
+    this.highScoreNormal = Math.max(parseInt(readLS(STORAGE_KEYS.hi, '0'), 10) || 0, getTopLeaderboardScore('NORMAL'));
+    this.highScoreHard = Math.max(parseInt(readLS(STORAGE_KEYS.hiHard, '0'), 10) || 0, getTopLeaderboardScore('HARD'));
+    this.highScore = this.highScoreNormal;
 
-    // Multi-Touch Isolation Maps
+    // Independent Multi-Touch Maps (2D Ship Drag + Hold-to-Fire)
     this.keys = new Set();
-    this.dirPointerMap = new Map();
     this.firePointerIds = new Set();
     this.dragPointerId = null;
     this.dragLastX = 0;
+    this.dragLastY = 0;
     this.dragActive = false;
     this.tapFireBuffer = 0;
+    this.freshFirePress = false;
+
+    // Subtle touch glow hint — NEVER shown on mobile launch; ONLY when user willingly toggles Touch UI
+    this.touchHintState = 'OFF'; // OFF | GLOWING | FADING
+    this.touchHintTimer = 0;
+    this.touchHintMoved = false;
 
     this.state = 'MENU'; // MENU | PLAYING | PAUSED | GAMEOVER
     this.modalReturnTo = 'MENU';
+    this.roundScoreSaved = false;
+    this.lastSavedEntryId = null;
     this.clock = 0;
     this.gridOffset = 0;
     this.archivePreviews = [];
@@ -126,12 +142,22 @@ export class GridGalagaGame {
     this.ribbonIdSeq = 1;
     this.waveQueue = [];
     this.waveSpawnTimer = 0;
-    this.diveTimer = 1.5;
+    this.diveTimer = 1.1;
+    this.formationShotTimer = 2.0;
+    this.sectorTractorCount = 0;
+    this.justFinishedChallenge = false;
+    this.postChallengeAbductionPending = false;
     this.tractorTimer = TRACTOR_INITIAL_DELAY;
-    this.wingLaunchTimer = 2.5;
+    this.wingLaunchTimer = 2.2;
+    this.roundScoreSaved = false;
     this.challengeNum = 0;
+    this.challengeSubRound = 0;
+    this.challengeExtraRounds = 0;
     this.challengeHits = 0;
     this.challengeTotal = 0;
+    this.lastFormationStyle = null;
+    this.formationStyle = 'PHALANX';
+    this.swayMode = 'SWAY';
 
     this.shake = 0;
     this.hitStop = 0;
@@ -169,8 +195,12 @@ export class GridGalagaGame {
     this.popups = [];
   }
 
+  clampPlayerPosition() {
+    clampPlayerPosition(this);
+  }
+
   clampPlayerX() {
-    clampPlayerX(this);
+    clampPlayerPosition(this);
   }
 
   updateHUD() {
@@ -182,6 +212,9 @@ export class GridGalagaGame {
   }
 
   startNewGame() {
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
     this.synth.unlock();
     resetInputs(this);
     hideAllOverlays(this);
@@ -235,12 +268,33 @@ export class GridGalagaGame {
     applyRibbonDebuff(this, variant);
   }
 
+  getEffectiveSector() {
+    return this.hardMode ? this.sector + HARD_MODE_SECTOR_OFFSET : this.sector;
+  }
+
+  getEffectiveChallengeNum() {
+    return this.hardMode ? this.challengeNum + HARD_MODE_CHALLENGE_OFFSET : this.challengeNum;
+  }
+
+  setHardMode(enabled) {
+    this.hardMode = !!enabled;
+    this.highScore = this.hardMode ? this.highScoreHard : this.highScoreNormal;
+    syncControlsUI(this);
+    updateHUD(this);
+  }
+
   addScore(pts, x, y, color = COLORS.cyan) {
     this.score += pts;
     if (this.score > this.highScore) {
       this.highScore = this.score;
       this.newRecord = true;
-      writeLS(STORAGE_KEYS.hi, this.highScore);
+      if (this.hardMode) {
+        this.highScoreHard = this.highScore;
+        writeLS(STORAGE_KEYS.hiHard, this.highScoreHard);
+      } else {
+        this.highScoreNormal = this.highScore;
+        writeLS(STORAGE_KEYS.hi, this.highScoreNormal);
+      }
     }
     if (this.score >= this.nextExtraLife) {
       this.lives = Math.min(5, this.lives + 1);
@@ -324,6 +378,13 @@ export class GridGalagaGame {
       return;
     }
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt);
+    if (this.touchHintState === 'FADING') {
+      this.touchHintTimer -= dt;
+      if (this.touchHintTimer <= 0) {
+        this.touchHintTimer = 0;
+        this.touchHintState = 'OFF';
+      }
+    }
 
     updatePowerupTimers(this, dt);
     updatePlayer(this, dt);
@@ -331,7 +392,7 @@ export class GridGalagaGame {
     updatePowerupCapsules(this, dt);
     updateEnemies(this, dt);
     updateLightwingsAndRibbons(this, dt);
-    updateContinuousLaserBeams(this);
+    updateContinuousLaserBeams(this, dt);
     updateArcWavesAndCannon(this, dt);
     updatePlayerBullets(this, dt);
     updateHomingMissiles(this, dt);

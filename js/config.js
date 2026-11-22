@@ -2,36 +2,52 @@
    CONSTANTS, LOGICAL PLAYFIELD, COMBAT TUNING & GRID ARCHIVE CATALOG
    ========================================================================= */
 
-export const GAME_VERSION = 'Alpha Test 0.1.0';
+export const GAME_VERSION = 'Alpha Test 0.1.1';
 export const LOGICAL_W = 480;
 export const LOGICAL_H = 640;
 
+// Player free 2D movement arena (bottom 2/5ths of playable field — Touhou-style dodging)
+export const PLAYER_MIN_Y = Math.round(LOGICAL_H * 0.60); // 384 (top edge of bottom 2/5ths)
+export const PLAYER_MAX_Y = LOGICAL_H - 28;               // 612
+export const PLAYER_DEFAULT_Y = LOGICAL_H - 54;           // 586
+
 export const ELITE_START_SECTOR = 3;          // Elite Recognizers start showing up at Sector 03
+export const ELITE_REC_HP = 6;                // Elite Recognizers take 6 hits (12 in Challenge 3+ Raiders)
+export const MASTER_START_SECTOR = 12;        // Master Recognizers appear at Sector 12+ alongside Elites
+export const MASTER_REC_HP = 15;              // Master Recognizers take 15 hits
 export const CHALLENGE_INTERVAL = 4;          // Challenge 1 = Sec 04, Challenge 2 = Sec 08, Challenge 3 = Sec 12
 export const CHALLENGE_ELITE_START = 3;       // Starting at Challenge 3, 2x HP Elite Raiders spawn independently
+export const CHALLENGE_EXTRA_ROUND_START = 4; // Starting at Challenge 4+, 2 extra tactical rounds spawn
+export const CHALLENGE_MASTER_START = 5;      // Starting at Challenge 5 (Sec 20+), guarded Master Recognizers spawn
+export const HARD_MODE_SECTOR_OFFSET = 20;    // Hard Mode starts as if past Sector 20+ (H-01 = eff. Sec 21)
+export const HARD_MODE_CHALLENGE_OFFSET = 4;  // Hard Mode H-CH.01 starts at Challenge 5+ intensity & escalates
 
-// POWER-UP CONSTANTS (Cyan, Red & Purple Capsules)
+// POWER-UP CONSTANTS (Stackable Gauge-based Cyan, Red & Purple Capsules — conserve freely!)
 export const POWERUP_START_SECTOR = 5;        // No power-ups in Sectors 01-04; Cyan/Red Capsules start Sector 05+
 export const PURPLE_POWERUP_START_SECTOR = 7; // Purple Boxed Capsule (Arc Wave) starts Sector 07+
-export const POWERUP_DURATION = 6.0;          // 6 seconds for Homing Missiles & Continuous Lasers
+export const POWERUP_MAX_ENERGY = 100;        // Full horizontal power-up gauge capacity per slot
+export const CYAN_SHOT_ENERGY_COST = 100 / 50; // 50 conserved Homing Missile volleys per full gauge
+export const RED_LASER_DRAIN_PER_SEC = 100 / 18.0; // 18.0s of active firing time (drains ONLY while firing)
 export const CAPSULE_DROP_DELAY = 1.0;        // Destroyed enemies drop capsules 1 second later
-export const FLOATING_CAPSULE_CHANCE = 0.50;  // 50% chance per sector from Sector 05+
+export const FLOATING_CAPSULE_CHANCE = 0.66;  // 66% chance per sector from Sector 05+
 
 // Mid-arena playfield bounds where power-up capsules float and are shot to activate
 export const CAPSULE_BOUNDS = {
   minX: 62,
   maxX: LOGICAL_W - 62,
-  minY: 232,
-  maxY: 412
+  minY: 205,
+  maxY: 352
 };
 
 // PURPLE ARC WAVE CONSTANTS
-export const ARC_WAVE_MAX = 3;                // Maximum of 3 consecutive auto-fired waves
-export const ARC_WAVE_INTERVAL = 0.78;        // Seconds between consecutive auto-fired waves
+export const ARC_WAVE_MAX = 9;                // 9 conserved Arc Wave charges per gauge
+export const ARC_WAVE_INTERVAL = 0.78;        // Auto-fire spacing when AUTO:ON
+export const ARC_WAVE_MANUAL_COOLDOWN = 0.45; // Manual fire spacing when AUTO:OFF
 export const ARC_WAVE_SPEED = 420;            // Upward wave speed
 export const PURPLE_FIRE_SPEED_MULT = 1.5;    // Purple bullets shoot 1.5x faster
 export const CANNON_SHOT_SPEED = 480;         // AOE Cannon Shot velocity
 export const CANNON_AOE_RADIUS = 138;         // Large AOE blast radius
+export const CANNON_AUTO_FIRE_DELAY = 3.0;    // Auto-fires 3s after 1st cannon tap if not double-tapped
 
 // WEAPON & RIBBON CONSTANTS
 export const FIRE_COOLDOWN = 0.165;           // ~6 shots/sec uncapped rapid pulse
@@ -39,20 +55,26 @@ export const TAP_BUFFER_TIME = 0.12;          // 120ms tap queue
 export const PLAYER_BULLET_SPEED = 760;
 export const HOMING_MISSILE_SPEED = 540;
 export const PLAYER_SPEED = 310;
-export const RIBBON_LIFETIME = 2.4;
-export const ARES_RIBBON_HITS = 3;
-export const ELITE_SURGE_CHANCE = 0.10;       // 10% chance for +2..4 consecutive Lightwings
-export const ELITE_SURGE_INTERVAL = 0.38;
+export const RIBBON_LIFETIME = 4.8;           // Double-length Light Ribbons (4.8s duration & 2x path span)
+export const LEGACY_RIBBON_BULLET_SLOW = 9;   // Cyan Light Ribbons slow passing bullets by 9x
+export const SLOWED_BULLET_DISSOLVE_TIME = 2.0; // Bullets slowed by cyan ribbons dissolve after 2.0s
+export const ARES_RIBBON_HITS = 6;            // Red Light Ribbons take 6 hits to shatter
+export const ELITE_SURGE_CHANCE = 0.12;       // 12% chance for +2..4 consecutive Lightwings
+export const MASTER_SURGE_CHANCE = 0.22;      // 22% surge chance for Master Recognizers
+export const ELITE_SURGE_INTERVAL = 0.36;
 
-// CLASSIC MCP RECOGNIZER TRACTOR BEAM TUNING
-export const TRACTOR_INITIAL_DELAY = 3.2;     // First tractor opportunity shortly after combat starts
-export const TRACTOR_INTERVAL = 6.5;          // Interval between Classic MCP Recognizer tractor sweeps
-export const TRACTOR_RETRY_DELAY = 4.0;       // Retry delay if beaming boss is destroyed mid-sweep
-export const TRACTOR_APPROACH_DUR = 1.15;     // Smooth flanking swoop duration
+// CLASSIC MCP RECOGNIZER TRACTOR BEAM TUNING (Slightly livelier + 80% post-challenge abduction)
+export const TRACTOR_INITIAL_DELAY = 7.5;     // Wait before first tractor beam opportunity
+export const TRACTOR_INTERVAL = 16.5;         // Cooldown between occasional tractor sweeps
+export const TRACTOR_RETRY_DELAY = 10.5;      // Retry delay if beaming boss is destroyed mid-sweep
+export const TRACTOR_MAX_PER_SECTOR = 2;      // Cap abduction attempts per sector so it's never spammy
+export const TRACTOR_POST_CHALLENGE_CHANCE = 0.80; // 80% chance an existing MCP Recognizer abducts after each Challenge
+export const TRACTOR_BEAM_Y = PLAYER_MIN_Y - 58; // Hover cleanly above the bottom 2/5ths player arena
+export const TRACTOR_APPROACH_DUR = 1.15;     // Smooth flanking swoop to locked lane (no homing!)
 export const TRACTOR_BEAM_DUR = 3.0;          // Active tractor beam cone duration
 export const TRACTOR_LIFT_DUR = 1.25;         // Visual lift duration once player is kidnapped
-export const TRACTOR_PULL_RADIUS = 58;        // Horizontal cone radius for gentle magnetic pull
-export const TRACTOR_CAPTURE_RADIUS = 42;     // Horizontal radius for kidnapping lock
+export const TRACTOR_PULL_RADIUS = 48;        // Horizontal cone radius for gentle magnetic pull
+export const TRACTOR_CAPTURE_RADIUS = 34;     // Horizontal radius for kidnapping lock
 
 export const COLORS = {
   cyan: '#00f6ff',
@@ -70,10 +92,12 @@ export const COLORS = {
 
 export const STORAGE_KEYS = {
   hi: 'grid_galaga_1982_hi',
-  ctrl: 'grid_galaga_1982_ctrl',
+  hiHard: 'grid_galaga_1982_hi_hard',
   auto: 'grid_galaga_1982_auto',
   crt: 'grid_galaga_1982_crt',
-  sfx: 'grid_galaga_1982_sfx'
+  sfx: 'grid_galaga_1982_sfx',
+  leaderboard: 'grid_galaga_1982_leaderboard',
+  callsign: 'grid_galaga_1982_callsign'
 };
 
 export const ARCHIVE_ENTRIES = [
@@ -84,11 +108,11 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'player',
     cardClass: 'tier-player',
     stats: [
-      { text: 'UNCAPPED CANNON', cls: 'emerald' },
+      { text: '2D DODGE ZONE', cls: 'emerald' },
       { text: '~6 SHOTS/SEC', cls: '' },
       { text: 'DUAL RESCUE', cls: 'gold' }
     ],
-    desc: 'Your Encom defense craft equipped with an uncapped rapid-pulse cannon. Rescue a captured fighter from a Classic MCP Recognizer to unlock twin-volley Dual-Fighter firepower.'
+    desc: 'Your Encom defense craft moves freely across the lower 2/5ths of the Grid for bullet-hell dodging. Drag directly below the ship on touchscreens (or use WASD/Arrows on PC). Rescue a captured fighter from a Classic MCP Recognizer to unlock twin-volley Dual-Fighter firepower.'
   },
   {
     id: 'CAPSULE_CYAN',
@@ -98,12 +122,12 @@ export const ARCHIVE_ENTRIES = [
     cardClass: 'tier-pwr-cyan',
     stats: [
       { text: 'HOMING MISSILES', cls: '' },
-      { text: '6s DURATION', cls: 'gold' },
-      { text: '2x SHOTS', cls: 'emerald' },
+      { text: '50 VOLLEYS (GAUGE)', cls: 'gold' },
+      { text: 'STACKABLE', cls: 'emerald' },
       { text: '1-HIT ARES RIBBON', cls: '' },
       { text: '1.3x VS ARES REC', cls: 'warn' }
     ],
-    desc: 'Square pixelated capsule (Sector 05+) that floats randomly in the mid-arena—shoot it to activate! Replaces regular bullets for 6s with 2x homing missiles that lock onto different enemies, shatter Ares crimson ribbons in 1 hit, and deal 1.3x damage to Ares Recognizers.'
+    desc: 'Square pixelated capsule (Sector 05+) — shoot to charge 50 manual volleys of 2x homing missiles! Stacks with different power-ups (splitting the bottom gauge and igniting an RGB gradient on your ship). Shatters Ares crimson ribbons in 1 hit and deals 1.3x damage to Elite/Master Ares Recognizers.'
   },
   {
     id: 'CAPSULE_RED',
@@ -112,13 +136,13 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'elite-red',
     cardClass: 'tier-pwr-red',
     stats: [
-      { text: 'CONTINUOUS LASER', cls: 'warn' },
-      { text: '6s DURATION', cls: 'gold' },
-      { text: '2x DAMAGE', cls: 'emerald' },
-      { text: 'BREAKS LEGACY RIBBON', cls: '' },
+      { text: 'PIERCING LASER', cls: 'warn' },
+      { text: '18s ACTIVE FIRE', cls: 'gold' },
+      { text: 'STACKABLE', cls: 'emerald' },
+      { text: '2x DMG / FIGHTER', cls: '' },
       { text: '1.3x VS LEGACY REC', cls: '' }
     ],
-    desc: 'Square pixelated capsule (Sector 05+) that floats randomly in the mid-arena—shoot it to activate! Replaces regular bullets for 6s with a true continuous laser beam locked to your nose dealing 2x damage at regular hitspeed, shattering Legacy cyan ribbons, and dealing 1.3x damage to Legacy Recognizers.'
+    desc: 'Square pixelated capsule (Sector 05+) — shoot to charge 18s of active nose-locked laser firing (drains ONLY while firing). Pierces straight through enemy ships (blocked only by Red ribbons; converts into slowed dissolving red bolts through Cyan ribbons) and deals 1.3x damage to Legacy Recognizers.'
   },
   {
     id: 'CAPSULE_PURPLE',
@@ -127,12 +151,12 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'deploy',
     cardClass: 'tier-pwr-purple',
     stats: [
-      { text: 'ARC WAVE (3 MAX)', cls: '' },
-      { text: '1.5x PURPLE SHOTS', cls: 'emerald' },
+      { text: '9 WIDE WAVES', cls: '' },
+      { text: 'STACKABLE', cls: 'emerald' },
       { text: 'VOIDS BULLETS', cls: 'gold' },
-      { text: 'NO-SHOT AOE CANNON', cls: 'warn' }
+      { text: '2x TAP CANNON', cls: 'warn' }
     ],
-    desc: 'Square pixelated capsule (Sector 07+) that floats randomly in the mid-arena—shoot it to activate! Press Fire once to trigger up to 3 automatic Arc Waves that void enemy shots and deal regular damage. Shooting after triggering fires 1.5x faster temporary purple bullets; letting all 3 waves fire without shooting ignites a Purple Aura and unleashes a large AOE Cannon Shot.'
+    desc: 'Square pixelated capsule (Sector 07+) — shoot to charge 9 wide Arc Waves that void enemy shots! After the 9th wave, double-tap Fire to unleash the AOE Cannon Shot (Tap 1 supercharges with violent vibration; Tap 2 fires, or auto-fires after 3s).'
   },
   {
     id: 'DRONE',
@@ -181,12 +205,12 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'elite-cyan',
     cardClass: 'tier-legacy',
     stats: [
-      { text: 'HP: 3 (6 IN CH.3+)', cls: '' },
+      { text: 'HP: 6 (12 IN CH.3+)', cls: '' },
       { text: '1.3x SCALE', cls: '' },
       { text: 'DROP: 10%C / 2%R / 2%P', cls: 'gold' },
-      { text: '10% SURGE (+2-4)', cls: 'warn' }
+      { text: '9x SLOW + DISSOLVE', cls: 'warn' }
     ],
-    desc: 'Deploys starting at Sector 03. Launches curved cyan Lightwings (10% chance for +2-4 surge) whose ribbons slow your ship 4s and slow passing lasers 2x. In Challenge 3+, raids independently with 2x HP and fires an initial pair of Lightwings at once.'
+    desc: 'Deploys starting at Sector 03. Takes 6 hits to destroy. Launches curved cyan Lightwings (12% surge) whose double-length ribbons slow your ship 4s, slow passing bullets 9x (dissolving after 2s), and turn Red Lasers into slowed dissolving bolts.'
   },
   {
     id: 'ARES_REC',
@@ -195,12 +219,40 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'elite-red',
     cardClass: 'tier-ares',
     stats: [
-      { text: 'HP: 3 (6 IN CH.3+)', cls: '' },
+      { text: 'HP: 6 (12 IN CH.3+)', cls: '' },
       { text: '1.3x SCALE', cls: '' },
       { text: 'DROP: 10%R / 2%C / 2%P', cls: 'gold' },
-      { text: '10% SURGE (+2-4)', cls: 'warn' }
+      { text: '6-HIT RIBBON WALL', cls: 'warn' }
     ],
-    desc: 'Deploys starting at Sector 03. Launches 90° grid crimson Lightwings (10% surge) whose ribbons BLOCK shots (3 hits to break) and inflict 1s Slow + 4s -20% DMG. In Challenge 3+, raids independently with 2x HP and fires an initial pair of Lightwings at once.'
+    desc: 'Deploys starting at Sector 03. Takes 6 hits to destroy. Launches 90° grid crimson Lightwings (12% surge) whose ribbons BLOCK shots (6 hits to break) and inflict 1s Slow + 4s -20% DMG. In Challenge 3+, raids independently with 2x HP (12) and fires twin Lightwings.'
+  },
+  {
+    id: 'MASTER_LEGACY_REC',
+    name: 'MASTER LEGACY RECOGNIZER',
+    badge: 'MASTER • SEC 12+',
+    badgeClass: 'elite-cyan',
+    cardClass: 'tier-legacy',
+    stats: [
+      { text: 'HP: 15', cls: 'warn' },
+      { text: 'CYAN AURA', cls: '' },
+      { text: 'DROP: 50%C / 10%R / 30%P', cls: 'gold' },
+      { text: '22% SURGE', cls: 'emerald' }
+    ],
+    desc: 'Master-tier Legacy dreadnought ringed in a radiant cyan aura (Sector 12+ alongside Elites, and guarded by escort formations in Challenge 5+ / Sec 20+). Independent multi-capsule drop rolls reward destroying it with stackable firepower.'
+  },
+  {
+    id: 'MASTER_ARES_REC',
+    name: 'MASTER ARES RECOGNIZER',
+    badge: 'MASTER • SEC 12+',
+    badgeClass: 'elite-red',
+    cardClass: 'tier-ares',
+    stats: [
+      { text: 'HP: 15', cls: 'warn' },
+      { text: 'CRIMSON AURA', cls: '' },
+      { text: 'DROP: 50%R / 10%C / 30%P', cls: 'gold' },
+      { text: '22% SURGE', cls: 'emerald' }
+    ],
+    desc: 'Master-tier Ares warframe blazing with a crimson-red aura (Sector 12+ alongside Elites, and guarded by escort formations in Challenge 5+ / Sec 20+). Independent multi-capsule drop rolls reward destroying it with stackable firepower.'
   },
   {
     id: 'LIGHTWING',
@@ -211,8 +263,8 @@ export const ARCHIVE_ENTRIES = [
     stats: [
       { text: 'HP: 1', cls: '' },
       { text: 'PTS: 150', cls: 'gold' },
-      { text: 'RIBBON ~2.4s', cls: 'warn' }
+      { text: 'RIBBON ~4.8s (2x)', cls: 'warn' }
     ],
-    desc: 'High-speed drones launched by Elite Recognizers. Legacy wings carve curved cyan ribbons; Ares wings snap along 90° crimson grid corridors.'
+    desc: 'High-speed drones launched by Elite & Master Recognizers. Legacy wings carve double-length curved cyan ribbons; Ares wings snap along extended 90° crimson grid corridors.'
   }
 ];

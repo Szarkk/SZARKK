@@ -1,30 +1,46 @@
 /* =========================================================================
-   PLAYER FIGHTER STATE, MOVEMENT, WEAPON FIRING & DAMAGE/DEBUFFS
+   PLAYER FIGHTER STATE, 2D MOVEMENT, STACKABLE WEAPON FIRING & DEBUFFS
    ========================================================================= */
 
 import {
   ARC_WAVE_INTERVAL,
+  ARC_WAVE_MANUAL_COOLDOWN,
+  ARC_WAVE_MAX,
+  CANNON_AUTO_FIRE_DELAY,
   COLORS,
+  CYAN_SHOT_ENERGY_COST,
   FIRE_COOLDOWN,
   LOGICAL_H,
   LOGICAL_W,
   PLAYER_BULLET_SPEED,
+  PLAYER_DEFAULT_Y,
+  PLAYER_MAX_Y,
+  PLAYER_MIN_Y,
   PLAYER_SPEED,
-  PURPLE_FIRE_SPEED_MULT
+  POWERUP_MAX_ENERGY
 } from './config.js';
 import { clamp } from './utils.js';
-import { resetArcWaveState } from './powerups.js';
-import { fireHomingMissiles, spawnArcWaveFromPlayer } from './projectiles.js';
+import {
+  consumePowerupEnergy,
+  getActivePowerups,
+  hasPowerup,
+  removePowerupSlot
+} from './powerups.js';
+import { fireCannonShot, fireHomingMissiles, spawnArcWaveFromPlayer } from './projectiles.js';
 
 export function createPlayerState() {
   return {
     x: LOGICAL_W * 0.5,
-    y: LOGICAL_H - 54,
+    y: PLAYER_DEFAULT_Y,
     dual: false,
     alive: true,
     respawnTimer: 0,
     invulnTimer: 0,
     fireCooldown: 0,
+    laserTickCooldown: 0,
+    arcWaveCooldown: 0,
+    vibrateAmp: 0,
+    missileVibTimer: 0,
     slowTimer: 0,
     slowMax: 4.0,
     dmgDebuffTimer: 0,
@@ -33,108 +49,89 @@ export function createPlayerState() {
   };
 }
 
-export function clampPlayerX(game) {
+export function clampPlayerPosition(game) {
   const margin = game.player.dual ? 34 : 20;
   game.player.x = clamp(game.player.x, margin, LOGICAL_W - margin);
+  game.player.y = clamp(game.player.y, PLAYER_MIN_Y, PLAYER_MAX_Y);
 }
 
-export function firePlayerWeapon(game) {
+export const clampPlayerX = clampPlayerPosition;
+
+function fireStandardWhiteBullets(game, shipOffsets, baseDmg, weakened) {
   const p = game.player;
-  if (!p.alive || p.capturedById) return;
-
-  const weakened = p.dmgDebuffTimer > 0;
-  const baseDmg = weakened ? 0.8 : 1.0;
-  const shipOffsets = p.dual ? [-14, 14] : [0];
-
-  if (game.powerup.type === 'PURPLE') {
-    const aw = game.arcWaveState;
-    if (aw.phase === 'READY') {
-      aw.phase = 'ACTIVE';
-      aw.wavesFired = 1;
-      aw.waveTimer = ARC_WAVE_INTERVAL;
-      aw.triggerGrace = 0.28;
-      aw.firedBulletDuringWaves = false;
-      p.fireCooldown = FIRE_COOLDOWN / PURPLE_FIRE_SPEED_MULT;
-      spawnArcWaveFromPlayer(game);
-      game.spawnPopup(p.x, p.y - 32, 'ARC WAVE 1/3', COLORS.purpleBright, 0.95);
-      return;
-    }
-
-    if (aw.phase === 'ACTIVE' && aw.triggerGrace > 0) {
-      return;
-    }
-
-    if (aw.phase === 'CANNON_AURA') {
-      return;
-    }
-
-    if (aw.phase === 'ACTIVE' || aw.phase === 'FINISHING') {
-      if (aw.phase === 'ACTIVE') aw.firedBulletDuringWaves = true;
-      p.fireCooldown = FIRE_COOLDOWN / PURPLE_FIRE_SPEED_MULT;
-      for (const ox of shipOffsets) {
-        game.playerBullets.push({
-          x: p.x + ox,
-          y: p.y - 16,
-          vy: -PLAYER_BULLET_SPEED * PURPLE_FIRE_SPEED_MULT,
-          dmg: baseDmg,
-          weakened,
-          purple: true,
-          slowedByLegacy: false
-        });
-        game.shotsFired++;
-      }
-      game.synth.playPurpleBullet(weakened);
-      return;
-    }
-  }
-
   p.fireCooldown = FIRE_COOLDOWN;
-
-  if (game.powerup.type === 'CYAN' && game.powerup.timer > 0) {
-    fireHomingMissiles(game, shipOffsets, baseDmg, weakened);
-  } else if (game.powerup.type === 'RED' && game.powerup.timer > 0) {
-    // Red Continuous Laser runs every frame in updateContinuousLaserBeams()
-    return;
-  } else {
-    for (const ox of shipOffsets) {
-      game.playerBullets.push({
-        x: p.x + ox,
-        y: p.y - 16,
-        vy: -PLAYER_BULLET_SPEED,
-        dmg: baseDmg,
-        weakened,
-        purple: false,
-        slowedByLegacy: false
-      });
-      game.shotsFired++;
-    }
-    game.synth.playLaser(weakened);
+  for (const ox of shipOffsets) {
+    game.playerBullets.push({
+      x: p.x + ox,
+      y: p.y - 16,
+      vy: -PLAYER_BULLET_SPEED,
+      dmg: baseDmg,
+      weakened,
+      purple: false,
+      redLaserBullet: false,
+      slowedByLegacy: false,
+      dissolveTimer: 0,
+      dissolveMax: 0
+    });
+    game.shotsFired++;
   }
+  game.synth.playLaser(weakened);
+}
+
+function fireSingleArcWave(game) {
+  const p = game.player;
+  const aw = game.arcWaveState;
+  if (aw.phase === 'CANNON_READY' || aw.phase === 'CANNON_CHARGING' || !hasPowerup(game, 'PURPLE')) {
+    return false;
+  }
+
+  aw.wavesFired++;
+  aw.phase = 'ACTIVE';
+  p.arcWaveCooldown = game.autoFire ? ARC_WAVE_INTERVAL : ARC_WAVE_MANUAL_COOLDOWN;
+  spawnArcWaveFromPlayer(game);
+
+  const remaining = Math.max(0, ARC_WAVE_MAX - aw.wavesFired);
+  game.powerup.slots.PURPLE = (remaining / ARC_WAVE_MAX) * POWERUP_MAX_ENERGY;
+
+  if (aw.wavesFired >= ARC_WAVE_MAX) {
+    // Ready for double-tap / double-click Cannon Shot finisher!
+    aw.phase = 'CANNON_READY';
+    aw.cannonTapGrace = 0.22;
+    game.spawnPopup(p.x, p.y - 36, 'CANNON PRIMED! 2x TAP!', COLORS.purpleBright, 1.4);
+  } else {
+    game.spawnPopup(p.x, p.y - 32, `ARC WAVE ${aw.wavesFired}/${ARC_WAVE_MAX}`, COLORS.purpleBright, 0.95);
+  }
+  return true;
 }
 
 export function damagePlayer(game) {
   const p = game.player;
   if (!p.alive || p.invulnTimer > 0) return;
 
+  const active = getActivePowerups(game);
+  const lead = active[0] || null;
+  const shipCol = lead === 'RED'
+    ? COLORS.aresRed
+    : (lead === 'PURPLE' ? COLORS.purple : (lead === 'CYAN' ? COLORS.cyan : '#ffffff'));
+
   if (p.dual) {
     p.dual = false;
     p.invulnTimer = 1.6;
     game.activeLaserBeams = [];
     game.shake = 0.24;
-    game.spawnDerez(p.x + 14, p.y, COLORS.cyan, 20, 180);
+    game.spawnDerez(p.x + 14, p.y, shipCol, 20, 180);
     game.spawnPopup(p.x, p.y - 24, 'WINGMAN DEREZZED', COLORS.amber, 1.2);
     game.synth.playDerez(true);
     return;
   }
 
+  // Dying preserves all conserved/stacked power-ups! Only pause live laser visuals during respawn.
   p.alive = false;
   p.respawnTimer = 1.75;
+  p.vibrateAmp = 0;
+  p.missileVibTimer = 0;
   p.slowTimer = 0;
   p.dmgDebuffTimer = 0;
-  game.powerup.type = null;
-  game.powerup.timer = 0;
-  resetArcWaveState(game);
-  game.arcWaveState.auraFade = 0;
   game.redLaserActive = false;
   game.redLaserPulseTimer = 0;
   game.activeLaserBeams = [];
@@ -142,7 +139,7 @@ export function damagePlayer(game) {
   game.lives--;
   game.shake = 0.34;
   game.hitStop = 0.05;
-  game.spawnDerez(p.x, p.y, COLORS.cyan, 30, 225);
+  game.spawnDerez(p.x, p.y, shipCol, 30, 225);
   game.synth.playDerez(true);
   game.updateHUD();
   game.updateStatusPills();
@@ -176,11 +173,14 @@ export function applyRibbonDebuff(game, variant) {
 
 export function updatePlayer(game, dt) {
   const p = game.player;
+  const aw = game.arcWaveState;
+
   if (!p.alive && game.lives > 0) {
     p.respawnTimer -= dt;
     if (p.respawnTimer <= 0) {
       p.alive = true;
       p.x = LOGICAL_W * 0.5;
+      p.y = PLAYER_DEFAULT_Y;
       p.invulnTimer = 2.0;
     }
   }
@@ -188,48 +188,91 @@ export function updatePlayer(game, dt) {
   if (p.slowTimer > 0) p.slowTimer = Math.max(0, p.slowTimer - dt);
   if (p.dmgDebuffTimer > 0) p.dmgDebuffTimer = Math.max(0, p.dmgDebuffTimer - dt);
   if (p.fireCooldown > 0) p.fireCooldown = Math.max(0, p.fireCooldown - dt);
+  if (p.laserTickCooldown > 0) p.laserTickCooldown = Math.max(0, p.laserTickCooldown - dt);
+  if (p.arcWaveCooldown > 0) p.arcWaveCooldown = Math.max(0, p.arcWaveCooldown - dt);
+  if (p.missileVibTimer > 0) p.missileVibTimer = Math.max(0, p.missileVibTimer - dt);
+  if (aw.cannonTapGrace > 0) aw.cannonTapGrace = Math.max(0, aw.cannonTapGrace - dt);
   if (game.tapFireBuffer > 0) game.tapFireBuffer = Math.max(0, game.tapFireBuffer - dt);
 
   if (!p.alive || p.capturedById) {
+    p.vibrateAmp = 0;
     game.redLaserActive = false;
     game.activeLaserBeams = [];
+    game.freshFirePress = false;
     return;
   }
 
-  // Keyboard & Directional Pads
-  let move = 0;
-  if (game.keys.has('ArrowLeft') || game.keys.has('KeyA')) move -= 1;
-  if (game.keys.has('ArrowRight') || game.keys.has('KeyD')) move += 1;
-  for (const d of game.dirPointerMap.values()) {
-    if (d === 'LEFT') move -= 1;
-    if (d === 'RIGHT') move += 1;
-  }
-  move = clamp(move, -1, 1);
+  // Free 2D Touhou-style movement in the bottom 2/5ths of the arena (WASD / Arrow Keys)
+  let moveX = 0;
+  let moveY = 0;
+  if (game.keys.has('ArrowLeft') || game.keys.has('KeyA')) moveX -= 1;
+  if (game.keys.has('ArrowRight') || game.keys.has('KeyD')) moveX += 1;
+  if (game.keys.has('ArrowUp') || game.keys.has('KeyW')) moveY -= 1;
+  if (game.keys.has('ArrowDown') || game.keys.has('KeyS')) moveY += 1;
 
-  if (move !== 0) {
+  if (moveX !== 0 && moveY !== 0) {
+    const inv = 1 / Math.SQRT2;
+    moveX *= inv;
+    moveY *= inv;
+  }
+
+  if (moveX !== 0 || moveY !== 0) {
     const slowMult = p.slowTimer > 0 ? 0.45 : 1.0;
-    p.x += move * PLAYER_SPEED * slowMult * dt;
-    clampPlayerX(game);
+    p.x += moveX * PLAYER_SPEED * slowMult * dt;
+    p.y += moveY * PLAYER_SPEED * slowMult * dt;
+    clampPlayerPosition(game);
   }
 
-  // Update Drag Trackpad thumb indicator
-  if (game.dragThumb) {
-    const pct = clamp((p.x / LOGICAL_W) * 100, 7, 93);
-    game.dragThumb.style.left = `${pct}%`;
-  }
-
-  // Firing check (Uncapped cooldown + Hold-to-fire + Tap buffer + Explicit Auto-Fire)
+  // Firing check (Manual Hold / Tap Buffer / Explicit Auto-Fire — never drains while idle!)
   const manualHold =
     game.keys.has('Space') ||
     game.keys.has('KeyZ') ||
+    game.keys.has('KeyJ') ||
     game.firePointerIds.size > 0;
-  const autoActive = game.autoFire && (game.controlMode !== 'DRAG' || game.dragActive);
+  const inBannerOrCleared =
+    game.sectorPhase === 'BANNER' ||
+    game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CLEARED';
+  const autoActive = game.autoFire && !inBannerOrCleared;
+  const wantsFire = manualHold || autoActive || game.tapFireBuffer > 0;
 
-  if (game.powerup.type === 'RED' && game.powerup.timer > 0) {
-    // True Continuous Laser: active flag updated here; raycast runs after all movement
+  // Double-Tap / Double-Click Purple Cannon Finisher State Machine
+  if (aw.phase === 'CANNON_READY') {
+    if ((game.freshFirePress || autoActive) && aw.cannonTapGrace <= 0) {
+      // Tap 1: Violent vibration + bright purple overcharge + 3.0s auto-fire countdown
+      aw.phase = 'CANNON_CHARGING';
+      aw.cannonTimer = CANNON_AUTO_FIRE_DELAY;
+      aw.cannonTapGrace = 0.16;
+      game.synth.playCannonCharge();
+      game.spawnPopup(p.x, p.y - 38, 'OVERCHARGE! TAP AGAIN!', COLORS.purpleBright, 1.35);
+      game.freshFirePress = false;
+    }
+  } else if (aw.phase === 'CANNON_CHARGING') {
+    if (game.freshFirePress && aw.cannonTapGrace <= 0) {
+      // Tap 2: Immediately fire AOE Cannon Shot!
+      fireCannonShot(game);
+      aw.auraFade = 0.55;
+      removePowerupSlot(game, 'PURPLE', true);
+      game.freshFirePress = false;
+    }
+  }
+
+  const hasCyan = hasPowerup(game, 'CYAN');
+  const hasRed = hasPowerup(game, 'RED');
+  const hasPurple = hasPowerup(game, 'PURPLE');
+  const purplePendingCannon = aw.phase === 'CANNON_READY' || aw.phase === 'CANNON_CHARGING';
+  const hasAnyPowerup = hasCyan || hasRed || hasPurple || purplePendingCannon;
+
+  const weakened = p.dmgDebuffTimer > 0;
+  const baseDmg = weakened ? 0.8 : 1.0;
+  const shipOffsets = p.dual ? [-14, 14] : [0];
+  let consumedTap = false;
+
+  // 1) Red Continuous Laser layer (stacks simultaneously with Cyan & Purple!)
+  if (hasRed) {
     if (game.tapFireBuffer > 0) {
       game.redLaserPulseTimer = Math.max(game.redLaserPulseTimer, FIRE_COOLDOWN);
-      game.tapFireBuffer = 0;
+      consumedTap = true;
     }
     if (manualHold || autoActive) {
       game.redLaserActive = true;
@@ -242,9 +285,42 @@ export function updatePlayer(game, dt) {
   } else {
     game.redLaserActive = false;
     game.activeLaserBeams = [];
-    if ((manualHold || autoActive || game.tapFireBuffer > 0) && p.fireCooldown <= 0) {
-      firePlayerWeapon(game);
-      game.tapFireBuffer = 0;
+  }
+
+  // 2) Cyan Homing Missiles layer (50 volleys, slight fighter vibration!)
+  if (hasCyan && wantsFire && p.fireCooldown <= 0) {
+    p.fireCooldown = FIRE_COOLDOWN;
+    p.missileVibTimer = 0.16;
+    fireHomingMissiles(game, shipOffsets, baseDmg, weakened);
+    consumePowerupEnergy(game, 'CYAN', CYAN_SHOT_ENERGY_COST);
+    consumedTap = true;
+  }
+
+  // 3) Purple Arc Wave layer (9 wide waves, stacks simultaneously with Cyan & Red!)
+  if (hasPurple && wantsFire && p.arcWaveCooldown <= 0 && !purplePendingCannon) {
+    if (fireSingleArcWave(game)) {
+      consumedTap = true;
     }
   }
+
+  // 4) Standard White Pulse Cannon (only when no power-ups are loaded)
+  if (!hasAnyPowerup && wantsFire && p.fireCooldown <= 0) {
+    fireStandardWhiteBullets(game, shipOffsets, baseDmg, weakened);
+    consumedTap = true;
+  }
+
+  if (consumedTap) {
+    game.tapFireBuffer = 0;
+  }
+  game.freshFirePress = false;
+
+  // Compute Fighter Vibration Amplitude (subtle for Laser/Missiles, violent for Cannon Overcharge!)
+  let vib = 0;
+  if (game.redLaserActive) vib = Math.max(vib, 1.45);
+  if (p.missileVibTimer > 0) vib = Math.max(vib, 1.35);
+  if (aw.phase === 'CANNON_CHARGING') {
+    const urgency = 1 - clamp(aw.cannonTimer / CANNON_AUTO_FIRE_DELAY, 0, 1);
+    vib = Math.max(vib, 3.6 + urgency * 1.9);
+  }
+  p.vibrateAmp = vib;
 }

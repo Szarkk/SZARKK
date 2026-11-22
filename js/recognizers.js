@@ -9,16 +9,17 @@ import {
   ELITE_SURGE_INTERVAL,
   LOGICAL_H,
   LOGICAL_W,
+  MASTER_SURGE_CHANCE,
   RIBBON_LIFETIME,
   TRACTOR_APPROACH_DUR,
   TRACTOR_BEAM_DUR,
+  TRACTOR_BEAM_Y,
   TRACTOR_CAPTURE_RADIUS,
   TRACTOR_LIFT_DUR,
   TRACTOR_PULL_RADIUS,
   TRACTOR_RETRY_DELAY
 } from './config.js';
 import { clamp, distToSeg, evalCubic, lerp } from './utils.js';
-import { resetArcWaveState } from './powerups.js';
 
 export function startRecognizerBeam(game, rec) {
   rec.state = 'BEAM_APPROACH';
@@ -26,16 +27,18 @@ export function startRecognizerBeam(game, rec) {
   rec.beamApproachT = 0;
   rec.beamStartX = rec.x;
   rec.beamStartY = rec.y;
-  // Flank wide away from the player's current fire line before curving into beam lock
-  const flankDir = rec.x < game.player.x ? -1 : 1;
-  rec.beamFlankX = clamp(game.player.x + flankDir * 115, 56, LOGICAL_W - 56);
+  // Lock target lane ONCE at launch so the Recognizer swoops to a fixed column and never chases the player
+  rec.beamTargetX = clamp(game.player.x, 60, LOGICAL_W - 60);
+  // Flank wide away from the target fire line before curving into the fixed beam lane
+  const flankDir = rec.x < rec.beamTargetX ? -1 : 1;
+  rec.beamFlankX = clamp(rec.beamTargetX + flankDir * 115, 56, LOGICAL_W - 56);
   game.activeBeamBoss = rec;
   game.spawnPopup(rec.x, rec.y - 24, 'TRACTOR BEAM!', COLORS.cyan, 1.15);
 }
 
 export function updateRecognizerBeamApproach(game, e, dt) {
-  const targetY = LOGICAL_H - 204;
-  const targetX = clamp(game.player.x, 56, LOGICAL_W - 56);
+  const targetY = TRACTOR_BEAM_Y;
+  const targetX = e.beamTargetX;
   e.beamApproachT = Math.min(1, e.beamApproachT + dt / TRACTOR_APPROACH_DUR);
   const pos = evalCubic([
     { x: e.beamStartX, y: e.beamStartY },
@@ -47,6 +50,7 @@ export function updateRecognizerBeamApproach(game, e, dt) {
   e.y = pos.y;
 
   if (e.beamApproachT >= 1) {
+    e.x = targetX;
     e.y = targetY;
     e.beamShield = 0;
     e.state = 'BEAMING';
@@ -58,14 +62,20 @@ export function updateRecognizerBeaming(game, e, dt) {
   const p = game.player;
   e.beamTimer -= dt;
 
-  if (p.alive && !p.dual && !p.capturedById && p.invulnTimer <= 0) {
+  if (p.alive && !p.dual && !p.capturedById && p.invulnTimer <= 0 && p.y > e.y + 12) {
+    const topY = e.y + 12;
+    const botY = LOGICAL_H - 18;
+    const depth = clamp((p.y - topY) / Math.max(1, botY - topY), 0, 1);
+    const pullRadius = lerp(22, TRACTOR_PULL_RADIUS, depth);
+    const captureRadius = lerp(16, TRACTOR_CAPTURE_RADIUS, depth);
     const dx = e.x - p.x;
-    // Gentle magnetic pull inside the beam cone, then full kidnapping capture
-    if (Math.abs(dx) < TRACTOR_PULL_RADIUS) {
-      p.x += dx * 3.8 * dt;
-      game.clampPlayerX();
+
+    // Gentle magnetic pull inside the beam cone, easily escapable at the edges
+    if (Math.abs(dx) < pullRadius) {
+      p.x += dx * 2.2 * dt;
+      game.clampPlayerPosition();
     }
-    if (Math.abs(e.x - p.x) < TRACTOR_CAPTURE_RADIUS) {
+    if (Math.abs(e.x - p.x) < captureRadius) {
       p.capturedById = e.id;
       e.hasCapturedShip = true;
       game.redLaserActive = false;
@@ -92,12 +102,10 @@ export function updateRecognizerBeaming(game, e, dt) {
       p.capturedById = null;
       p.alive = false;
       p.respawnTimer = 1.5;
+      p.vibrateAmp = 0;
+      p.missileVibTimer = 0;
       p.slowTimer = 0;
       p.dmgDebuffTimer = 0;
-      game.powerup.type = null;
-      game.powerup.timer = 0;
-      resetArcWaveState(game);
-      game.arcWaveState.auraFade = 0;
       game.redLaserActive = false;
       game.redLaserPulseTimer = 0;
       game.activeLaserBeams = [];
@@ -154,10 +162,12 @@ export function spawnLightwing(
   forcedSide = null,
   spawnOffsetX = 0
 ) {
-  const isAres = boss.type === 'ARES_REC';
+  const isAres = boss.type === 'ARES_REC' || boss.type === 'MASTER_ARES_REC';
+  const isMaster = boss.type === 'MASTER_LEGACY_REC' || boss.type === 'MASTER_ARES_REC';
   game.synth.playLightwingLaunch(isAres);
 
-  if (allowSurge && boss.wingSurgeQueue <= 0 && Math.random() < ELITE_SURGE_CHANCE) {
+  const surgeChance = isMaster ? MASTER_SURGE_CHANCE : ELITE_SURGE_CHANCE;
+  if (allowSurge && boss.wingSurgeQueue <= 0 && Math.random() < surgeChance) {
     const extraCount = 2 + Math.floor(Math.random() * 3); // 2, 3, or 4
     boss.wingSurgeQueue = extraCount;
     boss.wingSurgeTimer = ELITE_SURGE_INTERVAL;
@@ -185,15 +195,18 @@ export function spawnLightwing(
   const spread = surgeOffsetIdx * 18 * (surgeOffsetIdx % 2 === 0 ? 1 : -1);
 
   if (isAres) {
+    // Double-length 90-degree crimson grid ribbon across 3 corridor tiers (~1080px span, 4.8s lifetime)
     const startX = clamp(boss.x + spawnOffsetX + spread * 0.4, 54, LOGICAL_W - 54);
     const startY = boss.y + 20;
     const dirX = forcedSide !== null
       ? forcedSide
       : ((startX < LOGICAL_W * 0.5 ? 1 : -1) * (surgeOffsetIdx % 2 === 1 ? -1 : 1));
-    const dropY1 = clamp(230 + Math.random() * 115 + surgeOffsetIdx * 14, 210, 385);
-    const crossX = clamp(startX + dirX * (145 + Math.random() * 145), 44, LOGICAL_W - 44);
-    const dropY2 = clamp(LOGICAL_H - 94 - Math.random() * 54, 455, LOGICAL_H - 82);
-    const exitX = dirX > 0 ? -36 : LOGICAL_W + 36;
+    const dropY1 = clamp(210 + Math.random() * 75 + surgeOffsetIdx * 10, 195, 310);
+    const crossX1 = clamp(startX + dirX * (160 + Math.random() * 145), 42, LOGICAL_W - 42);
+    const dropY2 = clamp(dropY1 + 115 + Math.random() * 50, 345, 450);
+    const crossX2 = clamp(crossX1 - dirX * (175 + Math.random() * 140), 42, LOGICAL_W - 42);
+    const dropY3 = clamp(LOGICAL_H - 72 - Math.random() * 44, 505, LOGICAL_H - 64);
+    const exitX = dirX > 0 ? LOGICAL_W + 38 : -38;
 
     game.lightwings.push({
       variant: 'ARES',
@@ -208,22 +221,36 @@ export function spawnLightwing(
       angle: Math.PI / 2,
       waypoints: [
         { x: startX, y: dropY1 },
-        { x: crossX, y: dropY1 },
-        { x: crossX, y: dropY2 },
-        { x: exitX, y: dropY2 }
+        { x: crossX1, y: dropY1 },
+        { x: crossX1, y: dropY2 },
+        { x: crossX2, y: dropY2 },
+        { x: crossX2, y: dropY3 },
+        { x: exitX, y: dropY3 }
       ],
       wpIndex: 0
     });
   } else {
+    // Double-length connected double-S cyan curve sweep (~1500px span, 4.8s lifetime)
     const startX = clamp(boss.x + spawnOffsetX, 44, LOGICAL_W - 44);
     const startY = boss.y + 20;
     const sweepRight = forcedSide !== null
       ? (forcedSide > 0)
       : ((startX < LOGICAL_W * 0.5) !== (surgeOffsetIdx % 2 === 1));
-    const p0 = { x: startX, y: startY };
-    const p1 = { x: clamp((sweepRight ? 395 : 85) + spread, 40, LOGICAL_W - 40), y: 255 + surgeOffsetIdx * 12 };
-    const p2 = { x: clamp((sweepRight ? 95 : 385) - spread, 40, LOGICAL_W - 40), y: LOGICAL_H - 64 };
-    const p3 = { x: sweepRight ? LOGICAL_W + 40 : -40, y: LOGICAL_H - 175 };
+    const midX = clamp((sweepRight ? 105 : 375) - spread * 0.5, 44, LOGICAL_W - 44);
+    const midY = 395 + (surgeOffsetIdx % 2) * 24;
+
+    const curve1 = [
+      { x: startX, y: startY },
+      { x: clamp((sweepRight ? 415 : 65) + spread, 36, LOGICAL_W - 36), y: 215 + surgeOffsetIdx * 10 },
+      { x: clamp((sweepRight ? 370 : 110) + spread * 0.5, 36, LOGICAL_W - 36), y: 345 },
+      { x: midX, y: midY }
+    ];
+    const curve2 = [
+      { x: midX, y: midY },
+      { x: clamp((sweepRight ? 58 : 422), 36, LOGICAL_W - 36), y: 500 },
+      { x: clamp((sweepRight ? 408 : 72) - spread * 0.4, 36, LOGICAL_W - 36), y: LOGICAL_H - 52 },
+      { x: sweepRight ? LOGICAL_W + 42 : -42, y: LOGICAL_H - 165 }
+    ];
 
     game.lightwings.push({
       variant: 'LEGACY',
@@ -235,9 +262,10 @@ export function spawnLightwing(
       hp: 1,
       maxHp: 1,
       angle: Math.PI / 2,
-      curve: [p0, p1, p2, p3],
+      curves: [curve1, curve2],
+      curveIdx: 0,
       t: 0,
-      dur: 2.85
+      dur: 2.35
     });
   }
 }
@@ -282,10 +310,14 @@ export function updateLightwingsAndRibbons(game, dt) {
 
     if (lw.variant === 'LEGACY') {
       lw.t += dt / lw.dur;
+      while (lw.t >= 1 && lw.curveIdx < lw.curves.length - 1) {
+        lw.t -= 1;
+        lw.curveIdx++;
+      }
       if (lw.t >= 1) {
         finished = true;
       } else {
-        const pos = evalCubic(lw.curve, lw.t);
+        const pos = evalCubic(lw.curves[lw.curveIdx], lw.t);
         lw.x = pos.x;
         lw.y = pos.y;
         if (Math.hypot(lw.x - prevX, lw.y - prevY) > 0.1) {

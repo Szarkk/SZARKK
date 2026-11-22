@@ -1,5 +1,6 @@
 /* =========================================================================
-   POWER-UP CAPSULES (CYAN HOMING / RED LASER / PURPLE ARC WAVE)
+   STACKABLE POWER-UP CAPSULES (CYAN HOMING / RED LASER / PURPLE ARC WAVE)
+   Different power-ups stack simultaneously; same type refills its gauge to 100%.
    Capsules float randomly inside the mid-arena and are activated by shooting them.
    ========================================================================= */
 
@@ -9,7 +10,7 @@ import {
   COLORS,
   LOGICAL_H,
   LOGICAL_W,
-  POWERUP_DURATION,
+  POWERUP_MAX_ENERGY,
   POWERUP_START_SECTOR,
   PURPLE_POWERUP_START_SECTOR
 } from './config.js';
@@ -17,18 +18,22 @@ import { clamp } from './utils.js';
 
 export function createPowerupState() {
   return {
-    type: null, // null | 'CYAN' | 'RED' | 'PURPLE'
-    timer: 0,
-    maxTimer: POWERUP_DURATION
+    slots: {
+      CYAN: 0,
+      RED: 0,
+      PURPLE: 0
+    },
+    order: [] // Active distinct power-up types in collection order
   };
 }
 
 export function createArcWaveState() {
   return {
-    phase: 'IDLE', // IDLE | READY | ACTIVE | FINISHING | CANNON_AURA
+    phase: 'IDLE', // IDLE | READY | ACTIVE | CANNON_READY | CANNON_CHARGING
     wavesFired: 0,
     waveTimer: 0,
     triggerGrace: 0,
+    cannonTapGrace: 0,
     firedBulletDuringWaves: false,
     cannonTimer: 0,
     auraFade: 0
@@ -41,8 +46,70 @@ export function resetArcWaveState(game) {
   aw.wavesFired = 0;
   aw.waveTimer = 0;
   aw.triggerGrace = 0;
+  aw.cannonTapGrace = 0;
   aw.firedBulletDuringWaves = false;
   aw.cannonTimer = 0;
+}
+
+export function hasPowerup(game, type) {
+  return (game.powerup.slots[type] || 0) > 0;
+}
+
+export function getActivePowerups(game) {
+  const awPhase = game.arcWaveState.phase;
+  return game.powerup.order.filter((type) => {
+    if (type === 'PURPLE' && (awPhase === 'CANNON_READY' || awPhase === 'CANNON_CHARGING')) return true;
+    return (game.powerup.slots[type] || 0) > 0;
+  });
+}
+
+export function clearActivePowerup(game) {
+  game.powerup.slots.CYAN = 0;
+  game.powerup.slots.RED = 0;
+  game.powerup.slots.PURPLE = 0;
+  game.powerup.order = [];
+  resetArcWaveState(game);
+  game.arcWaveState.auraFade = 0;
+  game.redLaserActive = false;
+  game.redLaserPulseTimer = 0;
+  game.activeLaserBeams = [];
+}
+
+export function removePowerupSlot(game, type, silent = false) {
+  game.powerup.slots[type] = 0;
+  game.powerup.order = game.powerup.order.filter(t => t !== type);
+
+  if (type === 'RED') {
+    game.redLaserActive = false;
+    game.redLaserPulseTimer = 0;
+    game.activeLaserBeams = [];
+  } else if (type === 'PURPLE') {
+    resetArcWaveState(game);
+  }
+
+  if (!silent) {
+    const remaining = getActivePowerups(game);
+    if (remaining.length === 0) {
+      game.spawnPopup(game.player.x, game.player.y - 28, 'STANDARD PULSE RESTORED', COLORS.white, 1.1);
+    } else {
+      const label = type === 'CYAN' ? 'HOMING EMPTY' : (type === 'RED' ? 'LASER EMPTY' : 'ARC WAVE EMPTY');
+      const col = type === 'CYAN' ? COLORS.cyan : (type === 'RED' ? COLORS.aresRed : COLORS.purpleBright);
+      game.spawnPopup(game.player.x, game.player.y - 28, label, col, 0.95);
+    }
+  }
+}
+
+export function consumePowerupEnergy(game, type, amount) {
+  if (!hasPowerup(game, type)) return false;
+  game.powerup.slots[type] = Math.max(0, game.powerup.slots[type] - amount);
+  if (game.powerup.slots[type] <= 0.001) {
+    game.powerup.slots[type] = 0;
+    if (type !== 'PURPLE') {
+      removePowerupSlot(game, type, false);
+    }
+    return true;
+  }
+  return false;
 }
 
 export function pickRandomCapsuleType(sector) {
@@ -53,40 +120,53 @@ export function pickRandomCapsuleType(sector) {
 }
 
 export function rollEnemyCapsuleDrop(game, enemy) {
-  // Strictly NO power-ups before Sector 05 (Sectors 01-03 + Ch.1 Sec 04 have none)
-  if (game.sector < POWERUP_START_SECTOR) return;
+  const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+  // Strictly NO power-ups before effective Sector 05 (Hard Mode starts at eff. Sec 21 so all unlock immediately!)
+  if (effSec < POWERUP_START_SECTOR) return;
 
-  const allowPurple = game.sector >= PURPLE_POWERUP_START_SECTOR;
-  const r = Math.random();
-  let dropType = null;
+  const allowPurple = effSec >= PURPLE_POWERUP_START_SECTOR;
+  const drops = [];
 
-  if (enemy.type === 'LEGACY_REC') {
-    // Legacy Recognizer: Cyan 10%, Red 2%, Purple 2% (Sector 07+)
-    if (r < 0.10) dropType = 'CYAN';
-    else if (r < 0.12) dropType = 'RED';
-    else if (allowPurple && r < 0.14) dropType = 'PURPLE';
+  if (enemy.type === 'MASTER_LEGACY_REC') {
+    // Master Legacy Recognizer: Independent rolls — 50% Cyan, 10% Red, 30% Purple (Sec 07+)
+    if (Math.random() < 0.50) drops.push('CYAN');
+    if (Math.random() < 0.10) drops.push('RED');
+    if (allowPurple && Math.random() < 0.30) drops.push('PURPLE');
+  } else if (enemy.type === 'MASTER_ARES_REC') {
+    // Master Ares Recognizer: Independent rolls — 50% Red, 10% Cyan, 30% Purple (Sec 07+)
+    if (Math.random() < 0.50) drops.push('RED');
+    if (Math.random() < 0.10) drops.push('CYAN');
+    if (allowPurple && Math.random() < 0.30) drops.push('PURPLE');
+  } else if (enemy.type === 'LEGACY_REC') {
+    // Elite Legacy Recognizer: Cyan 10%, Red 2%, Purple 2% (Sector 07+)
+    const r = Math.random();
+    if (r < 0.10) drops.push('CYAN');
+    else if (r < 0.12) drops.push('RED');
+    else if (allowPurple && r < 0.14) drops.push('PURPLE');
   } else if (enemy.type === 'ARES_REC') {
-    // Ares Recognizer: Red 10%, Cyan 2%, Purple 2% (Sector 07+)
-    if (r < 0.10) dropType = 'RED';
-    else if (r < 0.12) dropType = 'CYAN';
-    else if (allowPurple && r < 0.14) dropType = 'PURPLE';
+    // Elite Ares Recognizer: Red 10%, Cyan 2%, Purple 2% (Sector 07+)
+    const r = Math.random();
+    if (r < 0.10) drops.push('RED');
+    else if (r < 0.12) drops.push('CYAN');
+    else if (allowPurple && r < 0.14) drops.push('PURPLE');
   } else if (enemy.type === 'CLASSIC_REC') {
     // Classic Recognizers: 1% total drop chance
-    if (r < 0.01) dropType = pickRandomCapsuleType(game.sector);
+    if (Math.random() < 0.01) drops.push(pickRandomCapsuleType(effSec));
   } else {
     // Normal ships (Bit-Drones, Grid-Interceptors): 0.1% drop chance
-    if (r < 0.001) dropType = pickRandomCapsuleType(game.sector);
+    if (Math.random() < 0.001) drops.push(pickRandomCapsuleType(effSec));
   }
 
-  if (dropType) {
+  drops.forEach((dropType, idx) => {
+    const spreadX = drops.length > 1 ? (idx - (drops.length - 1) * 0.5) * 32 : 0;
     // Materializes 1.0 second after enemy is destroyed
     game.pendingCapsuleDrops.push({
-      x: clamp(enemy.x, 34, LOGICAL_W - 34),
+      x: clamp(enemy.x + spreadX, 42, LOGICAL_W - 42),
       y: clamp(enemy.y, 60, LOGICAL_H - 120),
       type: dropType,
-      timer: CAPSULE_DROP_DELAY
+      timer: CAPSULE_DROP_DELAY + idx * 0.12
     });
-  }
+  });
 }
 
 export function spawnCapsule(game, x, y, type, mode = 'DROP') {
@@ -162,67 +242,52 @@ export function destroyAndCollectCapsule(game, capIdx) {
 }
 
 export function collectCapsule(game, cap) {
-  const sameType = game.powerup.type === cap.type && (
-    cap.type === 'PURPLE' ? game.arcWaveState.phase !== 'IDLE' : game.powerup.timer > 0
-  );
+  const activeBefore = getActivePowerups(game);
+  const alreadyHasSame = activeBefore.includes(cap.type);
+  const isStacking = !alreadyHasSame && activeBefore.length > 0;
 
   game.synth.playPowerupPickup(cap.type);
   const col = cap.type === 'CYAN' ? COLORS.cyan : (cap.type === 'PURPLE' ? COLORS.purple : COLORS.aresRed);
   game.spawnDerez(cap.x, cap.y, col, 16, 150);
 
+  if (!game.powerup.order.includes(cap.type)) {
+    game.powerup.order.push(cap.type);
+  }
+  game.powerup.slots[cap.type] = POWERUP_MAX_ENERGY;
+
   if (cap.type === 'PURPLE') {
-    game.powerup.type = 'PURPLE';
-    game.powerup.timer = 0;
-    game.redLaserActive = false;
-    game.redLaserPulseTimer = 0;
-    game.activeLaserBeams = [];
     game.arcWaveState.phase = 'READY';
     game.arcWaveState.wavesFired = 0;
     game.arcWaveState.waveTimer = 0;
     game.arcWaveState.triggerGrace = 0;
+    game.arcWaveState.cannonTapGrace = 0;
     game.arcWaveState.firedBulletDuringWaves = false;
     game.arcWaveState.cannonTimer = 0;
-    game.spawnPopup(
-      game.player.x,
-      game.player.y - 34,
-      sameType ? 'ARC WAVE RESET!' : 'ARC WAVE READY!',
-      COLORS.purpleBright,
-      1.4
-    );
+    const label = alreadyHasSame
+      ? 'ARC WAVE RECHARGED!'
+      : (isStacking ? 'STACKED // ARC WAVE!' : 'ARC WAVE CHARGED!');
+    game.spawnPopup(game.player.x, game.player.y - 34, label, COLORS.purpleBright, 1.4);
+  } else if (cap.type === 'CYAN') {
+    const label = alreadyHasSame
+      ? 'HOMING RECHARGED 100%'
+      : (isStacking ? 'STACKED // HOMING!' : 'HOMING MISSILES!');
+    game.spawnPopup(game.player.x, game.player.y - 34, label, col, 1.35);
   } else {
-    resetArcWaveState(game);
-    game.powerup.type = cap.type;
-    game.powerup.timer = POWERUP_DURATION;
-    game.powerup.maxTimer = POWERUP_DURATION;
-    if (cap.type !== 'RED') {
-      game.redLaserActive = false;
-      game.redLaserPulseTimer = 0;
-      game.activeLaserBeams = [];
-    }
-
-    const label = sameType
-      ? (cap.type === 'CYAN' ? 'HOMING RESET 6.0S' : 'LASER RESET 6.0S')
-      : (cap.type === 'CYAN' ? 'HOMING MISSILES!' : 'CONTINUOUS LASER!');
+    const label = alreadyHasSame
+      ? 'LASER RECHARGED 100%'
+      : (isStacking ? 'STACKED // LASER!' : 'CONTINUOUS LASER!');
     game.spawnPopup(game.player.x, game.player.y - 34, label, col, 1.35);
   }
+
   game.updateStatusPills();
 }
 
-export function updatePowerupTimers(game, dt) {
-  if ((game.powerup.type === 'CYAN' || game.powerup.type === 'RED') && game.powerup.timer > 0) {
-    game.powerup.timer = Math.max(0, game.powerup.timer - dt);
-    if (game.powerup.timer <= 0) {
-      game.spawnPopup(game.player.x, game.player.y - 28, 'STANDARD PULSE RESTORED', COLORS.cyan, 1.1);
-      game.powerup.type = null;
-      game.redLaserActive = false;
-      game.redLaserPulseTimer = 0;
-      game.activeLaserBeams = [];
-    }
-  }
+export function updatePowerupTimers(_game, _dt) {
+  // Power-ups are gauge-based and conserved until manually fired (or AUTO:ON).
 }
 
 export function updatePowerupCapsules(game, dt) {
-  // 1) Process 50% per-sector Floating Capsule spawn (Sector 05+; Purple from Sector 07+)
+  // 1) Process 66% per-sector Floating Capsule spawn (Sector 05+; Purple from Sector 07+)
   if (
     game.floatingCapsulePlan &&
     !game.floatingCapsulePlan.spawned &&
@@ -231,7 +296,8 @@ export function updatePowerupCapsules(game, dt) {
     game.floatingCapsulePlan.timer -= dt;
     if (game.floatingCapsulePlan.timer <= 0) {
       game.floatingCapsulePlan.spawned = true;
-      const type = pickRandomCapsuleType(game.sector);
+      const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+      const type = pickRandomCapsuleType(effSec);
       spawnCapsule(game, 0, 0, type, 'FLOAT');
     }
   }
