@@ -63,6 +63,29 @@ export function drawBackground(ctx, stars, gridOffset) {
   ctx.restore();
 }
 
+const POWERUP_RGB = {
+  CYAN: { stroke: [0, 246, 255], fill: [0, 178, 224], glow: [0, 246, 255] },
+  RED: { stroke: [255, 58, 92], fill: [215, 22, 56], glow: [255, 30, 66] },
+  PURPLE: { stroke: [224, 146, 255], fill: [148, 42, 225], glow: [196, 77, 255] }
+};
+
+function sampleRgbWave(types, phase, channel, alpha = 1) {
+  const n = types.length;
+  const wrapped = ((phase % 1) + 1) % 1;
+  const scaled = wrapped * n;
+  const i0 = Math.floor(scaled) % n;
+  const i1 = (i0 + 1) % n;
+  const frac = scaled - Math.floor(scaled);
+  // Smooth cosine easing for liquid RGB keyboard wave transitions
+  const u = (1 - Math.cos(frac * Math.PI)) * 0.5;
+  const c0 = (POWERUP_RGB[types[i0]] || POWERUP_RGB.CYAN)[channel];
+  const c1 = (POWERUP_RGB[types[i1]] || POWERUP_RGB.CYAN)[channel];
+  const r = Math.round(c0[0] + (c1[0] - c0[0]) * u);
+  const g = Math.round(c0[1] + (c1[1] - c0[1]) * u);
+  const b = Math.round(c0[2] + (c1[2] - c0[2]) * u);
+  return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 export function drawPlayerFighter(
   ctx,
   x,
@@ -71,41 +94,95 @@ export function drawPlayerFighter(
   invuln = false,
   slow = false,
   time = 0,
-  powerupType = null,
-  purpleAura = false
+  activePowerups = null,
+  purpleAura = false,
+  purpleOvercharge = false
 ) {
   if (invuln && Math.floor(time * 16) % 2 === 0) return;
   const offsets = dual ? [-14, 14] : [0];
-  const accent = powerupType === 'RED'
-    ? COLORS.aresRed
-    : (powerupType === 'PURPLE' ? COLORS.purple : COLORS.cyan);
 
-  // Pulsing Purple Aura around the ship when 3 waves complete without shooting
-  if (purpleAura) {
+  const list = Array.isArray(activePowerups)
+    ? activePowerups.filter(t => POWERUP_RGB[t])
+    : (activePowerups && POWERUP_RGB[activePowerups] ? [activePowerups] : []);
+  if ((purpleAura || purpleOvercharge) && !list.includes('PURPLE')) {
+    list.push('PURPLE');
+  }
+
+  const isStacked = list.length >= 2 && !purpleOvercharge;
+  const singleType = purpleOvercharge ? 'PURPLE' : (list.length === 1 ? list[0] : null);
+
+  // Default ship is crisp WHITE; single power-up tints to match; stacked power-ups run a moving RGB wave!
+  let hullStroke = '#ffffff';
+  let hullFill = 'rgba(232, 242, 255, 0.90)';
+  let glowCol = '#ffffff';
+  let coreStroke = '#152538';
+  let wingtipLeft = null;
+  let wingtipRight = null;
+
+  if (purpleOvercharge) {
+    // Blazing bright incandescent purple when primed for 2nd tap Cannon Shot!
+    hullStroke = '#ffffff';
+    hullFill = 'rgba(218, 128, 255, 0.96)';
+    glowCol = '#f2b8ff';
+    coreStroke = '#ffffff';
+    wingtipLeft = '#ffffff';
+    wingtipRight = '#ffffff';
+  } else if (isStacked) {
+    glowCol = sampleRgbWave(list, time * 0.85, 'glow', 1);
+    coreStroke = '#ffffff';
+    wingtipLeft = sampleRgbWave(list, time * 0.85, 'stroke', 1);
+    wingtipRight = sampleRgbWave(list, time * 0.85 + 0.5, 'stroke', 1);
+  } else if (singleType === 'PURPLE') {
+    hullStroke = COLORS.purpleBright;
+    hullFill = 'rgba(138, 36, 210, 0.80)';
+    glowCol = COLORS.purple;
+    coreStroke = '#ffffff';
+    wingtipLeft = COLORS.purpleBright;
+    wingtipRight = COLORS.purpleBright;
+  } else if (singleType === 'RED') {
+    hullStroke = '#ff4b6b';
+    hullFill = 'rgba(205, 18, 52, 0.82)';
+    glowCol = COLORS.aresRed;
+    coreStroke = '#ffe4e9';
+    wingtipLeft = COLORS.aresRed;
+    wingtipRight = COLORS.aresRed;
+  } else if (singleType === 'CYAN') {
+    hullStroke = COLORS.cyan;
+    hullFill = 'rgba(0, 178, 224, 0.76)';
+    glowCol = COLORS.cyan;
+    coreStroke = '#ecffff';
+    wingtipLeft = COLORS.cyan;
+    wingtipRight = COLORS.cyan;
+  }
+
+  // Pulsing Purple Aura (intensified blinding electric violet during Cannon Overcharge!)
+  if (purpleAura || purpleOvercharge) {
     ctx.save();
-    const pulse = 0.85 + Math.sin(time * 24) * 0.15;
-    const auraR = (dual ? 36 : 26) * pulse;
-    const grad = ctx.createRadialGradient(x, y, 4, x, y, auraR + 10);
-    grad.addColorStop(0, 'rgba(235, 189, 255, 0.62)');
-    grad.addColorStop(0.55, 'rgba(196, 77, 255, 0.34)');
+    const pulse = purpleOvercharge
+      ? (0.88 + Math.sin(time * 36) * 0.16)
+      : (0.85 + Math.sin(time * 24) * 0.15);
+    const auraR = (dual ? (purpleOvercharge ? 42 : 36) : (purpleOvercharge ? 32 : 26)) * pulse;
+    const grad = ctx.createRadialGradient(x, y, 4, x, y, auraR + 14);
+    grad.addColorStop(0, purpleOvercharge ? 'rgba(255, 240, 255, 0.92)' : 'rgba(235, 189, 255, 0.62)');
+    grad.addColorStop(0.48, purpleOvercharge ? 'rgba(222, 118, 255, 0.68)' : 'rgba(196, 77, 255, 0.34)');
     grad.addColorStop(1, 'rgba(196, 77, 255, 0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.arc(x, y, auraR + 10, 0, Math.PI * 2);
+    ctx.arc(x, y, auraR + 14, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = COLORS.purpleBright;
-    ctx.shadowColor = COLORS.purple;
-    ctx.shadowBlur = 18;
-    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = purpleOvercharge ? '#ffffff' : COLORS.purpleBright;
+    ctx.shadowColor = purpleOvercharge ? '#f4c4ff' : COLORS.purple;
+    ctx.shadowBlur = purpleOvercharge ? 26 : 18;
+    ctx.lineWidth = purpleOvercharge ? 2.8 : 2.2;
     ctx.beginPath();
-    ctx.arc(x, y, auraR, time * 5, time * 5 + Math.PI * 1.45);
+    ctx.arc(x, y, auraR, time * (purpleOvercharge ? 9 : 5), time * (purpleOvercharge ? 9 : 5) + Math.PI * 1.45);
     ctx.stroke();
 
-    ctx.strokeStyle = COLORS.purple;
-    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = purpleOvercharge ? COLORS.purpleBright : COLORS.purple;
+    ctx.lineWidth = purpleOvercharge ? 2.1 : 1.6;
     ctx.beginPath();
-    ctx.arc(x, y, auraR * 0.76, -time * 6, -time * 6 + Math.PI * 1.3);
+    ctx.arc(x, y, auraR * 0.76, -time * (purpleOvercharge ? 10 : 6), -time * (purpleOvercharge ? 10 : 6) + Math.PI * 1.3);
     ctx.stroke();
     ctx.restore();
   }
@@ -113,11 +190,28 @@ export function drawPlayerFighter(
   for (const ox of offsets) {
     ctx.save();
     ctx.translate(x + ox, y);
-    ctx.strokeStyle = purpleAura ? COLORS.purpleBright : COLORS.cyan;
-    ctx.fillStyle = purpleAura ? 'rgba(38, 8, 62, 0.94)' : 'rgba(2, 26, 46, 0.92)';
-    ctx.shadowColor = accent;
-    ctx.shadowBlur = (powerupType || purpleAura) ? 16 : 11;
-    ctx.lineWidth = 1.9;
+
+    if (isStacked) {
+      // Continuously scrolling diagonal RGB-keyboard wave gradient across the fighter hull
+      const fillGrad = ctx.createLinearGradient(-13, -15, 13, 13);
+      const strokeGrad = ctx.createLinearGradient(-13, -15, 13, 13);
+      const stops = 6;
+      const scroll = -time * 0.95;
+      for (let s = 0; s <= stops; s++) {
+        const stopPos = s / stops;
+        fillGrad.addColorStop(stopPos, sampleRgbWave(list, stopPos * 0.85 + scroll, 'fill', 0.84));
+        strokeGrad.addColorStop(stopPos, sampleRgbWave(list, stopPos * 0.85 + scroll, 'stroke', 1));
+      }
+      ctx.fillStyle = fillGrad;
+      ctx.strokeStyle = strokeGrad;
+    } else {
+      ctx.strokeStyle = hullStroke;
+      ctx.fillStyle = hullFill;
+    }
+
+    ctx.shadowColor = glowCol;
+    ctx.shadowBlur = (list.length > 0 || purpleAura) ? 18 : 12;
+    ctx.lineWidth = 2.0;
 
     ctx.beginPath();
     ctx.moveTo(0, -15);
@@ -131,19 +225,18 @@ export function drawPlayerFighter(
     ctx.stroke();
 
     // Cockpit / energy core highlight
-    ctx.strokeStyle = powerupType === 'RED'
-      ? '#ff6a82'
-      : ((powerupType === 'PURPLE' || purpleAura) ? COLORS.purpleBright : '#ffffff');
-    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = coreStroke;
+    ctx.lineWidth = 1.6;
     ctx.beginPath();
     ctx.moveTo(0, -10);
     ctx.lineTo(0, 7);
     ctx.stroke();
 
     // Active power-up wingtip nodes
-    if (powerupType || purpleAura) {
-      ctx.fillStyle = purpleAura ? COLORS.purple : accent;
+    if (wingtipLeft) {
+      ctx.fillStyle = wingtipLeft;
       ctx.fillRect(-12, 6, 3, 4);
+      ctx.fillStyle = wingtipRight;
       ctx.fillRect(9, 6, 3, 4);
     }
     ctx.restore();
@@ -162,8 +255,9 @@ export function drawPlayerFighter(
 }
 
 export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
-  const isElite = e.type === 'LEGACY_REC' || e.type === 'ARES_REC';
-  const scale = overrideScale !== null ? overrideScale : (isElite ? 1.3 : 1.0);
+  const isMaster = e.type === 'MASTER_LEGACY_REC' || e.type === 'MASTER_ARES_REC';
+  const isElite = isMaster || e.type === 'LEGACY_REC' || e.type === 'ARES_REC';
+  const scale = overrideScale !== null ? overrideScale : (isMaster ? 1.45 : (isElite ? 1.3 : 1.0));
   const flash = (e.hitFlash || 0) > 0;
   const damaged = e.hp < e.maxHp;
 
@@ -171,6 +265,45 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
   ctx.translate(e.x, e.y);
   if (e.angle) ctx.rotate(e.angle);
   ctx.scale(scale, scale);
+
+  // Radiant pulsing Master-level glowing aura (respective to Cyan Legacy or Crimson Ares color)
+  if (isMaster) {
+    const isMasterAres = e.type === 'MASTER_ARES_REC';
+    const pulse = 0.88 + Math.sin(time * 7.5) * 0.12;
+    const auraR = 29 * pulse;
+    const grad = ctx.createRadialGradient(0, 0, 6, 0, 0, auraR + 7);
+    if (isMasterAres) {
+      grad.addColorStop(0, 'rgba(255, 65, 100, 0.42)');
+      grad.addColorStop(0.55, 'rgba(255, 30, 66, 0.22)');
+      grad.addColorStop(1, 'rgba(255, 30, 66, 0)');
+    } else {
+      grad.addColorStop(0, 'rgba(130, 252, 255, 0.42)');
+      grad.addColorStop(0.55, 'rgba(0, 246, 255, 0.22)');
+      grad.addColorStop(1, 'rgba(0, 246, 255, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraR + 7, 0, Math.PI * 2);
+    ctx.fill();
+
+    const ringCol = isMasterAres ? COLORS.aresRed : COLORS.cyan;
+    const brightRing = isMasterAres ? '#ff8aa0' : '#b2ffff';
+    ctx.save();
+    ctx.strokeStyle = ringCol;
+    ctx.shadowColor = ringCol;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraR * 0.92, time * 2.4, time * 2.4 + Math.PI * 1.25);
+    ctx.stroke();
+
+    ctx.strokeStyle = brightRing;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, auraR * 0.78, -time * 3.1, -time * 3.1 + Math.PI * 1.15);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   if (e.type === 'DRONE') {
     const col = flash ? '#ffffff' : COLORS.cyan;
@@ -229,13 +362,13 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.stroke();
     ctx.fillStyle = col;
     ctx.fillRect(-7, -9, 14, 3);
-  } else if (e.type === 'LEGACY_REC') {
+  } else if (e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') {
     const col = flash ? '#ffffff' : COLORS.cyan;
     ctx.strokeStyle = col;
-    ctx.fillStyle = '#040b16';
+    ctx.fillStyle = isMaster ? '#061a2e' : '#040b16';
     ctx.shadowColor = col;
-    ctx.shadowBlur = (e.surgePulse || 0) > 0 ? 22 : 14;
-    ctx.lineWidth = 2.0;
+    ctx.shadowBlur = isMaster ? 22 : ((e.surgePulse || 0) > 0 ? 22 : 14);
+    ctx.lineWidth = isMaster ? 2.2 : 2.0;
     ctx.beginPath();
     ctx.moveTo(-20, -12);
     ctx.lineTo(-10, -17);
@@ -250,19 +383,30 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.strokeStyle = '#a8fcff';
-    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = isMaster ? '#ffffff' : '#a8fcff';
+    ctx.lineWidth = isMaster ? 1.8 : 1.4;
     ctx.beginPath();
     ctx.moveTo(-13, -9);
     ctx.lineTo(13, -9);
     ctx.stroke();
-  } else if (e.type === 'ARES_REC') {
+    if (isMaster) {
+      // Master Legacy radiant crown crest
+      ctx.fillStyle = '#d4ffff';
+      ctx.beginPath();
+      ctx.moveTo(0, -22);
+      ctx.lineTo(6, -15);
+      ctx.lineTo(0, -12);
+      ctx.lineTo(-6, -15);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC') {
     const col = flash ? '#ffffff' : COLORS.aresRed;
     ctx.strokeStyle = col;
-    ctx.fillStyle = '#140308';
+    ctx.fillStyle = isMaster ? '#24040d' : '#140308';
     ctx.shadowColor = col;
-    ctx.shadowBlur = (e.surgePulse || 0) > 0 ? 22 : 15;
-    ctx.lineWidth = 2.0;
+    ctx.shadowBlur = isMaster ? 24 : ((e.surgePulse || 0) > 0 ? 22 : 15);
+    ctx.lineWidth = isMaster ? 2.2 : 2.0;
     ctx.beginPath();
     ctx.moveTo(-22, -8);
     ctx.lineTo(-12, -17);
@@ -286,19 +430,37 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.lineTo(-6, -5);
     ctx.closePath();
     ctx.fill();
+    if (isMaster) {
+      // Master Ares blazing twin horns & white-hot core
+      ctx.fillStyle = '#ffe0e8';
+      ctx.beginPath();
+      ctx.moveTo(0, -19);
+      ctx.lineTo(4, -12);
+      ctx.lineTo(-4, -12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#ff8ca2';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-12, -17); ctx.lineTo(-15, -22);
+      ctx.moveTo(12, -17); ctx.lineTo(15, -22);
+      ctx.stroke();
+    }
   }
   ctx.restore();
 
-  // Upright Mini HP Bar above damaged enemies (or always visible on 2x HP Challenge Elites)
-  if (overrideScale === null && (damaged || e.isChallengeElite) && e.hp > 0) {
-    const bw = e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18));
+  // Upright Mini HP Bar above damaged enemies (or always visible on Masters & 2x HP Challenge Elites)
+  if (overrideScale === null && (damaged || e.isChallengeElite || isMaster) && e.hp > 0) {
+    const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
     const bx = e.x - bw / 2;
-    const by = e.y - (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18));
+    const by = e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18)));
     const ratio = clamp(e.hp / e.maxHp, 0, 1);
     ctx.save();
     ctx.fillStyle = 'rgba(2, 8, 18, 0.88)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
-    ctx.fillStyle = e.type === 'ARES_REC' ? COLORS.aresRed : (e.type === 'LEGACY_REC' ? COLORS.cyan : COLORS.gold);
+    ctx.fillStyle = (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC')
+      ? COLORS.aresRed
+      : ((e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') ? COLORS.cyan : COLORS.gold);
     ctx.fillRect(bx, by, bw * ratio, 3);
     ctx.restore();
   }
@@ -408,8 +570,8 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
  */
 export function drawTractorBeam(ctx, boss, time = 0, capturing = false) {
   const topY = boss.y + 12;
-  const botY = LOGICAL_H - 22;
-  const topHalfW = 13;
+  const botY = LOGICAL_H - 18;
+  const topHalfW = 14;
   const botHalfW = 54;
   const pulse = 0.78 + Math.sin(time * (capturing ? 18 : 10)) * 0.22;
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GRID GALAGA // 1982 — Alpha Test 0.1.0</title>
+  <title>GRID GALAGA // 1982 — Alpha Test 0.1.1</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -29,11 +29,10 @@
       </div>
 
       <div class="hud-right">
-        <button type="button" id="btn-ctrl" class="hud-pill ctrl-pill" title="Cycle Control Mode">DRAG</button>
-        <button type="button" id="btn-auto" class="hud-pill auto-off" title="Toggle Auto-Fire">AUTO:OFF</button>
+        <button type="button" id="btn-auto" class="hud-pill auto-off" title="Toggle Auto-Fire (F)">AUTO:OFF</button>
         <button type="button" id="btn-crt" class="hud-pill" title="Toggle CRT Scanlines">CRT</button>
-        <button type="button" id="btn-sfx" class="hud-pill" title="Toggle Sound">SFX</button>
-        <button type="button" id="btn-pause" class="hud-pill" title="Pause Game">||</button>
+        <button type="button" id="btn-sfx" class="hud-pill" title="Toggle Sound (M)">SFX</button>
+        <button type="button" id="btn-pause" class="hud-pill" title="Pause Game (P)">||</button>
       </div>
     </header>
 
@@ -44,15 +43,8 @@
       <canvas id="game-canvas" aria-label="Grid Galaga 1982 Playfield"></canvas>
       <div id="crt-overlay"></div>
 
-      <!-- LIVE NON-BLOCKING POWER-UP & DEBUFF COUNTDOWN BARS -->
+      <!-- LIVE NON-BLOCKING DEBUFF COUNTDOWN BARS -->
       <div id="status-bar" aria-live="polite">
-        <div id="pill-powerup" class="status-pill pwr-cyan hidden">
-          <div class="status-row">
-            <span id="pill-pwr-label">HOMING MISSILES</span>
-            <span id="pill-pwr-time">6.0s</span>
-          </div>
-          <div class="status-track"><div id="pill-pwr-fill" class="status-fill"></div></div>
-        </div>
         <div id="pill-slow" class="status-pill slow hidden">
           <div class="status-row">
             <span>STASIS SLOW</span>
@@ -82,7 +74,7 @@
             </div>
             <h1 class="tron-title">GRID GALAGA</h1>
             <div class="tron-subtitle">// 1982</div>
-            <div class="version-badge" id="menu-version">Alpha Test 0.1.0</div>
+            <div class="version-badge" id="menu-version">Alpha Test 0.1.1</div>
             <div class="wire-accent">
               <span class="wire-line"></span>
               <span class="wire-diamond"></span>
@@ -92,13 +84,21 @@
 
           <div class="menu-meta-row">
             <div class="hi-badge">HI-SCORE <span id="start-high-val">000000</span></div>
-            <div class="ctrl-chip" id="menu-ctrl-chip">DRAG &bull; AUTO: OFF</div>
+            <div class="ctrl-chip" id="menu-ctrl-chip">2D DRAG &bull; AUTO: OFF</div>
+          </div>
+
+          <div class="mode-toggle-row" role="radiogroup" aria-label="Difficulty Mode">
+            <button type="button" id="btn-mode-normal" class="mode-btn selected">NORMAL</button>
+            <button type="button" id="btn-mode-hard" class="mode-btn hard-opt">HARD [SEC 21+]</button>
           </div>
 
           <div class="menu-actions">
             <button type="button" id="btn-start" class="tron-cta">ENTER THE GRID</button>
-            <button type="button" id="btn-open-archive" class="tron-cta secondary">GRID ARCHIVE</button>
-            <button type="button" id="btn-open-controls" class="tron-cta secondary">CONTROLS</button>
+            <button type="button" id="btn-open-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
+            <div class="btn-pair">
+              <button type="button" id="btn-open-archive" class="tron-cta secondary">GRID ARCHIVE</button>
+              <button type="button" id="btn-open-controls" class="tron-cta secondary">CONTROLS</button>
+            </div>
           </div>
         </div>
       </section>
@@ -113,15 +113,10 @@
 
           <div class="ctrl-box">
             <div class="ctrl-box-top">
-              <span class="ctrl-box-label">CONTROL MODE</span>
+              <span class="ctrl-box-label">WEAPON FIRE MODE</span>
               <button type="button" id="btn-ctrl-auto" class="auto-toggle-btn off">AUTO-FIRE: OFF</button>
             </div>
-            <div class="seg-row" role="radiogroup" aria-label="Control Mode">
-              <button type="button" class="seg-btn" data-mode="DRAG">DRAG</button>
-              <button type="button" class="seg-btn" data-mode="TOUCH_LR">TOUCH L/R</button>
-              <button type="button" class="seg-btn" data-mode="THREE_BTN">3-BTN</button>
-            </div>
-            <div id="ctrl-modal-hint" class="ctrl-hint-line">Independent 2-thumb drag + hold-to-fire rapid pulse cannon.</div>
+            <div id="ctrl-modal-hint" class="ctrl-hint-line">Conserve power-ups freely when Auto-Fire is OFF, or toggle ON for continuous fire.</div>
           </div>
 
           <div class="btn-pair">
@@ -130,9 +125,9 @@
           </div>
 
           <div class="guide-list">
-            <div><strong>2-THUMB MULTI-TOUCH:</strong> Drag with one thumb on the trackpad or screen while holding/tapping <strong>FIRE</strong> with your other thumb — zero conflict!</div>
-            <div><strong>UNCAPPED CANNON:</strong> Rapid-pulse ~6 shots/sec with 120ms tap buffer and no on-screen bullet limit.</div>
-            <div><strong>DESKTOP KEYS:</strong> <strong>&larr;/&rarr;</strong> or <strong>A/D</strong> Move &bull; <strong>Space/Z</strong> Hold-to-Fire &bull; <strong>P/Esc</strong> Pause &bull; <strong>M</strong> Mute.</div>
+            <div><strong>2D DODGE ZONE:</strong> Move freely anywhere across the bottom 2/5ths of the arena to weave through enemy fire.</div>
+            <div><strong>TOUCH CONTROLS:</strong> Drag directly on or <strong>below</strong> your fighter (extended touch handle keeps your finger off your ship) while holding/tapping <strong>FIRE</strong> with your other thumb.</div>
+            <div><strong>DESKTOP KEYS:</strong> <strong>WASD</strong> or <strong>Arrow Keys</strong> Move (2D) &bull; <strong>Space / Z / Click</strong> Fire &bull; <strong>F</strong> Auto-Fire &bull; <strong>P / Esc</strong> Pause &bull; <strong>M</strong> Mute.</div>
           </div>
 
           <button type="button" id="btn-ctrl-back" class="tron-cta">&#9664; BACK</button>
@@ -156,13 +151,65 @@
       </section>
 
       <!-- ===================================================================
+           ARCADE LEADERBOARD MODAL (WITH DOUBLE-CONFIRMATION CLEAR)
+           =================================================================== -->
+      <section id="overlay-leaderboard" class="overlay modal-top hidden">
+        <div class="archive-shell">
+          <div class="archive-header">
+            <div class="archive-title-wrap">
+              <span class="archive-kicker">// HALL OF PROGRAMS //</span>
+              <h2 class="archive-heading lb-heading">LEADERBOARD</h2>
+            </div>
+            <button type="button" id="btn-lb-back" class="archive-back-btn">&#9664; BACK</button>
+          </div>
+
+          <div class="lb-tabs" role="tablist" aria-label="Leaderboard Mode">
+            <button type="button" id="btn-lb-tab-normal" class="lb-tab-btn selected">NORMAL</button>
+            <button type="button" id="btn-lb-tab-hard" class="lb-tab-btn hard-tab">HARD [SEC 21+]</button>
+          </div>
+
+          <div class="lb-table-head">
+            <span>RANK</span>
+            <span>CALLSIGN</span>
+            <span class="lb-right">SCORE</span>
+            <span class="lb-right">SEC</span>
+            <span class="lb-right">ACC</span>
+          </div>
+          <div id="leaderboard-list" class="lb-scroll"></div>
+
+          <!-- 2-Step Double Confirmation Clear UI -->
+          <div id="lb-clear-wrap" class="lb-clear-wrap">
+            <div id="lb-clear-step0">
+              <button type="button" id="btn-lb-clear-init" class="tron-cta danger lb-clear-btn">CLEAR LEADERBOARD</button>
+            </div>
+
+            <div id="lb-clear-step1" class="lb-confirm-box hidden">
+              <div class="lb-confirm-msg">STEP 1/2 — ERASE ALL SAVED LEADERBOARD RECORDS?</div>
+              <div class="btn-pair">
+                <button type="button" id="btn-lb-clear-cancel1" class="tron-cta secondary">CANCEL</button>
+                <button type="button" id="btn-lb-clear-step1" class="tron-cta amber">YES, CONTINUE</button>
+              </div>
+            </div>
+
+            <div id="lb-clear-step2" class="lb-confirm-box final hidden">
+              <div class="lb-confirm-msg">STEP 2/2 — FINAL CONFIRMATION: PERMANENTLY WIPE ALL SCORES &amp; HI-SCORE?</div>
+              <div class="btn-pair">
+                <button type="button" id="btn-lb-clear-cancel2" class="tron-cta secondary">CANCEL</button>
+                <button type="button" id="btn-lb-clear-confirm" class="tron-cta danger">WIPE ALL RECORDS</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================================================================
            PAUSE MENU OVERLAY
            =================================================================== -->
       <section id="overlay-pause" class="overlay hidden">
         <div class="tron-card">
           <div class="tron-subtitle">// GRID SUSPENDED //</div>
           <h2 class="tron-title" style="font-size:23px;">SYSTEM PAUSED</h2>
-          <div class="version-badge" id="pause-version">Alpha Test 0.1.0</div>
+          <div class="version-badge" id="pause-version">Alpha Test 0.1.1</div>
 
           <button type="button" id="btn-resume" class="tron-cta">RESUME</button>
 
@@ -170,6 +217,8 @@
             <button type="button" id="btn-pause-archive" class="tron-cta secondary">GRID ARCHIVE</button>
             <button type="button" id="btn-pause-controls" class="tron-cta secondary">CONTROLS</button>
           </div>
+
+          <button type="button" id="btn-pause-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
 
           <div class="btn-pair">
             <button type="button" id="btn-restart" class="tron-cta amber">RESTART</button>
@@ -179,12 +228,13 @@
       </section>
 
       <!-- ===================================================================
-           GAME OVER / ACCURACY REPORT OVERLAY
+           GAME OVER / ARCADE LEADERBOARD SAVE OVERLAY
            =================================================================== -->
       <section id="overlay-gameover" class="overlay hidden">
         <div class="tron-card">
           <div class="tron-subtitle" style="color:#ff6e88;">// PROGRAM DEREZZED //</div>
-          <h2 class="tron-title" style="font-size:24px;">GAME OVER</h2>
+          <h2 class="tron-title" style="font-size:23px;">GAME OVER</h2>
+          <div id="go-mode-badge" class="go-mode-badge hidden">HARD MODE // SEC 21+</div>
           <div id="go-record-badge" class="record-banner hidden">NEW SYSTEM HIGH SCORE</div>
 
           <div class="report-grid">
@@ -218,47 +268,71 @@
             </div>
           </div>
 
+          <!-- Arcade Score Save Box -->
+          <div id="go-save-panel" class="go-save-panel">
+            <label class="go-save-label" for="go-callsign-input">RECORD CALLSIGN TO LEADERBOARD</label>
+            <div class="go-save-row">
+              <input type="text" id="go-callsign-input" class="arcade-input" maxlength="8" autocomplete="off" spellcheck="false" placeholder="CALLSIGN" aria-label="Arcade Callsign">
+              <button type="button" id="btn-save-score" class="tron-cta gold-btn go-save-btn">SAVE</button>
+            </div>
+          </div>
+          <div id="go-save-status" class="go-save-status hidden"></div>
+
           <button type="button" id="btn-replay" class="tron-cta">PLAY AGAIN</button>
-          <button type="button" id="btn-go-menu" class="tron-cta secondary">MAIN MENU</button>
+          <div class="btn-pair">
+            <button type="button" id="btn-go-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
+            <button type="button" id="btn-go-menu" class="tron-cta secondary">MAIN MENU</button>
+          </div>
         </div>
       </section>
     </main>
 
     <!-- =====================================================================
-         BOTTOM INDEPENDENT MULTI-TOUCH ARCADE DOCK
+         RESERVED BOTTOM HORIZONTAL POWER-UP ENERGY GAUGE (AUTO-DIVIDES WHEN STACKED)
+         ===================================================================== -->
+    <section id="powerup-gauge-bar" class="pwr-empty" aria-label="Power-Up Energy Gauge" aria-live="polite">
+      <div class="pwr-slot pwr-empty">
+        <div class="pwr-gauge-meta">
+          <span class="pwr-gauge-name">POWER-UP GAUGE</span>
+          <span class="pwr-gauge-val">STANDBY</span>
+        </div>
+        <div class="pwr-gauge-track">
+          <div class="pwr-gauge-fill" style="width:0%"></div>
+          <div class="pwr-gauge-ticks" aria-hidden="true"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =====================================================================
+         BOTTOM ARCADE FIRE DOCK (MOBILE) / COMPACT KEYBAR (DESKTOP)
          ===================================================================== -->
     <nav id="touch-dock" aria-label="Arcade Controls">
+      <div id="desktop-bar" class="desktop-bar hidden">
+        <div class="desktop-keys">
+          <span><strong>WASD / ARROWS</strong> 2D MOVE</span>
+          <span class="dk-sep">&bull;</span>
+          <span><strong>SPACE / Z / CLICK</strong> FIRE</span>
+          <span class="dk-sep">&bull;</span>
+          <span><strong>F</strong> AUTO</span>
+          <span class="dk-sep">&bull;</span>
+          <span><strong>P</strong> PAUSE</span>
+        </div>
+        <button type="button" id="btn-show-touch" class="dock-mini-btn" title="Show Touch Fire Dock">TOUCH UI</button>
+      </div>
+
       <div class="dock-inner">
         <div class="dock-status-bar">
           <div class="dock-status">
             <span id="dock-dot" class="status-dot"></span>
-            <span id="dock-status-text">DRAG + HOLD FIRE // INDEPENDENT 2-THUMB</span>
+            <span id="dock-status-text">DRAG BELOW SHIP TO DODGE // HOLD FIRE</span>
           </div>
-          <button type="button" id="lr-fire-pill" class="hidden" aria-label="Hold to Fire">FIRE</button>
+          <button type="button" id="btn-hide-touch" class="dock-mini-btn hidden" title="Switch to Compact Desktop Keybar">PC MODE</button>
         </div>
 
-        <!-- Button Row (TOUCH L/R & 3-BTN) -->
-        <div id="dock-btn-row" class="dock-btn-row hidden">
-          <button type="button" id="touch-left" class="arcade-btn" aria-label="Move Left">&#9664; LEFT</button>
-          <button type="button" id="touch-right" class="arcade-btn" aria-label="Move Right">RIGHT &#9654;</button>
-          <button type="button" id="touch-fire" class="arcade-btn fire-btn hidden" aria-label="Hold to Fire">
-            <span>FIRE</span>
-            <span class="fire-sub">HOLD / TAP</span>
-          </button>
-        </div>
-
-        <!-- Dedicated Horizontal Drag Trackpad (~68%) + Independent Hold-to-Fire (~32%) -->
-        <div id="drag-row">
-          <div id="drag-pad" role="slider" aria-label="Drag Horizontally to Steer">
-            <span class="drag-label">&#9664;&#9552;&#9552; DRAG TO STEER &#9552;&#9552;&#9654;</span>
-            <span id="drag-sub" class="drag-sub">DRAG HERE OR ON SCREEN</span>
-            <div id="drag-thumb"></div>
-          </div>
-          <button type="button" id="drag-fire" class="arcade-btn fire-btn" aria-label="Hold to Fire">
-            <span>FIRE</span>
-            <span class="fire-sub">HOLD / TAP</span>
-          </button>
-        </div>
+        <button type="button" id="touch-fire" class="arcade-btn fire-btn solo-fire-btn" aria-label="Hold to Fire">
+          <span>FIRE</span>
+          <span class="fire-sub">HOLD / TAP</span>
+        </button>
       </div>
     </nav>
   </div>

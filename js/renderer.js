@@ -2,8 +2,16 @@
    MAIN RENDERING PIPELINE
    ========================================================================= */
 
-import { COLORS, LOGICAL_H, LOGICAL_W } from './config.js';
+import {
+  CANNON_AUTO_FIRE_DELAY,
+  COLORS,
+  LOGICAL_H,
+  LOGICAL_W,
+  PLAYER_MIN_Y,
+  TRACTOR_BEAM_Y
+} from './config.js';
 import { clamp } from './utils.js';
+import { getActivePowerups } from './powerups.js';
 import {
   drawBackground,
   drawEnemySprite,
@@ -49,6 +57,24 @@ export function renderFrame(game) {
     return;
   }
 
+  // 0) Subtle horizontal Touhou Dodge Zone ceiling line (bottom 2/5ths of arena)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 246, 255, 0.2)';
+  ctx.setLineDash([6, 8]);
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(10, PLAYER_MIN_Y);
+  ctx.lineTo(LOGICAL_W - 10, PLAYER_MIN_Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle = 'rgba(0, 246, 255, 0.45)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(6, PLAYER_MIN_Y - 5); ctx.lineTo(6, PLAYER_MIN_Y + 5);
+  ctx.moveTo(LOGICAL_W - 6, PLAYER_MIN_Y - 5); ctx.lineTo(LOGICAL_W - 6, PLAYER_MIN_Y + 5);
+  ctx.stroke();
+  ctx.restore();
+
   // 1) Light Ribbon Trails + Ares shield durability pips
   for (const trail of game.ribbonTrails) {
     const isAres = trail.variant === 'ARES';
@@ -80,10 +106,14 @@ export function renderFrame(game) {
       const midSeg = trail.segments[Math.floor(trail.segments.length / 2)];
       const mx = (midSeg.x1 + midSeg.x2) * 0.5;
       const my = (midSeg.y1 + midSeg.y2) * 0.5 - 12;
+      const pipW = 4;
+      const pipGap = 2;
+      const totalW = trail.maxHits * pipW + (trail.maxHits - 1) * pipGap;
+      const startX = mx - totalW * 0.5;
       ctx.save();
       for (let p = 0; p < trail.maxHits; p++) {
-        ctx.fillStyle = p < trail.hitsRemaining ? COLORS.aresRed : 'rgba(255, 255, 255, 0.16)';
-        ctx.fillRect(mx - 10 + p * 8, my, 5, 3);
+        ctx.fillStyle = p < trail.hitsRemaining ? COLORS.aresRed : 'rgba(255, 255, 255, 0.18)';
+        ctx.fillRect(startX + p * (pipW + pipGap), my, pipW, 3);
       }
       ctx.restore();
     }
@@ -130,8 +160,25 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 5) Enemies + Tractor Capacitor Shield ring during BEAM_APPROACH
+  // 5) Enemies + Tractor Capacitor Shield ring & fixed drop-lane telegraph during BEAM_APPROACH
   for (const e of game.enemies) {
+    if (e.state === 'BEAM_APPROACH') {
+      ctx.save();
+      const lx = e.beamTargetX;
+      ctx.strokeStyle = 'rgba(0, 246, 255, 0.28)';
+      ctx.setLineDash([5, 6]);
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(lx, TRACTOR_BEAM_Y);
+      ctx.lineTo(lx, LOGICAL_H - 28);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = 'rgba(0, 255, 170, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(lx, LOGICAL_H - 54, 34, 6, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
     drawEnemySprite(ctx, e, game.clock);
     if (e.state === 'BEAM_APPROACH' && e.beamShield > 0) {
       ctx.save();
@@ -152,7 +199,11 @@ export function renderFrame(game) {
     drawLightwingSprite(ctx, lw);
   }
 
-  // 7) True Continuous Red Laser Beams (locked straight onto fighter nose every frame)
+  // 7) Piercing Continuous Red Laser Beams (slices through enemies; blocked/refracted by ribbons)
+  const vibAmp = game.player.vibrateAmp || 0;
+  const vibX = vibAmp > 0 ? (Math.random() - 0.5) * 2 * vibAmp : 0;
+  const vibY = vibAmp > 0 ? (Math.random() - 0.5) * 2 * vibAmp : 0;
+
   if (game.redLaserActive && game.activeLaserBeams.length > 0 && game.player.alive && !game.player.capturedById) {
     for (const beam of game.activeLaserBeams) {
       const bx = game.player.x + beam.offsetX;
@@ -160,9 +211,9 @@ export function renderFrame(game) {
       const by2 = beam.y2;
 
       ctx.save();
-      const pulseW = 10 + Math.sin(game.clock * 52) * 2.2;
-      // Outer crimson bloom
-      ctx.strokeStyle = 'rgba(255, 30, 66, 0.45)';
+      const pulseW = 10 + Math.sin(game.clock * 48) * 1.8;
+      // Outer crimson neon bloom
+      ctx.strokeStyle = 'rgba(255, 30, 66, 0.42)';
       ctx.shadowColor = COLORS.aresRed;
       ctx.shadowBlur = 22;
       ctx.lineWidth = pulseW;
@@ -172,9 +223,9 @@ export function renderFrame(game) {
       ctx.lineTo(bx, by2);
       ctx.stroke();
 
-      // Solid neon laser body
-      ctx.strokeStyle = '#ff4b6b';
-      ctx.lineWidth = 4.6;
+      // Solid neon crimson beam body
+      ctx.strokeStyle = '#ff385c';
+      ctx.lineWidth = 4.8;
       ctx.beginPath();
       ctx.moveTo(bx, by1);
       ctx.lineTo(bx, by2);
@@ -182,99 +233,129 @@ export function renderFrame(game) {
 
       // Razor-sharp white plasma core
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1.9;
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
       ctx.moveTo(bx, by1);
       ctx.lineTo(bx, by2);
       ctx.stroke();
 
-      // Animated energy chevrons racing up the beam
-      const len = Math.max(0, by1 - by2);
-      ctx.strokeStyle = 'rgba(255, 220, 228, 0.85)';
-      ctx.lineWidth = 1.4;
-      const spacing = 54;
-      const travel = (game.clock * 540) % spacing;
-      for (let d = travel; d < len - 10; d += spacing) {
-        const ry = by1 - d;
-        ctx.beginPath();
-        ctx.moveTo(bx - 5, ry + 3);
-        ctx.lineTo(bx, ry - 3);
-        ctx.lineTo(bx + 5, ry + 3);
-        ctx.stroke();
-      }
-
-      // Muzzle flare glued to fighter nose
+      // Clean muzzle glow at fighter nose
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(bx, by1, 5.5, 0, Math.PI * 2);
+      ctx.arc(bx, by1, 4.8, 0, Math.PI * 2);
       ctx.fill();
 
-      // Impact flare where beam strikes an obstacle or enemy
+      // Ribbon stop / refraction flare (crimson on Red ribbon, cyan on Cyan ribbon)
       if (beam.hit) {
-        ctx.fillStyle = COLORS.aresRed;
+        ctx.fillStyle = beam.hitColor || COLORS.aresRed;
         ctx.beginPath();
-        ctx.arc(bx, by2, 9 + Math.sin(game.clock * 60) * 2, 0, Math.PI * 2);
+        ctx.arc(bx, by2, 8 + Math.sin(game.clock * 55) * 1.8, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(bx, by2, 4, 0, Math.PI * 2);
+        ctx.arc(bx, by2, 3.6, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.restore();
     }
   }
 
-  // 8) Drag Guide Rail beneath Player while Dragging
-  if (game.controlMode === 'DRAG' && game.dragActive && game.player.alive && !game.player.capturedById) {
+  // 8) Subtle one-time touch-ready glow ONLY when user willingly toggles Touch UI
+  //    (Never shown on mobile; fades away 1.0s after ship is dragged, moved, and released)
+  if (
+    !game.desktopMode &&
+    (game.touchHintState === 'GLOWING' || game.touchHintState === 'FADING') &&
+    game.player.alive &&
+    !game.player.capturedById
+  ) {
+    const px = game.player.x;
+    const py = game.player.y;
+    const glowY = Math.min(LOGICAL_H - 18, py + 34);
+    const fade = game.touchHintState === 'FADING' ? clamp(game.touchHintTimer, 0, 1) : 1;
+    const pulse = 0.72 + Math.sin(game.clock * 6.5) * 0.28;
+    const r = (game.player.dual ? 44 : 36) * (0.94 + pulse * 0.1);
     ctx.save();
-    ctx.strokeStyle = 'rgba(0, 246, 255, 0.34)';
-    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = fade * (game.dragActive ? 0.85 : 0.72 * pulse);
+    const grad = ctx.createRadialGradient(px, glowY, 4, px, glowY, r);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.34)');
+    grad.addColorStop(0.52, 'rgba(0, 246, 255, 0.24)');
+    grad.addColorStop(1, 'rgba(0, 246, 255, 0)');
+    ctx.fillStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(16, game.player.y + 22);
-    ctx.lineTo(LOGICAL_W - 16, game.player.y + 22);
-    ctx.stroke();
-    ctx.fillStyle = COLORS.cyan;
-    ctx.beginPath();
-    ctx.moveTo(game.player.x, game.player.y + 17);
-    ctx.lineTo(game.player.x - 6, game.player.y + 25);
-    ctx.lineTo(game.player.x + 6, game.player.y + 25);
-    ctx.closePath();
+    ctx.arc(px, glowY, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
-  // 9) Player Ship
+  // 9) Player Ship (White default; power-up color when 1 active; moving RGB wave when 2+ stacked; vibration + cannon overcharge!)
   if (game.player.alive && !game.player.capturedById) {
-    const hasPurpleAura = game.arcWaveState.phase === 'CANNON_AURA' || game.arcWaveState.auraFade > 0;
+    const aw = game.arcWaveState;
+    const isCannonCharging = aw.phase === 'CANNON_CHARGING';
+    const hasPurpleAura = isCannonCharging || aw.phase === 'CANNON_READY' || aw.auraFade > 0;
+    const activePowerups = getActivePowerups(game);
     drawPlayerFighter(
       ctx,
-      game.player.x,
-      game.player.y,
+      game.player.x + vibX,
+      game.player.y + vibY,
       game.player.dual,
       game.player.invulnTimer > 0,
       game.player.slowTimer > 0,
       game.clock,
-      game.powerup.type,
-      hasPurpleAura
+      activePowerups,
+      hasPurpleAura,
+      isCannonCharging
     );
+
+    // Small compact on-field Cannon Shot auto-fire timer indicator during CANNON_CHARGING (or ready prompt)
+    if (isCannonCharging) {
+      const ratio = clamp(aw.cannonTimer / CANNON_AUTO_FIRE_DELAY, 0, 1);
+      const ix = game.player.x;
+      const iy = Math.min(LOGICAL_H - 12, game.player.y + 24);
+      const bw = 46;
+      ctx.save();
+      ctx.fillStyle = 'rgba(18, 4, 34, 0.88)';
+      ctx.fillRect(ix - bw * 0.5 - 1, iy - 1, bw + 2, 6);
+      ctx.fillStyle = '#f2ccff';
+      ctx.shadowColor = COLORS.purple;
+      ctx.shadowBlur = 10;
+      ctx.fillRect(ix - bw * 0.5, iy, bw * ratio, 4);
+
+      ctx.textAlign = 'center';
+      ctx.font = '800 9px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`TAP // ${aw.cannonTimer.toFixed(1)}s`, ix, iy + 15);
+      ctx.restore();
+    } else if (aw.phase === 'CANNON_READY') {
+      const ix = game.player.x;
+      const iy = Math.min(LOGICAL_H - 8, game.player.y + 28);
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '800 8.5px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = COLORS.purpleBright;
+      ctx.shadowColor = COLORS.purple;
+      ctx.shadowBlur = 8;
+      ctx.globalAlpha = 0.72 + Math.sin(game.clock * 10) * 0.28;
+      ctx.fillText('2x TAP CANNON', ix, iy);
+      ctx.restore();
+    }
   }
 
-  // 10) Purple Arc Waves
+  // 10) Wider Purple Arc Waves
   for (const w of game.arcWaves) {
     ctx.save();
     ctx.strokeStyle = COLORS.purple;
     ctx.shadowColor = COLORS.purple;
-    ctx.shadowBlur = 16;
-    ctx.lineWidth = 5.5;
+    ctx.shadowBlur = 18;
+    ctx.lineWidth = 6.8;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(w.x, w.y + w.radius * 0.55, w.radius, Math.PI * 1.18, Math.PI * 1.82);
+    ctx.arc(w.x, w.y + w.radius * 0.52, w.radius, Math.PI * 1.14, Math.PI * 1.86);
     ctx.stroke();
 
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 2.0;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
-    ctx.arc(w.x, w.y + w.radius * 0.55, w.radius - 2, Math.PI * 1.22, Math.PI * 1.78);
+    ctx.arc(w.x, w.y + w.radius * 0.52, w.radius - 2, Math.PI * 1.18, Math.PI * 1.82);
     ctx.stroke();
     ctx.restore();
   }
@@ -327,56 +408,124 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 11) Regular & Temporary Purple Player Bullets
+  // 11) Regular White, Refracted Red Laser Bolts & Purple Player Bullets (fade as they dissolve!)
   for (const b of game.playerBullets) {
     ctx.save();
-    const col = b.purple
-      ? (b.weakened ? '#d96bff' : COLORS.purpleBright)
-      : (b.weakened ? '#ff5c74' : (b.slowedByLegacy ? '#8cfcff' : COLORS.cyan));
+    if (b.slowedByLegacy && b.dissolveMax > 0) {
+      ctx.globalAlpha = clamp(b.dissolveTimer / 0.65, 0.18, 1);
+    }
+    const isRedBolt = !!b.redLaserBullet;
+    const col = isRedBolt
+      ? (b.weakened ? '#ff7c92' : COLORS.aresRed)
+      : (b.purple
+        ? (b.weakened ? '#d96bff' : COLORS.purpleBright)
+        : (b.weakened ? '#ff8ea0' : '#ffffff'));
     ctx.strokeStyle = col;
-    ctx.shadowColor = b.purple ? COLORS.purple : col;
-    ctx.shadowBlur = b.purple ? 13 : 10;
-    ctx.lineWidth = b.purple ? 3.4 : (b.weakened ? 2.2 : 3);
+    ctx.shadowColor = isRedBolt ? COLORS.aresRed : (b.purple ? COLORS.purple : (b.weakened ? COLORS.aresRed : '#ffffff'));
+    ctx.shadowBlur = isRedBolt ? 14 : (b.purple ? 13 : 10);
+    ctx.lineWidth = isRedBolt ? 4.0 : (b.purple ? 3.4 : (b.weakened ? 2.4 : 3));
     ctx.beginPath();
-    ctx.moveTo(b.x, b.y - (b.purple ? 9 : 7));
-    ctx.lineTo(b.x, b.y + (b.purple ? 9 : 7));
+    ctx.moveTo(b.x, b.y - (isRedBolt ? 10 : (b.purple ? 9 : 7)));
+    ctx.lineTo(b.x, b.y + (isRedBolt ? 10 : (b.purple ? 9 : 7)));
     ctx.stroke();
-    if (b.slowedByLegacy) {
-      ctx.strokeStyle = 'rgba(0, 246, 255, 0.78)';
-      ctx.lineWidth = 1.1;
+
+    if (isRedBolt) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.4;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, 6, 0, Math.PI * 2);
+      ctx.moveTo(b.x, b.y - 8);
+      ctx.lineTo(b.x, b.y + 8);
+      ctx.stroke();
+    }
+
+    if (b.slowedByLegacy) {
+      const lifeRatio = b.dissolveMax > 0 ? clamp(b.dissolveTimer / b.dissolveMax, 0.25, 1) : 1;
+      ctx.strokeStyle = 'rgba(0, 246, 255, 0.85)';
+      ctx.lineWidth = 1.25;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 4 + lifeRatio * 3.5, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.restore();
   }
 
-  // Cyan Homing Missiles & Plasma Trails
+  // Cyan Homing Missiles — Sleek Neon Micro-Rockets with Tapered Plasma Exhaust Trails
   for (const m of game.homingMissiles) {
     ctx.save();
-    if (m.trail.length > 1) {
-      ctx.strokeStyle = 'rgba(0, 246, 255, 0.58)';
-      ctx.lineWidth = 2.2;
-      ctx.beginPath();
-      ctx.moveTo(m.trail[0].x, m.trail[0].y);
-      for (let k = 1; k < m.trail.length; k++) ctx.lineTo(m.trail[k].x, m.trail[k].y);
-      ctx.stroke();
+    // Smooth tapered glowing contrail
+    const tLen = m.trail.length;
+    if (tLen > 1) {
+      ctx.lineCap = 'round';
+      for (let k = 1; k < tLen; k++) {
+        const frac = k / (tLen - 1);
+        ctx.strokeStyle = frac > 0.72
+          ? `rgba(210, 255, 255, ${0.25 + frac * 0.65})`
+          : `rgba(0, 246, 255, ${frac * 0.65})`;
+        ctx.lineWidth = 0.8 + frac * 3.2;
+        ctx.beginPath();
+        ctx.moveTo(m.trail[k - 1].x, m.trail[k - 1].y);
+        ctx.lineTo(m.trail[k].x, m.trail[k].y);
+        ctx.stroke();
+      }
     }
+
     ctx.translate(m.x, m.y);
     ctx.rotate(m.angle + Math.PI / 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = COLORS.cyan;
     ctx.shadowColor = COLORS.cyan;
-    ctx.shadowBlur = 10;
-    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 12;
+
+    // Flickering cyan-white thruster plume at the rear nozzle
+    const flameLen = 4.5 + Math.sin(game.clock * 70 + m.x) * 2.2;
+    ctx.fillStyle = COLORS.cyan;
     ctx.beginPath();
-    ctx.moveTo(0, -7);
-    ctx.lineTo(4.5, 5);
-    ctx.lineTo(0, 2.5);
-    ctx.lineTo(-4.5, 5);
+    ctx.moveTo(-2.1, 5.5);
+    ctx.lineTo(0, 5.5 + flameLen);
+    ctx.lineTo(2.1, 5.5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Rear angled stabilizer fins
+    ctx.fillStyle = COLORS.cyan;
+    ctx.beginPath();
+    ctx.moveTo(-2.2, 2.2);
+    ctx.lineTo(-5.0, 5.8);
+    ctx.lineTo(-2.0, 5.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(2.2, 2.2);
+    ctx.lineTo(5.0, 5.8);
+    ctx.lineTo(2.0, 5.2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Torpedo fuselage body (cylindrical rocket with curved warhead nose)
+    ctx.fillStyle = '#072a42';
+    ctx.strokeStyle = COLORS.cyan;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, -8.5);
+    ctx.quadraticCurveTo(2.7, -5.2, 2.5, -1.5);
+    ctx.lineTo(2.4, 5.2);
+    ctx.lineTo(-2.4, 5.2);
+    ctx.lineTo(-2.5, -1.5);
+    ctx.quadraticCurveTo(-2.7, -5.2, 0, -8.5);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    // Glowing white warhead tip & neon core band
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.moveTo(0, -8.2);
+    ctx.quadraticCurveTo(1.7, -5.6, 1.6, -3.5);
+    ctx.lineTo(-1.6, -3.5);
+    ctx.quadraticCurveTo(-1.7, -5.6, 0, -8.2);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#9efcff';
+    ctx.fillRect(-1.1, -1.2, 2.2, 4.4);
     ctx.restore();
   }
 
@@ -417,8 +566,8 @@ export function renderFrame(game) {
   }
   ctx.restore();
 
-  // Sector / Challenge Banner
-  if (game.sectorPhase === 'BANNER' || game.sectorPhase === 'CLEARED') {
+  // Sector / Challenge / Extra Round Banner
+  if (game.sectorPhase === 'BANNER' || game.sectorPhase === 'CHALLENGE_BANNER' || game.sectorPhase === 'CLEARED') {
     ctx.save();
     ctx.fillStyle = 'rgba(2, 10, 24, 0.82)';
     ctx.fillRect(0, LOGICAL_H * 0.41, LOGICAL_W, 66);
