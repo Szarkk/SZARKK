@@ -5,10 +5,10 @@
 **A neon arcade shooter for the browser.**  
 Dive the Grid, stack capsules, and rescue your captured fighter before the Recognizers close in.
 
-[![Play Now](https://img.shields.io/badge/%E2%96%B6_PLAY_NOW-00f6ff?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/grid-galaga/)
-[![Version](https://img.shields.io/badge/Alpha_Test-0.1.1-ff1e42?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/grid-galaga/)
+[![Play Now](https://img.shields.io/badge/%E2%96%B6_PLAY_NOW-00f6ff?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/SZARKK/)
+[![Version](https://img.shields.io/badge/Alpha_Test-0.1.1-ff1e42?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/SZARKK/)
 
-**[ENTER THE GRID](https://szarkk.github.io/grid-galaga/)** — phone or desktop, no install.
+**[ENTER THE GRID](https://szarkk.github.io/SZARKK/)** — phone or desktop, no install.
 
 *Early test build. Expect rough edges.*
 
@@ -95,7 +95,7 @@ After Game Over, record an 8-character **callsign** to a **top 10** board (Norma
 This project uses ES modules, so **double-clicking `index.html` will not work** (`file://` blocks the scripts). Serve the folder instead.
 
 ```bash
-cd grid-galaga
+cd SZARKK
 python -m http.server 8000
 ```
 
@@ -103,7 +103,7 @@ Then open [http://localhost:8000](http://localhost:8000).
 
 Or, in VS Code / Antigravity, right-click `index.html` → **Open with Live Server**.
 
-You can also skip the local setup and [play the live build](https://szarkk.github.io/grid-galaga/).
+You can also skip the local setup and [play the live build](https://szarkk.github.io/SZARKK/).
 
 ## Project structure
 
