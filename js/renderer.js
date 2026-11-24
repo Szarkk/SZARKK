@@ -518,7 +518,7 @@ export function renderFrame(game) {
     }
   }
 
-  // 8) One-time crisp white text prompt ~3 Aurex Fighters ABOVE the dotted dodge-zone line
+  // 8) One-time crisp white text prompt centered cleanly between the Sector Banner bottom (328) & dotted line (384)
   //    (Fades over 1.5s once the player touches anywhere below; never reappears on game restarts!)
   if (
     !game.desktopMode &&
@@ -528,10 +528,12 @@ export function renderFrame(game) {
   ) {
     const fade = game.touchHintState === 'FADING' ? clamp(game.touchHintTimer / TOUCH_HINT_DURATION, 0, 1) : 1;
     const pulse = 0.84 + Math.sin(game.clock * 4.5) * 0.16;
-    const promptY = PLAYER_MIN_Y - 90; // ~3 Aurex Fighters (~3 x 30px) above the dotted dodge-zone ceiling line
+    const bannerBottomY = LOGICAL_H * 0.41 + 66; // 328.4
+    const promptY = (bannerBottomY + PLAYER_MIN_Y) * 0.5; // ~356 — dead center between banner & dotted line!
     ctx.save();
     ctx.globalAlpha = fade * (game.touchHintState === 'FADING' ? 0.95 : pulse);
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.font = '800 11.5px ui-monospace, Consolas, monospace';
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = 'rgba(255, 255, 255, 0.72)';
