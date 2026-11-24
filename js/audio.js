@@ -1,5 +1,5 @@
 /* =========================================================================
-   PROCEDURAL 1982 TRON WEB AUDIO SYNTHESIZER
+   SZARKK — PROCEDURAL NEON SYNTHESIZER (WEB AUDIO)
    ========================================================================= */
 
 export class SynthEngine {
@@ -112,8 +112,38 @@ export class SynthEngine {
       ? [523.25, 659.25, 1046.5, 1318.5]
       : (type === 'PURPLE'
         ? [440.0, 587.33, 880.0, 1174.66]
-        : [392.0, 523.25, 783.99, 1046.5]);
+        : (type === 'YELLOW'
+          ? [587.33, 783.99, 1174.66, 1567.98]
+          : (type === 'CLONE'
+            ? [329.63, 493.88, 659.25, 987.77]
+            : [392.0, 523.25, 783.99, 1046.5])));
     notes.forEach((f, i) => this.tone(f, f * 1.04, 0.11, 'square', 0.18, i * 0.055));
+  }
+
+  playChainLightning() {
+    this.noise(0.11, 0.24, 2400);
+    this.tone(1680, 420, 0.12, 'sawtooth', 0.18);
+    this.tone(920, 1980, 0.09, 'square', 0.12, 0.02);
+  }
+
+  playCloneSpawn() {
+    this.tone(290, 580, 0.14, 'triangle', 0.18, 0);
+    this.tone(440, 880, 0.16, 'sine', 0.18, 0.07);
+  }
+
+  playElectroBall() {
+    this.tone(920, 520, 0.11, 'sine', 0.14);
+    this.tone(1340, 760, 0.09, 'triangle', 0.1, 0.02);
+  }
+
+  playShockJam() {
+    this.noise(0.18, 0.22, 1900);
+    this.tone(420, 140, 0.22, 'sawtooth', 0.2);
+  }
+
+  playCentoidSplit() {
+    this.tone(360, 620, 0.1, 'square', 0.15);
+    this.tone(620, 310, 0.11, 'triangle', 0.14, 0.05);
   }
 
   playArcWave() {
@@ -144,16 +174,16 @@ export class SynthEngine {
     this.tone(440, 740, 0.07, 'triangle', 0.2);
   }
 
-  playDerez(big = false) {
+  playDeleteBurst(big = false) {
     this.noise(big ? 0.34 : 0.18, big ? 0.3 : 0.2, big ? 480 : 1150);
     this.tone(big ? 250 : 480, 48, big ? 0.32 : 0.17, 'sawtooth', big ? 0.25 : 0.15);
   }
 
-  playRibbonDeflect() {
+  playThreadDeflect() {
     this.tone(940, 1520, 0.07, 'triangle', 0.2);
   }
 
-  playRibbonShatter() {
+  playThreadShatter() {
     this.noise(0.2, 0.24, 1650);
     this.tone(1280, 240, 0.2, 'sawtooth', 0.22);
   }
@@ -162,18 +192,18 @@ export class SynthEngine {
     this.tone(560, 200, 0.12, 'sine', 0.16);
   }
 
-  playDebuff(isAres = false) {
-    this.tone(isAres ? 340 : 480, 110, 0.24, 'sawtooth', 0.22);
-    this.tone(isAres ? 185 : 290, 95, 0.25, 'square', 0.14, 0.04);
+  playDebuff(isNull = false) {
+    this.tone(isNull ? 340 : 480, 110, 0.24, 'sawtooth', 0.22);
+    this.tone(isNull ? 185 : 290, 95, 0.25, 'square', 0.14, 0.04);
   }
 
-  playLightwingLaunch(isAres = false) {
-    this.tone(isAres ? 300 : 620, isAres ? 160 : 940, 0.12, 'sawtooth', 0.14);
+  playEnforcerWingLaunch(isNull = false) {
+    this.tone(isNull ? 300 : 620, isNull ? 160 : 940, 0.12, 'sawtooth', 0.14);
   }
 
-  playWingSurge(isAres = false) {
-    this.tone(isAres ? 420 : 540, isAres ? 680 : 860, 0.09, 'square', 0.18, 0);
-    this.tone(isAres ? 680 : 860, isAres ? 1020 : 1280, 0.13, 'square', 0.19, 0.07);
+  playWingSurge(isNull = false) {
+    this.tone(isNull ? 420 : 540, isNull ? 680 : 860, 0.09, 'square', 0.18, 0);
+    this.tone(isNull ? 680 : 860, isNull ? 1020 : 1280, 0.13, 'square', 0.19, 0.07);
   }
 
   playRescue() {

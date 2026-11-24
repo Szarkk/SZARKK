@@ -1,5 +1,5 @@
 /* =========================================================================
-   GRID GALAGA // 1982 — MAIN GAME ORCHESTRATOR & SIMULATION LOOP
+   SZARKK — MAIN GAME ORCHESTRATOR & SIMULATION LOOP
    ========================================================================= */
 
 import {
@@ -21,14 +21,14 @@ import {
   updatePowerupTimers
 } from './powerups.js';
 import {
-  applyRibbonDebuff,
+  applyThreadDebuff,
   clampPlayerPosition,
   createPlayerState,
   damagePlayer,
   updatePlayer
 } from './player.js';
 import { getTopLeaderboardScore } from './leaderboard.js';
-import { updateLightwingsAndRibbons } from './recognizers.js';
+import { updateEnforcerWingsAndThreads } from './enforcers.js';
 import {
   beginSector,
   updateEnemies,
@@ -38,10 +38,13 @@ import {
   updateArcWavesAndCannon,
   updateContinuousLaserBeams,
   updateEnemyBullets,
+  updateFighterClonesAndBolts,
   updateHomingMissiles,
-  updatePlayerBullets
+  updatePlayerBullets,
+  updatePulsarHazards
 } from './projectiles.js';
 import { renderFrame } from './renderer.js';
+import { bindSandboxEvents, startSandboxMode, syncSandboxUI } from './sandbox.js';
 import {
   bindEvents,
   buildArchiveCards,
@@ -56,7 +59,7 @@ import {
   updateStatusPills
 } from './ui.js';
 
-export class GridGalagaGame {
+export class SzarkkGame {
   constructor() {
     cacheDomElements(this);
 
@@ -87,8 +90,9 @@ export class GridGalagaGame {
     this.tapFireBuffer = 0;
     this.freshFirePress = false;
 
-    // Subtle touch glow hint — NEVER shown on mobile launch; ONLY when user willingly toggles Touch UI
-    this.touchHintState = 'OFF'; // OFF | GLOWING | FADING
+    // One-time white text prompt "TOUCH ANYWHERE BELOW TO MOVE" (never re-shown when restarting!)
+    this.touchHintShownOnce = this.isTouch;
+    this.touchHintState = this.isTouch ? 'GLOWING' : 'OFF'; // OFF | GLOWING | FADING
     this.touchHintTimer = 0;
     this.touchHintMoved = false;
 
@@ -97,7 +101,7 @@ export class GridGalagaGame {
     this.roundScoreSaved = false;
     this.lastSavedEntryId = null;
     this.clock = 0;
-    this.gridOffset = 0;
+    this.nexusGridOffset = 0;
     this.archivePreviews = [];
 
     // Background stars & demo fleet
@@ -110,9 +114,9 @@ export class GridGalagaGame {
     }));
 
     this.demoFleet = [
-      { type: 'CLASSIC_REC', x: 112, y: 118, phase: 0 },
-      { type: 'LEGACY_REC', x: 240, y: 102, phase: 1.2 },
-      { type: 'ARES_REC', x: 368, y: 118, phase: 2.4 },
+      { type: 'V1_ENFORCER', x: 112, y: 118, phase: 0 },
+      { type: 'FLUX_ENFORCER', x: 240, y: 102, phase: 1.2 },
+      { type: 'NULL_ENFORCER', x: 368, y: 118, phase: 2.4 },
       { type: 'INTERCEPTOR', x: 155, y: 185, phase: 0.7 },
       { type: 'INTERCEPTOR', x: 325, y: 185, phase: 1.9 },
       { type: 'DRONE', x: 240, y: 212, phase: 3.1 }
@@ -121,6 +125,7 @@ export class GridGalagaGame {
     buildArchiveCards(this);
     this.resetGameData();
     bindEvents(this);
+    bindSandboxEvents(this);
     syncControlsUI(this);
     updateHUD(this);
     resizeCanvas(this);
@@ -140,14 +145,33 @@ export class GridGalagaGame {
     this.newRecord = false;
     this.gameOverTimer = 0;
     this.enemyIdSeq = 1;
-    this.ribbonIdSeq = 1;
+    this.threadIdSeq = 1;
+    this.centoidIdSeq = 1;
+    this.centoidChains = new Map();
+    this.midWaveSpawns = [];
     this.waveQueue = [];
     this.waveSpawnTimer = 0;
+    this.sandboxMode = false;
+    this.sandboxIdle = false;
+    this.sandboxPauseAnim = false;
+    this.sandboxHideBg = false;
+    this.sandboxShowGrid = false;
+    this.sandboxShowRuler = false;
+    this.sandboxDrag = null;
+    this.sandboxTrainingRound = false;
+    this.sandbox = null;
     this.diveTimer = 1.1;
     this.formationShotTimer = 2.0;
     this.sectorTractorCount = 0;
     this.justFinishedChallenge = false;
     this.postChallengeAbductionPending = false;
+    this.waveEliteAbductionQueued = false;
+    this.waveEliteAbductionUsed = false;
+    this.masterFluxStreak = 0;
+    this.masterNullStreak = 0;
+    this.masterFluxRewardSpawned = false;
+    this.masterNullRewardSpawned = false;
+    this.fieldDebuff = null; // Hard Mode: { type: 'CYAN' | 'RED', timer, maxTimer }
     this.tractorTimer = TRACTOR_INITIAL_DELAY;
     this.wingLaunchTimer = 2.2;
     this.roundScoreSaved = false;
@@ -192,10 +216,16 @@ export class GridGalagaGame {
     this.arcWaves = [];
     this.cannonShots = [];
     this.aoeBlasts = [];
+    this.lightningBolts = [];
+    this.fighterClones = [];
+    this.cloneTimer = 0;
+    this.electroBalls = [];
+    this.pulsarSparks = [];
+    this.enemyBuffWaves = [];
     this.enemyBullets = [];
     this.enemies = [];
-    this.lightwings = [];
-    this.ribbonTrails = [];
+    this.enforcerWings = [];
+    this.threadTrails = [];
     this.particles = [];
     this.popups = [];
   }
@@ -226,7 +256,16 @@ export class GridGalagaGame {
     this.resetGameData();
     this.state = 'PLAYING';
     this.player.invulnTimer = 0; // No blinking at game start
+    syncSandboxUI(this);
     beginSector(this, 1);
+  }
+
+  startSandbox() {
+    startSandboxMode(this);
+  }
+
+  syncSandboxUI() {
+    syncSandboxUI(this);
   }
 
   pauseGame() {
@@ -235,6 +274,8 @@ export class GridGalagaGame {
     this.synth.stopTractorBeam();
     resetInputs(this);
     hideAllOverlays(this);
+    if (this.sandbox) this.sandbox.drawerOpen = false;
+    syncSandboxUI(this);
     this.overlayPause.classList.remove('hidden');
   }
 
@@ -242,6 +283,7 @@ export class GridGalagaGame {
     if (this.state !== 'PAUSED') return;
     hideAllOverlays(this);
     this.state = 'PLAYING';
+    syncSandboxUI(this);
   }
 
   returnToMainMenu() {
@@ -250,6 +292,7 @@ export class GridGalagaGame {
     hideAllOverlays(this);
     this.resetGameData();
     this.state = 'MENU';
+    syncSandboxUI(this);
     updateStatusPills(this);
     updateHUD(this);
     this.overlayStart.classList.remove('hidden');
@@ -269,8 +312,8 @@ export class GridGalagaGame {
     damagePlayer(this);
   }
 
-  applyRibbonDebuff(variant) {
-    applyRibbonDebuff(this, variant);
+  applyThreadDebuff(variant) {
+    applyThreadDebuff(this, variant);
   }
 
   getEffectiveSector() {
@@ -289,6 +332,12 @@ export class GridGalagaGame {
   }
 
   addScore(pts, x, y, color = COLORS.cyan) {
+    if (this.sandboxMode) {
+      if (x !== undefined && y !== undefined) {
+        this.spawnPopup(x, y, `+${pts}`, color, 0.9);
+      }
+      return;
+    }
     this.score += pts;
     if (this.score > this.highScore) {
       this.highScore = this.score;
@@ -317,7 +366,7 @@ export class GridGalagaGame {
     this.popups.push({ x, y, text, color, life, maxLife: life });
   }
 
-  spawnDerez(x, y, color, count = 14, speed = 165) {
+  spawnDeleteBurst(x, y, color, count = 14, speed = 165) {
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 32 + Math.random() * speed;
@@ -355,7 +404,7 @@ export class GridGalagaGame {
 
   update(dt) {
     this.clock += dt;
-    this.gridOffset = (this.gridOffset + dt * 1.45) % 1;
+    this.nexusGridOffset = (this.nexusGridOffset + dt * 1.45) % 1;
 
     for (const s of this.stars) {
       s.y += s.speed * dt;
@@ -390,17 +439,31 @@ export class GridGalagaGame {
         this.touchHintState = 'OFF';
       }
     }
+    if (this.fieldDebuff) {
+      const inTransition =
+        this.sectorPhase === 'BANNER' ||
+        this.sectorPhase === 'CHALLENGE_BANNER' ||
+        this.sectorPhase === 'CLEARED';
+      if (!inTransition) {
+        this.fieldDebuff.timer -= dt;
+        if (this.fieldDebuff.timer <= 0) {
+          this.fieldDebuff = null;
+        }
+      }
+    }
 
     updatePowerupTimers(this, dt);
     updatePlayer(this, dt);
     updateSectorPhase(this, dt);
     updatePowerupCapsules(this, dt);
     updateEnemies(this, dt);
-    updateLightwingsAndRibbons(this, dt);
+    updateEnforcerWingsAndThreads(this, dt);
     updateContinuousLaserBeams(this, dt);
     updateArcWavesAndCannon(this, dt);
+    updateFighterClonesAndBolts(this, dt);
     updatePlayerBullets(this, dt);
     updateHomingMissiles(this, dt);
+    updatePulsarHazards(this, dt);
     updateEnemyBullets(this, dt);
     this.updateParticlesAndPopups(dt);
     updateStatusPills(this);
@@ -421,7 +484,7 @@ export class GridGalagaGame {
 }
 
 function boot() {
-  window.__gridGalaga = new GridGalagaGame();
+  window.__szarkk = new SzarkkGame();
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

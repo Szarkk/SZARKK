@@ -1,16 +1,16 @@
 /* =========================================================================
-   RECOGNIZER TRACTOR BEAM (CLASSIC MCP) + ELITE LIGHTWINGS & RIBBONS
+   ENFORCER TRACTOR BEAM (V1 ENFORCER) + ENFORCER WINGS & THREADS
    ========================================================================= */
 
 import {
-  ARES_RIBBON_HITS,
   COLORS,
   ELITE_SURGE_CHANCE,
   ELITE_SURGE_INTERVAL,
   LOGICAL_H,
   LOGICAL_W,
   MASTER_SURGE_CHANCE,
-  RIBBON_LIFETIME,
+  NULL_THREAD_HITS,
+  THREAD_LIFETIME,
   TRACTOR_APPROACH_DUR,
   TRACTOR_BEAM_DUR,
   TRACTOR_BEAM_Y,
@@ -20,26 +20,29 @@ import {
   TRACTOR_RETRY_DELAY
 } from './config.js';
 import { clamp, distToSeg, evalCubic, lerp } from './utils.js';
+import { hasPowerup, removePowerupSlot } from './powerups.js';
 
-export function startRecognizerBeam(game, rec) {
-  rec.state = 'BEAM_APPROACH';
-  rec.beamShield = 1; // 1-hit Tractor Capacitor Shield while descending so rapid-pulse doesn't instakill it
-  rec.beamApproachT = 0;
-  rec.beamStartX = rec.x;
-  rec.beamStartY = rec.y;
-  // Lock target lane ONCE at launch so the Recognizer swoops to a fixed column and never chases the player
-  rec.beamTargetX = clamp(game.player.x, 60, LOGICAL_W - 60);
+export function startEnforcerBeam(game, enforcer) {
+  enforcer.state = 'BEAM_APPROACH';
+  enforcer.beamShield = 1; // 1-hit Tractor Capacitor Shield while descending so rapid-pulse doesn't instakill it
+  enforcer.beamApproachT = 0;
+  enforcer.beamStartX = enforcer.x;
+  enforcer.beamStartY = enforcer.y;
+  // Lock target lane ONCE at launch so the Enforcer swoops to a fixed column and never chases the player
+  enforcer.beamTargetX = clamp(game.player.x, 60, LOGICAL_W - 60);
   // Flank wide away from the target fire line before curving into the fixed beam lane
-  const flankDir = rec.x < rec.beamTargetX ? -1 : 1;
-  rec.beamFlankX = clamp(rec.beamTargetX + flankDir * 115, 56, LOGICAL_W - 56);
-  game.activeBeamBoss = rec;
-  game.spawnPopup(rec.x, rec.y - 24, 'TRACTOR BEAM!', COLORS.cyan, 1.15);
+  const flankDir = enforcer.x < enforcer.beamTargetX ? -1 : 1;
+  enforcer.beamFlankX = clamp(enforcer.beamTargetX + flankDir * 115, 56, LOGICAL_W - 56);
+  game.activeBeamBoss = enforcer;
+  game.spawnPopup(enforcer.x, enforcer.y - 24, 'TRACTOR BEAM!', COLORS.cyan, 1.15);
 }
 
-export function updateRecognizerBeamApproach(game, e, dt) {
+export function updateEnforcerBeamApproach(game, e, dt) {
   const targetY = TRACTOR_BEAM_Y;
   const targetX = e.beamTargetX;
-  e.beamApproachT = Math.min(1, e.beamApproachT + dt / TRACTOR_APPROACH_DUR);
+  const v1Slow = e.type === 'V1_ENFORCER' ? 0.8 : 1.0;
+  const spdMult = v1Slow * (e.speedBuffed ? 1.3 : 1.0);
+  e.beamApproachT = Math.min(1, e.beamApproachT + (dt * spdMult) / TRACTOR_APPROACH_DUR);
   const pos = evalCubic([
     { x: e.beamStartX, y: e.beamStartY },
     { x: e.beamFlankX, y: lerp(e.beamStartY, targetY, 0.42) },
@@ -58,7 +61,7 @@ export function updateRecognizerBeamApproach(game, e, dt) {
   }
 }
 
-export function updateRecognizerBeaming(game, e, dt) {
+export function updateEnforcerBeaming(game, e, dt) {
   const p = game.player;
   e.beamTimer -= dt;
 
@@ -88,7 +91,7 @@ export function updateRecognizerBeaming(game, e, dt) {
         friendlyFireGrace: 1.6,
         spin: 0
       };
-      game.spawnPopup(p.x, p.y - 30, 'FIGHTER CAPTURED!', COLORS.aresRed, 1.35);
+      game.spawnPopup(p.x, p.y - 30, 'FIGHTER CAPTURED!', COLORS.nullRed, 1.35);
       e.beamTimer = TRACTOR_LIFT_DUR; // Visual tractor lift before returning to formation
     }
   }
@@ -106,13 +109,27 @@ export function updateRecognizerBeaming(game, e, dt) {
       p.missileVibTimer = 0;
       p.slowTimer = 0;
       p.dmgDebuffTimer = 0;
+      p.fireJamTimer = 0;
+      p.sparkSlowTimer = 0;
+      game.masterFluxStreak = 0;
+      game.masterNullStreak = 0;
+      game.masterFluxRewardSpawned = false;
+      game.masterNullRewardSpawned = false;
+      if (hasPowerup(game, 'CLONE')) {
+        removePowerupSlot(game, 'CLONE', true);
+      } else {
+        game.fighterClones = [];
+        game.cloneTimer = 0;
+      }
       game.redLaserActive = false;
       game.redLaserPulseTimer = 0;
       game.activeLaserBeams = [];
-      game.lives--;
+      if (!game.sandboxMode) {
+        game.lives--;
+      }
       game.updateHUD();
       game.updateStatusPills();
-      if (game.lives <= 0) {
+      if (!game.sandboxMode && game.lives <= 0) {
         game.gameOverTimer = 1.05;
       }
     }
@@ -131,14 +148,14 @@ export function updateCapturedFighterTether(game, e, dt) {
   game.capturedFighter.spin = p.capturedById === e.id ? game.capturedFighter.spin + dt * 10 : 0;
 }
 
-export function handleRecognizerDestroyed(game, e) {
+export function handleEnforcerDestroyed(game, e) {
   if (game.activeBeamBoss && game.activeBeamBoss.id === e.id) {
     game.activeBeamBoss = null;
     game.synth.stopTractorBeam();
     game.tractorTimer = Math.min(game.tractorTimer, TRACTOR_RETRY_DELAY);
   }
 
-  // Abort active pull-up or rescue docked captured fighter if Classic MCP Recognizer is destroyed
+  // Abort active pull-up or rescue docked captured ship if V1 Enforcer is destroyed
   if (game.player.capturedById === e.id) {
     game.player.capturedById = null;
     game.capturedFighter = null;
@@ -154,7 +171,7 @@ export function handleRecognizerDestroyed(game, e) {
   }
 }
 
-export function spawnLightwing(
+export function spawnEnforcerWing(
   game,
   boss,
   allowSurge = true,
@@ -162,9 +179,9 @@ export function spawnLightwing(
   forcedSide = null,
   spawnOffsetX = 0
 ) {
-  const isAres = boss.type === 'ARES_REC' || boss.type === 'MASTER_ARES_REC';
-  const isMaster = boss.type === 'MASTER_LEGACY_REC' || boss.type === 'MASTER_ARES_REC';
-  game.synth.playLightwingLaunch(isAres);
+  const isNull = boss.type === 'NULL_ENFORCER' || boss.type === 'MASTER_NULL_ENFORCER';
+  const isMaster = boss.type === 'MASTER_FLUX_ENFORCER' || boss.type === 'MASTER_NULL_ENFORCER';
+  game.synth.playEnforcerWingLaunch(isNull);
 
   const surgeChance = isMaster ? MASTER_SURGE_CHANCE : ELITE_SURGE_CHANCE;
   if (allowSurge && boss.wingSurgeQueue <= 0 && Math.random() < surgeChance) {
@@ -172,30 +189,30 @@ export function spawnLightwing(
     boss.wingSurgeQueue = extraCount;
     boss.wingSurgeTimer = ELITE_SURGE_INTERVAL;
     boss.surgePulse = 0.9;
-    game.synth.playWingSurge(isAres);
+    game.synth.playWingSurge(isNull);
     game.spawnPopup(
       boss.x,
       boss.y - 34,
       `WING SURGE +${extraCount}`,
-      isAres ? COLORS.aresRed : COLORS.cyan,
+      isNull ? COLORS.nullRed : COLORS.cyan,
       1.45
     );
   }
 
   const trail = {
-    id: game.ribbonIdSeq++,
-    variant: isAres ? 'ARES' : 'LEGACY',
+    id: game.threadIdSeq++,
+    variant: isNull ? 'NULL' : 'FLUX',
     segments: [],
-    hitsRemaining: isAres ? ARES_RIBBON_HITS : 999,
-    maxHits: ARES_RIBBON_HITS,
+    hitsRemaining: isNull ? NULL_THREAD_HITS : 999,
+    maxHits: NULL_THREAD_HITS,
     flashTimer: 0
   };
-  game.ribbonTrails.push(trail);
+  game.threadTrails.push(trail);
 
   const spread = surgeOffsetIdx * 18 * (surgeOffsetIdx % 2 === 0 ? 1 : -1);
 
-  if (isAres) {
-    // Double-length 90-degree crimson grid ribbon across 3 corridor tiers (~1080px span, 4.8s lifetime)
+  if (isNull) {
+    // Double-length 90-degree crimson Null Thread across 3 corridor tiers (~1080px span, 4.8s lifetime)
     const startX = clamp(boss.x + spawnOffsetX + spread * 0.4, 54, LOGICAL_W - 54);
     const startY = boss.y + 20;
     const dirX = forcedSide !== null
@@ -208,8 +225,8 @@ export function spawnLightwing(
     const dropY3 = clamp(LOGICAL_H - 72 - Math.random() * 44, 505, LOGICAL_H - 64);
     const exitX = dirX > 0 ? LOGICAL_W + 38 : -38;
 
-    game.lightwings.push({
-      variant: 'ARES',
+    game.enforcerWings.push({
+      variant: 'NULL',
       trail,
       x: startX,
       y: startY,
@@ -230,7 +247,7 @@ export function spawnLightwing(
       wpIndex: 0
     });
   } else {
-    // Double-length connected double-S cyan curve sweep (~1500px span, 4.8s lifetime)
+    // Double-length connected double-S cyan Flux Thread sweep (~1500px span, 4.8s lifetime)
     const startX = clamp(boss.x + spawnOffsetX, 44, LOGICAL_W - 44);
     const startY = boss.y + 20;
     const sweepRight = forcedSide !== null
@@ -252,8 +269,8 @@ export function spawnLightwing(
       { x: sweepRight ? LOGICAL_W + 42 : -42, y: LOGICAL_H - 165 }
     ];
 
-    game.lightwings.push({
-      variant: 'LEGACY',
+    game.enforcerWings.push({
+      variant: 'FLUX',
       trail,
       x: startX,
       y: startY,
@@ -270,135 +287,135 @@ export function spawnLightwing(
   }
 }
 
-export function shatterRibbonTrail(game, trailIdx, fx, fy, color) {
-  const trail = game.ribbonTrails[trailIdx];
+export function shatterThreadTrail(game, trailIdx, fx, fy, color) {
+  const trail = game.threadTrails[trailIdx];
   if (!trail) return;
   for (const seg of trail.segments) {
     if (Math.random() < 0.45) {
-      game.spawnDerez((seg.x1 + seg.x2) * 0.5, (seg.y1 + seg.y2) * 0.5, color, 2, 110);
+      game.spawnDeleteBurst((seg.x1 + seg.x2) * 0.5, (seg.y1 + seg.y2) * 0.5, color, 2, 110);
     }
   }
-  game.spawnDerez(fx, fy, color, 10, 155);
-  game.synth.playRibbonShatter();
-  game.ribbonTrails.splice(trailIdx, 1);
+  game.spawnDeleteBurst(fx, fy, color, 10, 155);
+  game.synth.playThreadShatter();
+  game.threadTrails.splice(trailIdx, 1);
 }
 
-export function damageLightwing(game, idx, dmg, quiet = false) {
-  const lw = game.lightwings[idx];
-  if (!lw) return;
-  lw.hp -= dmg;
-  if (lw.hp <= 0.001) {
-    const col = lw.variant === 'ARES' ? COLORS.aresRed : COLORS.cyan;
-    game.addScore(150, lw.x, lw.y, col);
-    game.spawnDerez(lw.x, lw.y, col, 14, 150);
-    game.synth.playDerez(false);
-    game.lightwings.splice(idx, 1);
+export function damageEnforcerWing(game, idx, dmg, quiet = false) {
+  const ew = game.enforcerWings[idx];
+  if (!ew) return;
+  ew.hp -= dmg;
+  if (ew.hp <= 0.001) {
+    const col = ew.variant === 'NULL' ? COLORS.nullRed : COLORS.cyan;
+    game.addScore(150, ew.x, ew.y, col);
+    game.spawnDeleteBurst(ew.x, ew.y, col, 14, 150);
+    game.synth.playDeleteBurst(false);
+    game.enforcerWings.splice(idx, 1);
   } else if (!quiet) {
     game.synth.playArmorPing();
   }
 }
 
-export function updateLightwingsAndRibbons(game, dt) {
+export function updateEnforcerWingsAndThreads(game, dt) {
   const p = game.player;
 
-  // 1) Update Lightwings (Legacy curved swoops & Ares 90-degree grid corridors)
-  for (let i = game.lightwings.length - 1; i >= 0; i--) {
-    const lw = game.lightwings[i];
-    const prevX = lw.x;
-    const prevY = lw.y;
+  // 1) Update Enforcer Wings (Flux curved swoops & Null 90-degree corridors)
+  for (let i = game.enforcerWings.length - 1; i >= 0; i--) {
+    const ew = game.enforcerWings[i];
+    const prevX = ew.x;
+    const prevY = ew.y;
     let finished = false;
 
-    if (lw.variant === 'LEGACY') {
-      lw.t += dt / lw.dur;
-      while (lw.t >= 1 && lw.curveIdx < lw.curves.length - 1) {
-        lw.t -= 1;
-        lw.curveIdx++;
+    if (ew.variant === 'FLUX') {
+      ew.t += dt / ew.dur;
+      while (ew.t >= 1 && ew.curveIdx < ew.curves.length - 1) {
+        ew.t -= 1;
+        ew.curveIdx++;
       }
-      if (lw.t >= 1) {
+      if (ew.t >= 1) {
         finished = true;
       } else {
-        const pos = evalCubic(lw.curves[lw.curveIdx], lw.t);
-        lw.x = pos.x;
-        lw.y = pos.y;
-        if (Math.hypot(lw.x - prevX, lw.y - prevY) > 0.1) {
-          lw.angle = Math.atan2(lw.y - prevY, lw.x - prevX);
+        const pos = evalCubic(ew.curves[ew.curveIdx], ew.t);
+        ew.x = pos.x;
+        ew.y = pos.y;
+        if (Math.hypot(ew.x - prevX, ew.y - prevY) > 0.1) {
+          ew.angle = Math.atan2(ew.y - prevY, ew.x - prevX);
         }
       }
     } else {
-      let moveLeft = lw.speed * dt;
-      while (moveLeft > 0 && lw.wpIndex < lw.waypoints.length) {
-        const wp = lw.waypoints[lw.wpIndex];
-        const dx = wp.x - lw.x;
-        const dy = wp.y - lw.y;
+      let moveLeft = ew.speed * dt;
+      while (moveLeft > 0 && ew.wpIndex < ew.waypoints.length) {
+        const wp = ew.waypoints[ew.wpIndex];
+        const dx = wp.x - ew.x;
+        const dy = wp.y - ew.y;
         const dist = Math.hypot(dx, dy);
         if (dist <= moveLeft) {
-          const cornerX = lw.x;
-          const cornerY = lw.y;
-          lw.x = wp.x;
-          lw.y = wp.y;
+          const cornerX = ew.x;
+          const cornerY = ew.y;
+          ew.x = wp.x;
+          ew.y = wp.y;
           moveLeft -= dist;
-          lw.wpIndex++;
-          if (Math.hypot(lw.x - lw.prevX, lw.y - lw.prevY) > 2) {
-            lw.trail.segments.push({
-              x1: lw.prevX,
-              y1: lw.prevY,
-              x2: lw.x,
-              y2: lw.y,
-              life: RIBBON_LIFETIME
+          ew.wpIndex++;
+          if (Math.hypot(ew.x - ew.prevX, ew.y - ew.prevY) > 2) {
+            ew.trail.segments.push({
+              x1: ew.prevX,
+              y1: ew.prevY,
+              x2: ew.x,
+              y2: ew.y,
+              life: THREAD_LIFETIME
             });
-            lw.prevX = lw.x;
-            lw.prevY = lw.y;
+            ew.prevX = ew.x;
+            ew.prevY = ew.y;
           }
           if (Math.hypot(wp.x - cornerX, wp.y - cornerY) > 0.1) {
-            lw.angle = Math.atan2(wp.y - cornerY, wp.x - cornerX);
+            ew.angle = Math.atan2(wp.y - cornerY, wp.x - cornerX);
           }
         } else {
-          lw.x += (dx / dist) * moveLeft;
-          lw.y += (dy / dist) * moveLeft;
-          lw.angle = Math.atan2(dy, dx);
+          ew.x += (dx / dist) * moveLeft;
+          ew.y += (dy / dist) * moveLeft;
+          ew.angle = Math.atan2(dy, dx);
           moveLeft = 0;
         }
       }
-      if (lw.wpIndex >= lw.waypoints.length) {
+      if (ew.wpIndex >= ew.waypoints.length) {
         finished = true;
       }
     }
 
-    // Emit Light Ribbon segment as Lightwing travels
-    if (!finished && Math.hypot(lw.x - lw.prevX, lw.y - lw.prevY) >= 12) {
-      lw.trail.segments.push({
-        x1: lw.prevX,
-        y1: lw.prevY,
-        x2: lw.x,
-        y2: lw.y,
-        life: RIBBON_LIFETIME
+    // Emit Thread segment as Enforcer Wing travels
+    if (!finished && Math.hypot(ew.x - ew.prevX, ew.y - ew.prevY) >= 12) {
+      ew.trail.segments.push({
+        x1: ew.prevX,
+        y1: ew.prevY,
+        x2: ew.x,
+        y2: ew.y,
+        life: THREAD_LIFETIME
       });
-      lw.prevX = lw.x;
-      lw.prevY = lw.y;
+      ew.prevX = ew.x;
+      ew.prevY = ew.y;
     }
 
-    // Direct Lightwing collision with player ship
+    // Direct Enforcer Wing collision with player ship
     if (
       !finished &&
       p.alive &&
       !p.capturedById &&
       p.invulnTimer <= 0 &&
-      Math.hypot(lw.x - p.x, lw.y - p.y) < (p.dual ? 24 : 16)
+      Math.hypot(ew.x - p.x, ew.y - p.y) < (p.dual ? 24 : 16)
     ) {
       game.damagePlayer();
-      game.spawnDerez(lw.x, lw.y, lw.variant === 'ARES' ? COLORS.aresRed : COLORS.cyan, 12, 135);
-      game.lightwings.splice(i, 1);
+      game.spawnDeleteBurst(ew.x, ew.y, ew.variant === 'NULL' ? COLORS.nullRed : COLORS.cyan, 12, 135);
+      game.enforcerWings.splice(i, 1);
       continue;
     }
 
     if (finished) {
-      game.lightwings.splice(i, 1);
+      game.enforcerWings.splice(i, 1);
     }
   }
 
-  // 2) Decay Light Ribbon segments & check player touch debuffs
-  for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-    const trail = game.ribbonTrails[ti];
+  // 2) Decay Thread segments & check player touch debuffs
+  for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+    const trail = game.threadTrails[ti];
     if (trail.flashTimer > 0) trail.flashTimer = Math.max(0, trail.flashTimer - dt);
 
     for (let si = trail.segments.length - 1; si >= 0; si--) {
@@ -410,14 +427,14 @@ export function updateLightwingsAndRibbons(game, dt) {
       }
       if (p.alive && !p.capturedById) {
         if (distToSeg(p.x, p.y, seg.x1, seg.y1, seg.x2, seg.y2) < (p.dual ? 20 : 14)) {
-          game.applyRibbonDebuff(trail.variant);
+          game.applyThreadDebuff(trail.variant);
         }
       }
     }
 
-    const ownedByActiveWing = game.lightwings.some(lw => lw.trail === trail);
+    const ownedByActiveWing = game.enforcerWings.some(ew => ew.trail === trail);
     if (trail.segments.length === 0 && !ownedByActiveWing) {
-      game.ribbonTrails.splice(ti, 1);
+      game.threadTrails.splice(ti, 1);
     }
   }
 }

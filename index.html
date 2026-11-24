@@ -3,8 +3,29 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>GRID GALAGA // 1982 — Alpha Test 0.1.1</title>
-  <link rel="stylesheet" href="css/style.css">
+  <title>SZARKK — Alpha Test 0.1.2</title>
+  <link rel="stylesheet" href="css/style.css?v=0.1.2">
+  <script type="importmap">
+    {
+      "imports": {
+        "./js/audio.js": "./js/audio.js?v=0.1.2",
+        "./js/config.js": "./js/config.js?v=0.1.2",
+        "./js/enemies.js": "./js/enemies.js?v=0.1.2",
+        "./js/enforcers.js": "./js/enforcers.js?v=0.1.2",
+        "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.2",
+        "./js/main.js": "./js/main.js?v=0.1.2",
+        "./js/player.js": "./js/player.js?v=0.1.2",
+        "./js/powerups.js": "./js/powerups.js?v=0.1.2",
+        "./js/projectiles.js": "./js/projectiles.js?v=0.1.2",
+        "./js/renderer.js": "./js/renderer.js?v=0.1.2",
+        "./js/sandbox.js": "./js/sandbox.js?v=0.1.2",
+        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.2",
+        "./js/sprites.js": "./js/sprites.js?v=0.1.2",
+        "./js/ui.js": "./js/ui.js?v=0.1.2",
+        "./js/utils.js": "./js/utils.js?v=0.1.2"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="app-shell">
@@ -37,10 +58,10 @@
     </header>
 
     <!-- =====================================================================
-         MAIN 3D TRON PLAYFIELD STAGE + OVERLAYS
+         MAIN 3D NEXUS PLAYFIELD STAGE + OVERLAYS
          ===================================================================== -->
     <main id="stage-container">
-      <canvas id="game-canvas" aria-label="Grid Galaga 1982 Playfield"></canvas>
+      <canvas id="game-canvas" aria-label="SZARKK Playfield"></canvas>
       <div id="crt-overlay"></div>
 
       <!-- LIVE NON-BLOCKING DEBUFF COUNTDOWN BARS -->
@@ -59,22 +80,166 @@
           </div>
           <div class="status-track"><div id="pill-dmg-fill" class="status-fill"></div></div>
         </div>
+        <div id="pill-field" class="status-pill slow hidden">
+          <div class="status-row">
+            <span id="pill-field-label">CYAN FIELD</span>
+            <span id="pill-field-time">4.0s</span>
+          </div>
+          <div class="status-track"><div id="pill-field-fill" class="status-fill"></div></div>
+        </div>
+        <div id="pill-shock" class="status-pill shock hidden">
+          <div class="status-row">
+            <span id="pill-shock-label">FIRE JAMMED</span>
+            <span id="pill-shock-time">2.0s</span>
+          </div>
+          <div class="status-track"><div id="pill-shock-fill" class="status-fill"></div></div>
+        </div>
       </div>
+
+      <!-- SANDBOX ARENA QUICK STRIP, BOTTOM DEPLOY BAR & COLLAPSIBLE CONTROL DRAWER -->
+      <div id="sandbox-strip" class="sandbox-strip hidden" aria-label="Sandbox Quick Controls">
+        <button type="button" id="sbx-btn-exit" class="sbx-pill is-exit" title="Exit Training Arena to Main Menu">EXIT</button>
+        <div class="sbx-strip-group">
+          <button type="button" id="sbx-btn-tools" class="sbx-pill sbx-tools-btn">TOOLS &#9660;</button>
+          <button type="button" id="sbx-btn-ai" class="sbx-pill is-attack" title="Toggle Enemies Idle vs Attack">AI:ATK</button>
+          <button type="button" id="sbx-btn-anim" class="sbx-pill" title="Pause / Resume Enemy Idle Animation">ANIM:ON</button>
+          <button type="button" id="sbx-btn-dual" class="sbx-pill" title="Toggle Dual-Fighter">DUAL:OFF</button>
+          <button type="button" id="sbx-btn-clear" class="sbx-pill is-clear" title="Clear Arena">CLEAR</button>
+        </div>
+      </div>
+
+      <div id="sandbox-pwr-corner" class="sandbox-pwr-corner hidden" aria-label="Quick Power-Up &amp; Ruler Controls">
+        <div id="sbx-pwr-tray" class="sbx-pwr-tray hidden">
+          <button type="button" id="sbx-pwr-all" class="sbx-pwr-item is-all">ALL 5</button>
+          <div id="sbx-pwr-tray-list" class="sbx-pwr-tray-list"></div>
+        </div>
+        <button type="button" id="sbx-btn-pwr-tray" class="sbx-corner-btn is-tray" title="Expand Power-Up Selector">PWR &#9650;</button>
+        <button type="button" id="sbx-btn-ruler" class="sbx-corner-btn is-ruler" title="Toggle Ship Chain Lightning Ruler">RULER</button>
+        <button type="button" id="sbx-btn-quick-clear-pwr" class="sbx-corner-btn is-clr" title="Clear Active Power-Ups">CLR PWR</button>
+      </div>
+
+      <div id="sandbox-deploy-bar" class="sandbox-deploy-bar hidden" aria-label="Deploy &amp; Drag Controls">
+        <span id="sbx-deploy-entity-tag" class="sbx-deploy-tag">DRONE</span>
+        <div class="sbx-deploy-btns">
+          <button type="button" id="sbx-mode-deploy" class="sbx-dep-btn is-deploy selected">DEPLOY</button>
+          <button type="button" id="sbx-mode-drag" class="sbx-dep-btn is-drag">DRAG</button>
+          <button type="button" id="sbx-mode-stop" class="sbx-dep-btn is-stop">STOP</button>
+        </div>
+      </div>
+
+      <section id="sandbox-drawer" class="sandbox-drawer hidden" aria-label="Sandbox Arena Controls">
+        <div class="sbx-drawer-shell">
+          <div class="sbx-drawer-head">
+            <div class="archive-title-wrap">
+              <span class="archive-kicker">// INFINITE LIVES &bull; LIVE TESTING //</span>
+              <h2 class="archive-heading sbx-heading">SANDBOX ARENA</h2>
+            </div>
+            <button type="button" id="sbx-btn-close-drawer" class="archive-back-btn">&#9664; BACK</button>
+          </div>
+
+          <div class="sbx-scroll">
+            <!-- 1. FORMATION BUILDER -->
+            <div class="sbx-section">
+              <div class="sbx-sec-title">FORMATION &amp; RHYTHM BUILDER</div>
+              <div class="sbx-form-grid">
+                <label class="sbx-field">
+                  <span>FORMATION</span>
+                  <select id="sbx-sel-formation" class="sbx-select"></select>
+                </label>
+                <label class="sbx-field">
+                  <span>ENTRY PATH</span>
+                  <select id="sbx-sel-entry" class="sbx-select"></select>
+                </label>
+                <label class="sbx-field">
+                  <span>SWAY RHYTHM</span>
+                  <select id="sbx-sel-sway" class="sbx-select"></select>
+                </label>
+                <label class="sbx-field">
+                  <span>FLEET TIER</span>
+                  <select id="sbx-sel-tier" class="sbx-select"></select>
+                </label>
+              </div>
+              <div class="btn-pair">
+                <button type="button" id="sbx-btn-spawn-entry" class="sbx-action-btn primary">SPAWN W/ ENTRY</button>
+                <button type="button" id="sbx-btn-set-instant" class="sbx-action-btn emerald">SET INSTANT</button>
+              </div>
+            </div>
+
+            <!-- 2. TOUCH / CLICK DEPLOY ENEMIES -->
+            <div class="sbx-section">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">TOUCH / CLICK DEPLOY ENEMIES</span>
+                <span class="sbx-sec-hint">PICK &rarr; TAP ARENA</span>
+              </div>
+              <div id="sbx-enemy-grid" class="sbx-chip-grid"></div>
+            </div>
+
+            <!-- 3. CAPSULES (TOUCH DEPLOY OR FLOAT IN) -->
+            <div class="sbx-section">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">POWER-UP CAPSULES</span>
+                <div class="sbx-mini-seg">
+                  <button type="button" id="sbx-cap-mode-touch" class="sbx-seg-btn selected">TAP DEPLOY</button>
+                  <button type="button" id="sbx-cap-mode-float" class="sbx-seg-btn">FLOAT IN</button>
+                </div>
+              </div>
+              <div id="sbx-capsule-grid" class="sbx-chip-grid caps-grid"></div>
+            </div>
+
+            <!-- 4. ARENA DISPLAY, AI & AUREX LOADOUT -->
+            <div class="sbx-section">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">ARENA TOOLS &amp; AUREX LOADOUT</span>
+                <span class="sbx-inf-pill">&infin; INFINITE LIVES</span>
+              </div>
+              <div class="btn-pair">
+                <button type="button" id="sbx-drawer-ai" class="sbx-action-btn danger">ENEMIES: ATTACK</button>
+                <button type="button" id="sbx-drawer-anim" class="sbx-action-btn secondary">IDLE ANIM: ON</button>
+              </div>
+              <div class="btn-pair">
+                <button type="button" id="sbx-btn-toggle-bg" class="sbx-action-btn primary">ENDFRAME BG: ON</button>
+                <button type="button" id="sbx-btn-toggle-grid" class="sbx-action-btn secondary">MEASURE GRID: OFF</button>
+              </div>
+              <div class="btn-pair">
+                <button type="button" id="sbx-drawer-dual" class="sbx-action-btn secondary">DUAL FIGHTER: OFF</button>
+                <button type="button" id="sbx-btn-start-drag" class="sbx-action-btn secondary">DRAG ENTITIES</button>
+              </div>
+              <button type="button" id="sbx-btn-clear-pwr" class="sbx-action-btn secondary">CLEAR POWER-UPS &amp; DEBUFFS</button>
+            </div>
+
+            <!-- 5. TRAINING ROUNDS -->
+            <div class="sbx-section sbx-training-box">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">TRAINING ROUNDS (REAL SECTOR SIM)</span>
+                <div class="sbx-mini-seg">
+                  <button type="button" id="sbx-train-normal" class="sbx-seg-btn selected">NORMAL</button>
+                  <button type="button" id="sbx-train-hard" class="sbx-seg-btn hard-opt">HARD</button>
+                </div>
+              </div>
+              <div class="sbx-train-row">
+                <select id="sbx-sel-train-sec" class="sbx-select"></select>
+                <button type="button" id="sbx-btn-start-training" class="sbx-action-btn gold">START TRAINING ROUND</button>
+              </div>
+              <button type="button" id="sbx-btn-stop-training" class="sbx-action-btn danger hidden">STOP TRAINING ROUND</button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- ===================================================================
            DE-CLUTTERED MAIN MENU OVERLAY
            =================================================================== -->
       <section id="overlay-start" class="overlay">
-        <div class="tron-card">
+        <div class="nexus-card">
           <div class="title-lockup">
             <div class="wire-accent">
               <span class="wire-line"></span>
               <span class="wire-diamond"></span>
               <span class="wire-line"></span>
             </div>
-            <h1 class="tron-title">GRID GALAGA</h1>
-            <div class="tron-subtitle">// 1982</div>
-            <div class="version-badge" id="menu-version">Alpha Test 0.1.1</div>
+            <h1 class="nexus-title szarkk-title">SZARKK</h1>
+            <div class="nexus-subtitle szarkk-acronym">SENTIENT ZENITH AUGMENTATION RECURSIVE KNOWLEDGE KERNEL</div>
+            <div class="version-badge" id="menu-version">Alpha Test 0.1.2</div>
             <div class="wire-accent">
               <span class="wire-line"></span>
               <span class="wire-diamond"></span>
@@ -93,11 +258,12 @@
           </div>
 
           <div class="menu-actions">
-            <button type="button" id="btn-start" class="tron-cta">ENTER THE GRID</button>
-            <button type="button" id="btn-open-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
+            <button type="button" id="btn-start" class="nexus-cta">ENTER THE NEXUS</button>
+            <button type="button" id="btn-open-sandbox" class="nexus-cta emerald-btn">TRAINING / SANDBOX</button>
+            <button type="button" id="btn-open-leaderboard" class="nexus-cta gold-btn">LEADERBOARD</button>
             <div class="btn-pair">
-              <button type="button" id="btn-open-archive" class="tron-cta secondary">GRID ARCHIVE</button>
-              <button type="button" id="btn-open-controls" class="tron-cta secondary">CONTROLS</button>
+              <button type="button" id="btn-open-archive" class="nexus-cta secondary">NEXUS ARCHIVE</button>
+              <button type="button" id="btn-open-controls" class="nexus-cta secondary">CONTROLS</button>
             </div>
           </div>
         </div>
@@ -107,9 +273,9 @@
            CONTROLS & DISPLAY MODAL (ACCESSIBLE FROM MENU & PAUSE)
            =================================================================== -->
       <section id="overlay-controls" class="overlay modal-top hidden">
-        <div class="tron-card">
-          <div class="tron-subtitle" style="letter-spacing:2px;">// INPUT MATRIX //</div>
-          <h2 class="tron-title" style="font-size:21px; letter-spacing:2px;">CONTROLS &amp; DISPLAY</h2>
+        <div class="nexus-card">
+          <div class="nexus-subtitle" style="letter-spacing:2px;">// INPUT MATRIX //</div>
+          <h2 class="nexus-title" style="font-size:21px; letter-spacing:2px;">CONTROLS &amp; DISPLAY</h2>
 
           <div class="ctrl-box">
             <div class="ctrl-box-top">
@@ -120,29 +286,29 @@
           </div>
 
           <div class="btn-pair">
-            <button type="button" id="btn-ctrl-crt" class="tron-cta secondary">CRT: ON</button>
-            <button type="button" id="btn-ctrl-sfx" class="tron-cta secondary">SFX: ON</button>
+            <button type="button" id="btn-ctrl-crt" class="nexus-cta secondary">CRT: ON</button>
+            <button type="button" id="btn-ctrl-sfx" class="nexus-cta secondary">SFX: ON</button>
           </div>
 
           <div class="guide-list">
             <div><strong>2D DODGE ZONE:</strong> Move freely anywhere across the bottom 2/5ths of the arena to weave through enemy fire.</div>
-            <div><strong>TOUCH CONTROLS:</strong> Drag directly on or <strong>below</strong> your fighter (extended touch handle keeps your finger off your ship) while holding/tapping <strong>FIRE</strong> with your other thumb.</div>
+            <div><strong>TOUCH CONTROLS:</strong> Touch and drag <strong>anywhere below the dotted line</strong> (no need to touch the ship) while holding/tapping <strong>FIRE</strong> with your other thumb.</div>
             <div><strong>DESKTOP KEYS:</strong> <strong>WASD</strong> or <strong>Arrow Keys</strong> Move (2D) &bull; <strong>Space / Z / Click</strong> Fire &bull; <strong>F</strong> Auto-Fire &bull; <strong>P / Esc</strong> Pause &bull; <strong>M</strong> Mute.</div>
           </div>
 
-          <button type="button" id="btn-ctrl-back" class="tron-cta">&#9664; BACK</button>
+          <button type="button" id="btn-ctrl-back" class="nexus-cta">&#9664; BACK</button>
         </div>
       </section>
 
       <!-- ===================================================================
-           GRID ARCHIVE (SHIP, ENEMY & POWER-UP GLOSSARY MODAL)
+           NEXUS ARCHIVE (SHIP, ENEMY & POWER-UP GLOSSARY MODAL)
            =================================================================== -->
       <section id="overlay-archive" class="overlay modal-top hidden">
         <div class="archive-shell">
           <div class="archive-header">
             <div class="archive-title-wrap">
               <span class="archive-kicker">// TACTICAL DATABASE //</span>
-              <h2 class="archive-heading">GRID ARCHIVE</h2>
+              <h2 class="archive-heading">NEXUS ARCHIVE</h2>
             </div>
             <button type="button" id="btn-archive-back" class="archive-back-btn">&#9664; BACK</button>
           </div>
@@ -157,7 +323,7 @@
         <div class="archive-shell">
           <div class="archive-header">
             <div class="archive-title-wrap">
-              <span class="archive-kicker">// HALL OF PROGRAMS //</span>
+              <span class="archive-kicker">// HALL OF CHAMPIONS //</span>
               <h2 class="archive-heading lb-heading">LEADERBOARD</h2>
             </div>
             <button type="button" id="btn-lb-back" class="archive-back-btn">&#9664; BACK</button>
@@ -180,22 +346,22 @@
           <!-- 2-Step Double Confirmation Clear UI -->
           <div id="lb-clear-wrap" class="lb-clear-wrap">
             <div id="lb-clear-step0">
-              <button type="button" id="btn-lb-clear-init" class="tron-cta danger lb-clear-btn">CLEAR LEADERBOARD</button>
+              <button type="button" id="btn-lb-clear-init" class="nexus-cta danger lb-clear-btn">CLEAR LEADERBOARD</button>
             </div>
 
             <div id="lb-clear-step1" class="lb-confirm-box hidden">
               <div class="lb-confirm-msg">STEP 1/2 — ERASE ALL SAVED LEADERBOARD RECORDS?</div>
               <div class="btn-pair">
-                <button type="button" id="btn-lb-clear-cancel1" class="tron-cta secondary">CANCEL</button>
-                <button type="button" id="btn-lb-clear-step1" class="tron-cta amber">YES, CONTINUE</button>
+                <button type="button" id="btn-lb-clear-cancel1" class="nexus-cta secondary">CANCEL</button>
+                <button type="button" id="btn-lb-clear-step1" class="nexus-cta amber">YES, CONTINUE</button>
               </div>
             </div>
 
             <div id="lb-clear-step2" class="lb-confirm-box final hidden">
               <div class="lb-confirm-msg">STEP 2/2 — FINAL CONFIRMATION: PERMANENTLY WIPE ALL SCORES &amp; HI-SCORE?</div>
               <div class="btn-pair">
-                <button type="button" id="btn-lb-clear-cancel2" class="tron-cta secondary">CANCEL</button>
-                <button type="button" id="btn-lb-clear-confirm" class="tron-cta danger">WIPE ALL RECORDS</button>
+                <button type="button" id="btn-lb-clear-cancel2" class="nexus-cta secondary">CANCEL</button>
+                <button type="button" id="btn-lb-clear-confirm" class="nexus-cta danger">WIPE ALL RECORDS</button>
               </div>
             </div>
           </div>
@@ -206,23 +372,23 @@
            PAUSE MENU OVERLAY
            =================================================================== -->
       <section id="overlay-pause" class="overlay hidden">
-        <div class="tron-card">
-          <div class="tron-subtitle">// GRID SUSPENDED //</div>
-          <h2 class="tron-title" style="font-size:23px;">SYSTEM PAUSED</h2>
-          <div class="version-badge" id="pause-version">Alpha Test 0.1.1</div>
+        <div class="nexus-card">
+          <div class="nexus-subtitle">// NEXUS SUSPENDED //</div>
+          <h2 class="nexus-title" style="font-size:23px;">SYSTEM PAUSED</h2>
+          <div class="version-badge" id="pause-version">Alpha Test 0.1.2</div>
 
-          <button type="button" id="btn-resume" class="tron-cta">RESUME</button>
+          <button type="button" id="btn-resume" class="nexus-cta">RESUME</button>
 
           <div class="btn-pair">
-            <button type="button" id="btn-pause-archive" class="tron-cta secondary">GRID ARCHIVE</button>
-            <button type="button" id="btn-pause-controls" class="tron-cta secondary">CONTROLS</button>
+            <button type="button" id="btn-pause-archive" class="nexus-cta secondary">NEXUS ARCHIVE</button>
+            <button type="button" id="btn-pause-controls" class="nexus-cta secondary">CONTROLS</button>
           </div>
 
-          <button type="button" id="btn-pause-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
+          <button type="button" id="btn-pause-leaderboard" class="nexus-cta gold-btn">LEADERBOARD</button>
 
           <div class="btn-pair">
-            <button type="button" id="btn-restart" class="tron-cta amber">RESTART</button>
-            <button type="button" id="btn-pause-menu" class="tron-cta danger">MAIN MENU</button>
+            <button type="button" id="btn-restart" class="nexus-cta amber">RESTART</button>
+            <button type="button" id="btn-pause-menu" class="nexus-cta danger">MAIN MENU</button>
           </div>
         </div>
       </section>
@@ -231,9 +397,9 @@
            GAME OVER / ARCADE LEADERBOARD SAVE OVERLAY
            =================================================================== -->
       <section id="overlay-gameover" class="overlay hidden">
-        <div class="tron-card">
-          <div class="tron-subtitle" style="color:#ff6e88;">// PROGRAM DEREZZED //</div>
-          <h2 class="tron-title" style="font-size:23px;">GAME OVER</h2>
+        <div class="nexus-card">
+          <div class="nexus-subtitle" style="color:#ff6e88;">// NEXUS NODE DELETED //</div>
+          <h2 class="nexus-title" style="font-size:23px;">GAME OVER</h2>
           <div id="go-mode-badge" class="go-mode-badge hidden">HARD MODE // SEC 06+</div>
           <div id="go-record-badge" class="record-banner hidden">NEW SYSTEM HIGH SCORE</div>
 
@@ -273,15 +439,15 @@
             <label class="go-save-label" for="go-callsign-input">RECORD CALLSIGN TO LEADERBOARD</label>
             <div class="go-save-row">
               <input type="text" id="go-callsign-input" class="arcade-input" maxlength="8" autocomplete="off" spellcheck="false" placeholder="CALLSIGN" aria-label="Arcade Callsign">
-              <button type="button" id="btn-save-score" class="tron-cta gold-btn go-save-btn">SAVE</button>
+              <button type="button" id="btn-save-score" class="nexus-cta gold-btn go-save-btn">SAVE</button>
             </div>
           </div>
           <div id="go-save-status" class="go-save-status hidden"></div>
 
-          <button type="button" id="btn-replay" class="tron-cta">PLAY AGAIN</button>
+          <button type="button" id="btn-replay" class="nexus-cta">PLAY AGAIN</button>
           <div class="btn-pair">
-            <button type="button" id="btn-go-leaderboard" class="tron-cta gold-btn">LEADERBOARD</button>
-            <button type="button" id="btn-go-menu" class="tron-cta secondary">MAIN MENU</button>
+            <button type="button" id="btn-go-leaderboard" class="nexus-cta gold-btn">LEADERBOARD</button>
+            <button type="button" id="btn-go-menu" class="nexus-cta secondary">MAIN MENU</button>
           </div>
         </div>
       </section>
@@ -324,7 +490,7 @@
         <div class="dock-status-bar">
           <div class="dock-status">
             <span id="dock-dot" class="status-dot"></span>
-            <span id="dock-status-text">DRAG BELOW SHIP TO DODGE // HOLD FIRE</span>
+            <span id="dock-status-text">TOUCH ANYWHERE BELOW TO MOVE // HOLD FIRE</span>
           </div>
           <button type="button" id="btn-hide-touch" class="dock-mini-btn hidden" title="Switch to Compact Desktop Keybar">PC MODE</button>
         </div>
@@ -337,6 +503,6 @@
     </nav>
   </div>
 
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main.js?v=0.1.2"></script>
 </body>
 </html>

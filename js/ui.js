@@ -6,23 +6,36 @@ import {
   ARCHIVE_ENTRIES,
   ARC_WAVE_MAX,
   CANNON_AUTO_FIRE_DELAY,
+  CHAIN_LIGHTNING_MAX_SHOTS,
   CYAN_SHOT_ENERGY_COST,
   GAME_VERSION,
   LOGICAL_H,
   LOGICAL_W,
+  PLAYER_MIN_Y,
   POWERUP_MAX_ENERGY,
   RED_LASER_DRAIN_PER_SEC,
   STORAGE_KEYS,
   TAP_BUFFER_TIME,
-  TOUCH_HINT_DURATION
+  TOUCH_HINT_DURATION,
+  YELLOW_SHOT_ENERGY_COST
 } from './config.js';
 import { clamp, writeLS } from './utils.js';
 import { getActivePowerups } from './powerups.js';
+import { getPlayerMoveSpeedMult } from './player.js';
 import {
+  disarmSandboxDeploy,
+  endSandboxDrag,
+  handleSandboxCanvasDeploy,
+  moveSandboxDrag,
+  setSandboxDrawerOpen,
+  startSandboxDrag,
+  syncSandboxPowerupTray
+} from './sandbox.js';
+import {
+  drawAurexFighter,
   drawEnemySprite,
-  drawLightwingSprite,
-  drawPixelCapsule,
-  drawPlayerFighter
+  drawEnforcerWingSprite,
+  drawPixelCapsule
 } from './sprites.js';
 import {
   clearLeaderboard,
@@ -57,6 +70,16 @@ export function cacheDomElements(game) {
   game.pillDmg = document.getElementById('pill-dmg');
   game.pillDmgTime = document.getElementById('pill-dmg-time');
   game.pillDmgFill = document.getElementById('pill-dmg-fill');
+
+  game.pillField = document.getElementById('pill-field');
+  game.pillFieldLabel = document.getElementById('pill-field-label');
+  game.pillFieldTime = document.getElementById('pill-field-time');
+  game.pillFieldFill = document.getElementById('pill-field-fill');
+
+  game.pillShock = document.getElementById('pill-shock');
+  game.pillShockLabel = document.getElementById('pill-shock-label');
+  game.pillShockTime = document.getElementById('pill-shock-time');
+  game.pillShockFill = document.getElementById('pill-shock-fill');
 
   game.btnAuto = document.getElementById('btn-auto');
   game.btnCrt = document.getElementById('btn-crt');
@@ -162,28 +185,56 @@ export function renderArchivePreviews(game) {
 
     const bob = Math.sin(t * 2.6) * 2.5;
     if (p.id === 'PLAYER') {
-      drawPlayerFighter(c, 34, 31 + bob, false, false, false, t);
+      drawAurexFighter(c, 34, 31 + bob, false, false, false, t);
     } else if (p.id === 'CAPSULE_CYAN') {
       drawPixelCapsule(c, 34, 29 + bob, 'CYAN', t, 1.35);
     } else if (p.id === 'CAPSULE_RED') {
       drawPixelCapsule(c, 34, 29 + bob, 'RED', t, 1.35);
     } else if (p.id === 'CAPSULE_PURPLE') {
       drawPixelCapsule(c, 34, 29 + bob, 'PURPLE', t, 1.35);
-    } else if (p.id === 'LIGHTWING') {
-      drawLightwingSprite(c, { variant: 'LEGACY', x: 22, y: 30 + bob, angle: -Math.PI / 2 });
-      drawLightwingSprite(c, { variant: 'ARES', x: 46, y: 30 - bob, angle: -Math.PI / 2 });
+    } else if (p.id === 'CAPSULE_YELLOW') {
+      drawPixelCapsule(c, 34, 29 + bob, 'YELLOW', t, 1.35);
+    } else if (p.id === 'CAPSULE_CLONE') {
+      drawPixelCapsule(c, 34, 29 + bob, 'CLONE', t, 1.35);
+    } else if (p.id === 'CENTOID' || p.id === 'ALPHA_CENTOID') {
+      // Miniature 3-segment Centoid / Alpha Centoid chain with horned head in front!
+      const isAlpha = p.id === 'ALPHA_CENTOID';
+      const segs = [
+        { x: 18, y: 31 + Math.sin(t * 3.5 + 1.4) * 3.5, head: false, ord: 2 },
+        { x: 33, y: 29 + Math.sin(t * 3.5 + 0.7) * 3.5, head: false, ord: 1 },
+        { x: 48, y: 30 + Math.sin(t * 3.5) * 3.5, head: true, ord: 0 }
+      ];
+      for (const s of segs) {
+        drawEnemySprite(c, {
+          type: p.id,
+          x: s.x,
+          y: s.y,
+          hp: isAlpha ? 2 : 1,
+          maxHp: isAlpha ? 2 : 1,
+          hitFlash: 0,
+          angle: 0,
+          isCentoid: true,
+          isCentoidHead: s.head,
+          centoidOrder: s.ord
+        }, t, 0.76);
+      }
+    } else if (p.id === 'ENFORCER_WING') {
+      drawEnforcerWingSprite(c, { variant: 'FLUX', x: 22, y: 30 + bob, angle: -Math.PI / 2 });
+      drawEnforcerWingSprite(c, { variant: 'NULL', x: 46, y: 30 - bob, angle: -Math.PI / 2 });
     } else {
-      const isMaster = p.id === 'MASTER_LEGACY_REC' || p.id === 'MASTER_ARES_REC';
-      const isElite = isMaster || p.id === 'LEGACY_REC' || p.id === 'ARES_REC';
+      const isMaster = p.id === 'MASTER_FLUX_ENFORCER' || p.id === 'MASTER_NULL_ENFORCER';
+      const isPulsar = p.id === 'PULSAR';
+      const isElite = isMaster || p.id === 'FLUX_ENFORCER' || p.id === 'NULL_ENFORCER' || isPulsar;
       drawEnemySprite(c, {
         type: p.id,
         x: 34,
-        y: 30 + bob,
-        hp: isMaster ? 15 : 6,
-        maxHp: isMaster ? 15 : 6,
+        y: isPulsar ? 27 + bob : 30 + bob,
+        hp: isMaster ? 18 : (p.id === 'V1_ENFORCER' ? 3 : 6),
+        maxHp: isMaster ? 18 : (p.id === 'V1_ENFORCER' ? 3 : 6),
         hitFlash: 0,
-        angle: 0
-      }, t, isMaster ? 0.78 : (isElite ? 0.96 : 0.92));
+        angle: 0,
+        animPhase: 0
+      }, t, isMaster ? 0.78 : (isPulsar ? 0.94 : (isElite ? 0.96 : 0.92)));
     }
   }
 }
@@ -311,8 +362,8 @@ export function syncControlsUI(game) {
 
   game.dockDot.className = `status-dot ${game.autoFire ? '' : 'manual'}`;
   game.dockStatusText.textContent = game.autoFire
-    ? 'DRAG BELOW SHIP TO DODGE // AUTO-FIRE ON'
-    : 'DRAG BELOW SHIP TO DODGE // HOLD FIRE';
+    ? 'TOUCH ANYWHERE BELOW TO MOVE // AUTO-FIRE ON'
+    : 'TOUCH ANYWHERE BELOW TO MOVE // HOLD FIRE';
 
   const modalAuto = document.getElementById('btn-ctrl-auto');
   if (modalAuto) {
@@ -333,6 +384,17 @@ export function updateHUD(game) {
   game.elScore.textContent = String(game.score).padStart(6, '0');
   game.elHigh.textContent = String(game.highScore).padStart(6, '0');
   game.elStartHigh.textContent = String(game.highScore).padStart(6, '0');
+  if (game.sandboxMode) {
+    if (game.sandboxTrainingRound) {
+      game.elSector.textContent = `${game.hardMode ? 'TH' : 'T'}${String(game.sector).padStart(2, '0')}`;
+    } else {
+      game.elSector.textContent = 'SBX';
+    }
+    game.elSector.classList.toggle('is-hard', game.hardMode && game.sandboxTrainingRound);
+    game.elLives.innerHTML = `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(180,255,232,0.9)" stroke="#00ffaa" stroke-width="1.8"/></svg><span class="life-inf-badge">&infin;</span>`;
+    return;
+  }
+
   if (game.isChallengeStage) {
     game.elSector.textContent = `${game.hardMode ? 'HC' : 'C'}${game.challengeNum}`;
   } else {
@@ -370,14 +432,22 @@ function buildPowerupGaugeSlots(game, activeTypes) {
     return;
   }
 
-  bar.className = activeTypes.length > 1
-    ? 'pwr-multi'
-    : (activeTypes[0] === 'CYAN' ? 'pwr-cyan' : (activeTypes[0] === 'RED' ? 'pwr-red' : 'pwr-purple'));
+  const barClsFor = (t) =>
+    t === 'CYAN' ? 'pwr-cyan'
+      : (t === 'RED' ? 'pwr-red'
+        : (t === 'YELLOW' ? 'pwr-yellow'
+          : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple')));
+  const slotClsFor = (t) =>
+    t === 'CYAN' ? 'pwr-cyan'
+      : (t === 'RED' ? 'pwr-red'
+        : (t === 'YELLOW' ? 'pwr-yellow seg-10'
+          : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6')));
+
+  bar.className = activeTypes.length > 1 ? 'pwr-multi' : barClsFor(activeTypes[0]);
 
   for (const type of activeTypes) {
     const slot = document.createElement('div');
-    const colorCls = type === 'CYAN' ? 'pwr-cyan' : (type === 'RED' ? 'pwr-red' : 'pwr-purple seg-6');
-    slot.className = `pwr-slot ${colorCls}`;
+    slot.className = `pwr-slot ${slotClsFor(type)}`;
 
     const meta = document.createElement('div');
     meta.className = 'pwr-gauge-meta';
@@ -411,6 +481,7 @@ export function updateStatusPills(game) {
     if (key !== game._pwrGaugeKey) {
       game._pwrGaugeKey = key;
       buildPowerupGaugeSlots(game, activeTypes);
+      if (game.sandboxMode) syncSandboxPowerupTray(game);
     }
 
     const compact = activeTypes.length >= 2;
@@ -449,6 +520,19 @@ export function updateStatusPills(game) {
         refs.elName.textContent = compact ? 'LASER' : 'CONTINUOUS LASER';
         refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
         refs.fill.style.width = `${pct}%`;
+      } else if (type === 'YELLOW') {
+        const shotsLeft = Math.ceil(energy / YELLOW_SHOT_ENERGY_COST);
+        refs.elName.textContent = compact ? 'LIGHTNING' : 'CHAIN LIGHTNING';
+        refs.elVal.textContent = compact
+          ? `${shotsLeft}/${CHAIN_LIGHTNING_MAX_SHOTS}`
+          : `${shotsLeft}/${CHAIN_LIGHTNING_MAX_SHOTS} SHOTS`;
+        refs.fill.style.width = `${pct}%`;
+      } else if (type === 'CLONE') {
+        const secLeft = Math.max(0, game.cloneTimer || 0);
+        const cnt = (game.fighterClones || []).length;
+        refs.elName.textContent = compact ? `CLONES x${cnt}` : `FIGHTER CLONES (x${cnt})`;
+        refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
+        refs.fill.style.width = `${pct}%`;
       }
     }
   }
@@ -467,6 +551,35 @@ export function updateStatusPills(game) {
     game.pillDmgFill.style.width = `${clamp((p.dmgDebuffTimer / p.dmgDebuffMax) * 100, 0, 100)}%`;
   } else {
     game.pillDmg.classList.add('hidden');
+  }
+
+  if (game.pillField) {
+    if (game.fieldDebuff && game.fieldDebuff.timer > 0) {
+      const fd = game.fieldDebuff;
+      const isCyan = fd.type === 'CYAN';
+      game.pillField.className = `status-pill ${isCyan ? 'slow' : 'dmg'}`;
+      game.pillFieldLabel.textContent = isCyan ? 'CYAN FIELD 1.5x SLOW' : 'RED FIELD 0.5x DMG';
+      game.pillFieldTime.textContent = `${fd.timer.toFixed(1)}s`;
+      game.pillFieldFill.style.width = `${clamp((fd.timer / Math.max(0.1, fd.maxTimer)) * 100, 0, 100)}%`;
+    } else {
+      game.pillField.classList.add('hidden');
+    }
+  }
+
+  if (game.pillShock) {
+    if (p.fireJamTimer > 0) {
+      game.pillShock.classList.remove('hidden');
+      game.pillShockLabel.textContent = 'WEAPONS JAMMED';
+      game.pillShockTime.textContent = `${p.fireJamTimer.toFixed(1)}s`;
+      game.pillShockFill.style.width = `${clamp((p.fireJamTimer / Math.max(0.1, p.fireJamMax)) * 100, 0, 100)}%`;
+    } else if (p.sparkSlowTimer > 0) {
+      game.pillShock.classList.remove('hidden');
+      game.pillShockLabel.textContent = 'FIRE RATE 2x SLOW';
+      game.pillShockTime.textContent = `${p.sparkSlowTimer.toFixed(1)}s`;
+      game.pillShockFill.style.width = `${clamp((p.sparkSlowTimer / Math.max(0.1, p.sparkSlowMax)) * 100, 0, 100)}%`;
+    } else {
+      game.pillShock.classList.add('hidden');
+    }
   }
 }
 
@@ -613,10 +726,13 @@ export function bindEvents(game) {
     game.btnShowTouch.addEventListener('click', (e) => {
       e.currentTarget.blur();
       game.desktopMode = false;
-      // Show subtle touch-ready glow ONLY when user willingly toggles Touch UI
-      game.touchHintState = 'GLOWING';
-      game.touchHintTimer = 0;
-      game.touchHintMoved = false;
+      // Show one-time white text prompt ONLY if it hasn't been shown yet (never spammed on restarts!)
+      if (!game.touchHintShownOnce) {
+        game.touchHintShownOnce = true;
+        game.touchHintState = 'GLOWING';
+        game.touchHintTimer = 0;
+        game.touchHintMoved = false;
+      }
       resetInputs(game);
       syncControlsUI(game);
       resizeCanvas(game);
@@ -661,7 +777,10 @@ export function bindEvents(game) {
   // Main Menu, Pause, Game Over buttons
   document.getElementById('btn-start').addEventListener('click', () => game.startNewGame());
   document.getElementById('btn-replay').addEventListener('click', () => game.startNewGame());
-  document.getElementById('btn-restart').addEventListener('click', () => game.startNewGame());
+  document.getElementById('btn-restart').addEventListener('click', () => {
+    if (game.sandboxMode) game.startSandbox();
+    else game.startNewGame();
+  });
   document.getElementById('btn-resume').addEventListener('click', () => game.resumeGame());
   document.getElementById('btn-pause-menu').addEventListener('click', () => game.returnToMainMenu());
   document.getElementById('btn-go-menu').addEventListener('click', () => game.returnToMainMenu());
@@ -720,7 +839,7 @@ export function bindEvents(game) {
     updateHUD(game);
     const goHigh = document.getElementById('go-high');
     if (goHigh) goHigh.textContent = '000000';
-    game.synth.playDerez(true);
+    game.synth.playDeleteBurst(true);
     renderLeaderboard(game);
   });
 
@@ -752,17 +871,13 @@ export function bindEvents(game) {
     }, { passive: false });
   }
 
-  // Extended Bottom Touch-Grab Hitbox for Direct 2D Ship Dragging (keeps finger below fighter!)
-  const isWithinShipTouchZone = (clientX, clientY) => {
+  // Touch anywhere inside the playable bottom 2/5ths of the arena (no need to touch on/near the plane!)
+  const isWithinDodgeZone = (clientX, clientY) => {
     const p = game.player;
     if (!p.alive || p.capturedById) return false;
     const rect = game.canvas.getBoundingClientRect();
-    const lx = ((clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
     const ly = ((clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
-    const halfW = p.dual ? 78 : 64;
-    const topY = p.y - 44;
-    const bottomY = Math.min(LOGICAL_H + 16, p.y + 138);
-    return Math.abs(lx - p.x) <= halfW && ly >= topY && ly <= bottomY;
+    return ly >= PLAYER_MIN_Y - 6;
   };
 
   game.canvas.addEventListener('pointerdown', (e) => {
@@ -771,11 +886,37 @@ export function bindEvents(game) {
 
     if (e.pointerType === 'touch' && game.desktopMode) {
       game.desktopMode = false;
+      if (!game.touchHintShownOnce) {
+        game.touchHintShownOnce = true;
+        game.touchHintState = 'GLOWING';
+        game.touchHintTimer = 0;
+      }
       syncControlsUI(game);
       resizeCanvas(game);
     }
 
-    // In Desktop Mode, left-click on canvas fires; in Touch UI mode, drag ship directly in 2D
+    // Sandbox DRAG / DEPLOY pointer handling on canvas
+    if (game.sandboxMode && game.sandbox && game.sandbox.deployMode !== 'OFF') {
+      const rect = game.canvas.getBoundingClientRect();
+      const lx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
+      const ly = ((e.clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
+
+      if (game.sandbox.deployMode === 'DRAG') {
+        if (e.pointerType !== 'mouse' || e.button === 0) {
+          e.preventDefault();
+          startSandboxDrag(game, e.pointerId, lx, ly);
+          return;
+        }
+      } else if (game.sandbox.deployMode === 'DEPLOY' && game.sandbox.deployKind) {
+        if (e.pointerType !== 'mouse' || e.button === 0) {
+          e.preventDefault();
+          handleSandboxCanvasDeploy(game, lx, ly);
+          return;
+        }
+      }
+    }
+
+    // In Desktop Mode, left-click on canvas fires; in Touch UI mode, touch/drag anywhere in bottom 2/5ths!
     if (game.desktopMode && e.pointerType === 'mouse') {
       if (e.button === 0) {
         e.preventDefault();
@@ -789,13 +930,13 @@ export function bindEvents(game) {
     if (game.firePointerIds.has(e.pointerId)) return;
     if (game.dragPointerId !== null && game.dragPointerId !== e.pointerId) return;
 
-    if (isWithinShipTouchZone(e.clientX, e.clientY)) {
+    if (isWithinDodgeZone(e.clientX, e.clientY)) {
       e.preventDefault();
       game.dragPointerId = e.pointerId;
       game.dragLastX = e.clientX;
       game.dragLastY = e.clientY;
       game.dragActive = true;
-      // Start 1.5s touch indicator fade immediately upon touching (no need to release first)
+      // Start 1.5s text prompt fade immediately upon touching anywhere below the dotted line
       if (game.touchHintState === 'GLOWING') {
         game.touchHintState = 'FADING';
         game.touchHintTimer = TOUCH_HINT_DURATION;
@@ -803,8 +944,16 @@ export function bindEvents(game) {
     }
   }, { passive: false });
 
-  // Global 2D pointermove / pointerup so direct dragging never drops off-edge
+  // Global 2D pointermove / pointerup so direct dragging & Sandbox entity dragging never drop off-edge
   window.addEventListener('pointermove', (e) => {
+    if (game.sandboxDrag && game.sandboxDrag.pointerId === e.pointerId && game.state === 'PLAYING') {
+      e.preventDefault();
+      const rect = game.canvas.getBoundingClientRect();
+      const lx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
+      const ly = ((e.clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
+      moveSandboxDrag(game, e.pointerId, lx, ly);
+      return;
+    }
     if (e.pointerId === game.dragPointerId && game.dragActive && game.state === 'PLAYING') {
       e.preventDefault();
       const dx = e.clientX - game.dragLastX;
@@ -815,7 +964,7 @@ export function bindEvents(game) {
         const rect = game.canvas.getBoundingClientRect();
         const scaleX = LOGICAL_W / Math.max(1, rect.width);
         const scaleY = LOGICAL_H / Math.max(1, rect.height);
-        const slowMult = game.player.slowTimer > 0 ? 0.45 : 1.0;
+        const slowMult = getPlayerMoveSpeedMult(game);
         game.player.x += dx * scaleX * slowMult;
         game.player.y += dy * scaleY * slowMult;
         game.clampPlayerPosition();
@@ -824,6 +973,7 @@ export function bindEvents(game) {
   }, { passive: false });
 
   const releasePointer = (e) => {
+    endSandboxDrag(game, e.pointerId);
     if (e.pointerId === game.dragPointerId) {
       game.dragPointerId = null;
       game.dragActive = false;
@@ -837,10 +987,10 @@ export function bindEvents(game) {
 
   game.canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
-  // Keyboard (guard against active text input in Leaderboard callsign entry!)
+  // Keyboard (guard against active text input / select dropdowns!)
   window.addEventListener('keydown', (e) => {
     const tag = e.target && e.target.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
       if (e.code === 'Escape') e.target.blur();
       return;
     }
@@ -860,6 +1010,10 @@ export function bindEvents(game) {
         (game.overlayLeaderboard && !game.overlayLeaderboard.classList.contains('hidden'));
       if (modalOpen) {
         closeModal(game);
+      } else if (c === 'Escape' && game.sandboxMode && game.sandbox && game.sandbox.drawerOpen) {
+        setSandboxDrawerOpen(game, false);
+      } else if (c === 'Escape' && game.sandboxMode && game.sandbox && game.sandbox.deployMode !== 'OFF') {
+        disarmSandboxDeploy(game);
       } else if (game.state === 'PLAYING') {
         game.pauseGame();
       } else if (game.state === 'PAUSED') {

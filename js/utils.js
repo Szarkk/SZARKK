@@ -44,7 +44,7 @@ export function distToSeg(px, py, x1, y1, x2, y2) {
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
-// Vertical ray intersection for Continuous Red Laser vs Ribbon segments
+// Vertical ray intersection for Continuous Red Laser vs Thread segments
 export function verticalRaySegIntersectY(rayX, rayBottomY, x1, y1, x2, y2) {
   const minX = Math.min(x1, x2) - 5;
   const maxX = Math.max(x1, x2) + 5;

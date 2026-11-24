@@ -5,7 +5,7 @@
 import { COLORS, LOGICAL_W, LOGICAL_H } from './config.js';
 import { clamp } from './utils.js';
 
-export function drawBackground(ctx, stars, gridOffset) {
+export function drawBackground(ctx, stars, nexusGridOffset) {
   const horizon = LOGICAL_H * 0.24;
   const bg = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
   bg.addColorStop(0, '#01030b');
@@ -21,7 +21,7 @@ export function drawBackground(ctx, stars, gridOffset) {
     ctx.fillRect(s.x, s.y, s.size, s.size);
   }
 
-  // Outlands wireframe silhouette
+  // Endframe wireframe silhouette
   ctx.save();
   ctx.strokeStyle = 'rgba(0, 246, 255, 0.26)';
   ctx.lineWidth = 1.2;
@@ -52,7 +52,7 @@ export function drawBackground(ctx, stars, gridOffset) {
   }
 
   for (let i = 0; i < 12; i++) {
-    const f = (i + gridOffset) / 12;
+    const f = (i + nexusGridOffset) / 12;
     const y = horizon + Math.pow(f, 2.2) * (LOGICAL_H - horizon);
     ctx.strokeStyle = `rgba(0, 246, 255, ${0.06 + f * 0.22})`;
     ctx.beginPath();
@@ -66,7 +66,9 @@ export function drawBackground(ctx, stars, gridOffset) {
 const POWERUP_RGB = {
   CYAN: { stroke: [0, 246, 255], fill: [0, 178, 224], glow: [0, 246, 255] },
   RED: { stroke: [255, 58, 92], fill: [215, 22, 56], glow: [255, 30, 66] },
-  PURPLE: { stroke: [224, 146, 255], fill: [148, 42, 225], glow: [196, 77, 255] }
+  PURPLE: { stroke: [224, 146, 255], fill: [148, 42, 225], glow: [196, 77, 255] },
+  YELLOW: { stroke: [255, 232, 68], fill: [232, 166, 18], glow: [255, 224, 52] },
+  CLONE: { stroke: [162, 128, 255], fill: [56, 78, 230], glow: [138, 61, 255] }
 };
 
 function sampleRgbWave(types, phase, channel, alpha = 1) {
@@ -86,7 +88,7 @@ function sampleRgbWave(types, phase, channel, alpha = 1) {
   return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-export function drawPlayerFighter(
+export function drawAurexFighter(
   ctx,
   x,
   y,
@@ -142,10 +144,24 @@ export function drawPlayerFighter(
   } else if (singleType === 'RED') {
     hullStroke = '#ff4b6b';
     hullFill = 'rgba(205, 18, 52, 0.82)';
-    glowCol = COLORS.aresRed;
+    glowCol = COLORS.nullRed;
     coreStroke = '#ffe4e9';
-    wingtipLeft = COLORS.aresRed;
-    wingtipRight = COLORS.aresRed;
+    wingtipLeft = COLORS.nullRed;
+    wingtipRight = COLORS.nullRed;
+  } else if (singleType === 'YELLOW') {
+    hullStroke = COLORS.yellow;
+    hullFill = 'rgba(225, 162, 18, 0.85)';
+    glowCol = COLORS.yellow;
+    coreStroke = '#fff8cf';
+    wingtipLeft = COLORS.yellowOrange;
+    wingtipRight = COLORS.yellowOrange;
+  } else if (singleType === 'CLONE') {
+    hullStroke = '#b294ff';
+    hullFill = 'rgba(42, 66, 205, 0.82)';
+    glowCol = COLORS.clonePurple;
+    coreStroke = '#e3d6ff';
+    wingtipLeft = COLORS.cloneBlue;
+    wingtipRight = COLORS.clonePurple;
   } else if (singleType === 'CYAN') {
     hullStroke = COLORS.cyan;
     hullFill = 'rgba(0, 178, 224, 0.76)';
@@ -254,10 +270,94 @@ export function drawPlayerFighter(
   }
 }
 
+/**
+ * Renders an autonomous Hologram Fighter Clone (Dark Blue & Purple wireframe + scan shimmer + 3-HP pips).
+ */
+export function drawFighterClone(ctx, cl, time = 0) {
+  const flicker = cl.invulnTimer > 0 && Math.floor(time * 22) % 2 === 0;
+  const flash = (cl.hitFlash || 0) > 0;
+
+  ctx.save();
+  ctx.translate(cl.x, cl.y);
+  ctx.globalAlpha = flicker ? 0.42 : 0.86;
+
+  // Holographic shield ring while invincible (1.0s break-off i-frames!)
+  if (cl.invulnTimer > 0) {
+    ctx.strokeStyle = '#d4c4ff';
+    ctx.shadowColor = COLORS.clonePurple;
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 1.4;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 17, time * 5, time * 5 + Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.scale(0.86, 0.86);
+  ctx.strokeStyle = flash ? '#ffffff' : '#b794ff';
+  ctx.fillStyle = flash ? 'rgba(255, 255, 255, 0.72)' : 'rgba(46, 62, 224, 0.48)';
+  ctx.shadowColor = COLORS.clonePurple;
+  ctx.shadowBlur = 14;
+  ctx.lineWidth = 1.9;
+
+  ctx.beginPath();
+  ctx.moveTo(0, -15);
+  ctx.lineTo(13, 11);
+  ctx.lineTo(5, 7);
+  ctx.lineTo(0, 13);
+  ctx.lineTo(-5, 7);
+  ctx.lineTo(-13, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Hologram core & blue-purple wingtip emitters
+  ctx.strokeStyle = '#e8dcff';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(0, -10);
+  ctx.lineTo(0, 7);
+  ctx.stroke();
+
+  ctx.fillStyle = COLORS.cloneBlue;
+  ctx.fillRect(-11, 5, 3, 4);
+  ctx.fillStyle = COLORS.clonePurple;
+  ctx.fillRect(8, 5, 3, 4);
+
+  // Subtle holographic scan bars across silhouette
+  ctx.strokeStyle = 'rgba(214, 194, 255, 0.55)';
+  ctx.lineWidth = 1;
+  const sy = ((time * 26 + cl.id * 7) % 24) - 12;
+  ctx.beginPath();
+  ctx.moveTo(-9, sy);
+  ctx.lineTo(9, sy);
+  ctx.stroke();
+  ctx.restore();
+
+  // Mini 3-pip HP indicator underneath detached clones
+  if (cl.detached && cl.maxHp > 0) {
+    const pipW = 5;
+    const gap = 2;
+    const totalW = cl.maxHp * pipW + (cl.maxHp - 1) * gap;
+    const sx = cl.x - totalW * 0.5;
+    const sy = cl.y + 15;
+    ctx.save();
+    for (let k = 0; k < cl.maxHp; k++) {
+      ctx.fillStyle = k < cl.hp ? '#b794ff' : 'rgba(255, 255, 255, 0.16)';
+      ctx.fillRect(sx + k * (pipW + gap), sy, pipW, 2.5);
+    }
+    ctx.restore();
+  }
+}
+
 export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
-  const isMaster = e.type === 'MASTER_LEGACY_REC' || e.type === 'MASTER_ARES_REC';
-  const isElite = isMaster || e.type === 'LEGACY_REC' || e.type === 'ARES_REC';
-  const scale = overrideScale !== null ? overrideScale : (isMaster ? 1.45 : (isElite ? 1.3 : 1.0));
+  const isMaster = e.type === 'MASTER_FLUX_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER';
+  const isPulsar = e.type === 'PULSAR';
+  const isElite = isMaster || e.type === 'FLUX_ENFORCER' || e.type === 'NULL_ENFORCER' || isPulsar;
+  const scale = overrideScale !== null
+    ? overrideScale
+    : (isMaster ? 1.45 : (isPulsar ? 1.25 : (isElite ? 1.3 : 1.0)));
   const flash = (e.hitFlash || 0) > 0;
   const damaged = e.hp < e.maxHp;
 
@@ -266,13 +366,13 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
   if (e.angle) ctx.rotate(e.angle);
   ctx.scale(scale, scale);
 
-  // Radiant pulsing Master-level glowing aura (respective to Cyan Legacy or Crimson Ares color)
+  // Radiant pulsing Master-level glowing aura (respective to Cyan Flux or Crimson Null color)
   if (isMaster) {
-    const isMasterAres = e.type === 'MASTER_ARES_REC';
+    const isMasterNull = e.type === 'MASTER_NULL_ENFORCER';
     const pulse = 0.88 + Math.sin(time * 7.5) * 0.12;
     const auraR = 29 * pulse;
     const grad = ctx.createRadialGradient(0, 0, 6, 0, 0, auraR + 7);
-    if (isMasterAres) {
+    if (isMasterNull) {
       grad.addColorStop(0, 'rgba(255, 65, 100, 0.42)');
       grad.addColorStop(0.55, 'rgba(255, 30, 66, 0.22)');
       grad.addColorStop(1, 'rgba(255, 30, 66, 0)');
@@ -286,8 +386,8 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.arc(0, 0, auraR + 7, 0, Math.PI * 2);
     ctx.fill();
 
-    const ringCol = isMasterAres ? COLORS.aresRed : COLORS.cyan;
-    const brightRing = isMasterAres ? '#ff8aa0' : '#b2ffff';
+    const ringCol = isMasterNull ? COLORS.nullRed : COLORS.cyan;
+    const brightRing = isMasterNull ? '#ff8aa0' : '#b2ffff';
     ctx.save();
     ctx.strokeStyle = ringCol;
     ctx.shadowColor = ringCol;
@@ -340,14 +440,26 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-  } else if (e.type === 'CLASSIC_REC') {
-    const isDamagedClassic = e.hp <= 1 && e.maxHp > 1;
-    const col = flash ? '#ffffff' : (isDamagedClassic ? COLORS.cyan : COLORS.mcpOrange);
+  } else if (e.type === 'V1_ENFORCER') {
+    const isFluxLinked = e.v1Synergy === 'FLUX';
+    const isNullLinked = e.v1Synergy === 'NULL';
+    const isDamagedIsolated = !isFluxLinked && !isNullLinked && e.hp <= 1.001 && e.maxHp > 1;
+    const col = flash
+      ? '#ffffff'
+      : (isFluxLinked
+        ? COLORS.cyan
+        : (isNullLinked
+          ? COLORS.nullRed
+          : (isDamagedIsolated ? COLORS.amber : COLORS.v1Orange)));
     ctx.strokeStyle = col;
-    ctx.fillStyle = isDamagedClassic ? 'rgba(0, 28, 48, 0.94)' : 'rgba(42, 10, 4, 0.94)';
+    ctx.fillStyle = isFluxLinked
+      ? 'rgba(0, 32, 54, 0.94)'
+      : (isNullLinked
+        ? 'rgba(54, 6, 16, 0.94)'
+        : (isDamagedIsolated ? 'rgba(46, 22, 4, 0.94)' : 'rgba(42, 10, 4, 0.94)'));
     ctx.shadowColor = col;
-    ctx.shadowBlur = 12;
-    ctx.lineWidth = 1.9;
+    ctx.shadowBlur = (isFluxLinked || isNullLinked) ? 18 : 12;
+    ctx.lineWidth = (isFluxLinked || isNullLinked) ? 2.2 : 1.9;
     ctx.beginPath();
     ctx.moveTo(-17, -13);
     ctx.lineTo(17, -13);
@@ -362,7 +474,26 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.stroke();
     ctx.fillStyle = col;
     ctx.fillRect(-7, -9, 14, 3);
-  } else if (e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') {
+
+    // Cracked hull lines when isolated at 1 HP; pulsing energy aura ring when Flux/Null linked!
+    if (isDamagedIsolated) {
+      ctx.strokeStyle = '#ffe0a8';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-11, -12); ctx.lineTo(-5, -5); ctx.lineTo(-9, 3);
+      ctx.moveTo(10, -11); ctx.lineTo(6, -3); ctx.lineTo(12, 5);
+      ctx.stroke();
+    } else if (isFluxLinked || isNullLinked) {
+      const pulse = 0.72 + Math.sin(time * 12) * 0.28;
+      ctx.strokeStyle = isFluxLinked ? '#b4ffff' : '#ff9eb0';
+      ctx.globalAlpha = 0.85 * pulse;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(0, 0, 21 + pulse * 3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  } else if (e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER') {
     const col = flash ? '#ffffff' : COLORS.cyan;
     ctx.strokeStyle = col;
     ctx.fillStyle = isMaster ? '#061a2e' : '#040b16';
@@ -390,7 +521,7 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.lineTo(13, -9);
     ctx.stroke();
     if (isMaster) {
-      // Master Legacy radiant crown crest
+      // Master Enforcer [Flux] radiant crown crest
       ctx.fillStyle = '#d4ffff';
       ctx.beginPath();
       ctx.moveTo(0, -22);
@@ -400,8 +531,8 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
       ctx.closePath();
       ctx.fill();
     }
-  } else if (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC') {
-    const col = flash ? '#ffffff' : COLORS.aresRed;
+  } else if (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER') {
+    const col = flash ? '#ffffff' : COLORS.nullRed;
     ctx.strokeStyle = col;
     ctx.fillStyle = isMaster ? '#24040d' : '#140308';
     ctx.shadowColor = col;
@@ -431,7 +562,7 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.closePath();
     ctx.fill();
     if (isMaster) {
-      // Master Ares blazing twin horns & white-hot core
+      // Master Enforcer [Null] blazing twin horns & white-hot core
       ctx.fillStyle = '#ffe0e8';
       ctx.beginPath();
       ctx.moveTo(0, -19);
@@ -446,11 +577,283 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
       ctx.moveTo(12, -17); ctx.lineTo(15, -22);
       ctx.stroke();
     }
+  } else if (e.type === 'CENTOID') {
+    // CENTOID: Shades of green + yellow-gold accents! Head faces +X along its travel angle
+    const mainCol = flash ? '#ffffff' : COLORS.centoidGreen;
+    const accentCol = flash ? '#ffffff' : COLORS.centoidGold;
+    const legWiggle = Math.sin(time * 16 + (e.centoidOrder || 0) * 1.1) * 2.5;
+
+    ctx.shadowColor = mainCol;
+    ctx.shadowBlur = e.isCentoidHead ? 15 : 10;
+
+    // Articulated side cyber-legs (both head & body)
+    ctx.strokeStyle = accentCol;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-4, -8); ctx.lineTo(-6 + legWiggle, -14);
+    ctx.moveTo(-4, 8); ctx.lineTo(-6 - legWiggle, 14);
+    ctx.moveTo(3, -8); ctx.lineTo(5 - legWiggle, -14);
+    ctx.moveTo(3, 8); ctx.lineTo(5 + legWiggle, 14);
+    ctx.stroke();
+
+    if (e.isCentoidHead) {
+      // Armored Centoid Head w/ twin yellow-gold pincers & glowing eyes (weak point!)
+      ctx.fillStyle = '#06331a';
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(14, 0);
+      ctx.lineTo(6, -11);
+      ctx.lineTo(-9, -10);
+      ctx.lineTo(-12, 0);
+      ctx.lineTo(-9, 10);
+      ctx.lineTo(6, 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Golden mandibles extending forward
+      ctx.strokeStyle = accentCol;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(10, -6); ctx.lineTo(18, -10); ctx.lineTo(15, -3);
+      ctx.moveTo(10, 6); ctx.lineTo(18, 10); ctx.lineTo(15, 3);
+      ctx.stroke();
+
+      // Glowing yellow-gold twin eyes & crown chevron
+      ctx.fillStyle = accentCol;
+      ctx.beginPath();
+      ctx.arc(4, -5, 2.5, 0, Math.PI * 2);
+      ctx.arc(4, 5, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = '#fff5b0';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-5, -5); ctx.lineTo(0, 0); ctx.lineTo(-5, 5);
+      ctx.stroke();
+    } else {
+      // Segmented green body carapace with darker emerald rim & yellow-gold dorsal node
+      ctx.fillStyle = '#083a1f';
+      ctx.strokeStyle = mainCol;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(10, 0);
+      ctx.lineTo(4, -9);
+      ctx.lineTo(-5, -9);
+      ctx.lineTo(-10, 0);
+      ctx.lineTo(-5, 9);
+      ctx.lineTo(4, 9);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = COLORS.centoidDarkGreen;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(-2, -7); ctx.lineTo(-2, 7);
+      ctx.stroke();
+
+      ctx.fillStyle = accentCol;
+      ctx.beginPath();
+      ctx.arc(2, 0, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else if (e.type === 'ALPHA_CENTOID') {
+    // ALPHA CENTOID: Dark blue, dark purple & bright pink accents!
+    const hullCol = flash ? '#ffffff' : COLORS.alphaBlue;
+    const purpleCol = flash ? '#ffffff' : COLORS.alphaPurple;
+    const pinkCol = flash ? '#ffffff' : COLORS.alphaPink;
+    const legWiggle = Math.sin(time * 19 + (e.centoidOrder || 0) * 1.2) * 2.8;
+
+    ctx.shadowColor = pinkCol;
+    ctx.shadowBlur = e.isCentoidHead ? 18 : 12;
+
+    // Jagged dark-purple & pink energy legs
+    ctx.strokeStyle = pinkCol;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-3, -9); ctx.lineTo(-7 + legWiggle, -15);
+    ctx.moveTo(-3, 9); ctx.lineTo(-7 - legWiggle, 15);
+    ctx.moveTo(4, -9); ctx.lineTo(7 - legWiggle, -15);
+    ctx.moveTo(4, 9); ctx.lineTo(7 + legWiggle, 15);
+    ctx.stroke();
+
+    if (e.isCentoidHead) {
+      // Angular Alpha Crest Head with bright pink twin horns & core
+      ctx.fillStyle = '#120a3a';
+      ctx.strokeStyle = hullCol;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(7, -12);
+      ctx.lineTo(-10, -11);
+      ctx.lineTo(-13, 0);
+      ctx.lineTo(-10, 11);
+      ctx.lineTo(7, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Dark-purple inner armored crest
+      ctx.strokeStyle = purpleCol;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(-7, -7); ctx.lineTo(8, 0); ctx.lineTo(-7, 7);
+      ctx.stroke();
+
+      // Blazing pink mandibles & glowing eyes
+      ctx.strokeStyle = pinkCol;
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(10, -7); ctx.lineTo(20, -11); ctx.lineTo(16, -3);
+      ctx.moveTo(10, 7); ctx.lineTo(20, 11); ctx.lineTo(16, 3);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffc2ee';
+      ctx.beginPath();
+      ctx.arc(5, -5, 2.7, 0, Math.PI * 2);
+      ctx.arc(5, 5, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Dark-blue & purple plated body with pulsing pink core
+      ctx.fillStyle = '#100934';
+      ctx.strokeStyle = purpleCol;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(11, 0);
+      ctx.lineTo(5, -10);
+      ctx.lineTo(-6, -10);
+      ctx.lineTo(-11, 0);
+      ctx.lineTo(-6, 10);
+      ctx.lineTo(5, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = hullCol;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(-5, -6); ctx.lineTo(4, -6);
+      ctx.moveTo(-5, 6); ctx.lineTo(4, 6);
+      ctx.stroke();
+
+      ctx.fillStyle = pinkCol;
+      ctx.beginPath();
+      ctx.moveTo(4, 0);
+      ctx.lineTo(0, -4);
+      ctx.lineTo(-4, 0);
+      ctx.lineTo(0, 4);
+      ctx.closePath();
+      ctx.fill();
+    }
+  } else if (e.type === 'PULSAR') {
+    // PULSAR: Yellow Elite-sized fighter with 2 twin lightning rods!
+    const col = flash ? '#ffffff' : COLORS.yellow;
+    const accent = flash ? '#ffffff' : COLORS.yellowOrange;
+    ctx.strokeStyle = col;
+    ctx.fillStyle = '#241802';
+    ctx.shadowColor = col;
+    ctx.shadowBlur = 16;
+    ctx.lineWidth = 2.0;
+
+    // Swept angular elite fighter chassis
+    ctx.beginPath();
+    ctx.moveTo(0, -15);
+    ctx.lineTo(11, -9);
+    ctx.lineTo(20, -2);
+    ctx.lineTo(16, 11);
+    ctx.lineTo(7, 8);
+    ctx.lineTo(0, 14);
+    ctx.lineTo(-7, 8);
+    ctx.lineTo(-16, 11);
+    ctx.lineTo(-20, -2);
+    ctx.lineTo(-11, -9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Orange inner generator core
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(-10, -3);
+    ctx.lineTo(0, -9);
+    ctx.lineTo(10, -3);
+    ctx.lineTo(0, 5);
+    ctx.closePath();
+    ctx.stroke();
+
+    // 2 Prominent Twin Lightning Rods extending forward/downward from wings
+    ctx.strokeStyle = '#fff5b5';
+    ctx.lineWidth = 2.1;
+    ctx.beginPath();
+    ctx.moveTo(-12, 6); ctx.lineTo(-14, 19);
+    ctx.moveTo(12, 6); ctx.lineTo(14, 19);
+    ctx.stroke();
+
+    // Conductor coils on each rod
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-16, 11); ctx.lineTo(-10, 11);
+    ctx.moveTo(-17, 15); ctx.lineTo(-11, 15);
+    ctx.moveTo(10, 11); ctx.lineTo(16, 11);
+    ctx.moveTo(11, 15); ctx.lineTo(17, 15);
+    ctx.stroke();
+
+    // Glowing white-yellow discharge tips
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(-14, 19, 2.4, 0, Math.PI * 2);
+    ctx.arc(14, 19, 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Animated crackling micro-arc jumping between the 2 lightning rods!
+    const jig = Math.sin(time * 42 + (e.animPhase || 0)) * 3.5;
+    const jig2 = Math.cos(time * 54 + (e.animPhase || 0)) * 3.0;
+    ctx.strokeStyle = Math.sin(time * 30) > 0 ? '#ffffff' : COLORS.yellow;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(-14, 19);
+    ctx.lineTo(-5, 19 + jig);
+    ctx.lineTo(5, 19 - jig2);
+    ctx.lineTo(14, 19);
+    ctx.stroke();
   }
   ctx.restore();
 
+  // V1 Enforcer AOE Buff indicators (+30% Speed cyan chevrons / +33% HP crimson armor ring)
+  if (overrideScale === null && (e.speedBuffed || e.hpBuffed)) {
+    const buffR = isMaster ? 32 : (isElite ? 27 : 20);
+    ctx.save();
+    if (e.hpBuffed) {
+      ctx.strokeStyle = 'rgba(255, 48, 86, 0.82)';
+      ctx.shadowColor = COLORS.nullRed;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.4;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, buffR, -time * 2.2, -time * 2.2 + Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if (e.speedBuffed) {
+      ctx.strokeStyle = COLORS.cyan;
+      ctx.shadowColor = COLORS.cyan;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.6;
+      const sx = buffR - 2;
+      ctx.beginPath();
+      ctx.moveTo(e.x - sx - 4, e.y - 4); ctx.lineTo(e.x - sx, e.y); ctx.lineTo(e.x - sx - 4, e.y + 4);
+      ctx.moveTo(e.x + sx + 4, e.y - 4); ctx.lineTo(e.x + sx, e.y); ctx.lineTo(e.x + sx + 4, e.y + 4);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // Upright Mini HP Bar above damaged enemies (or always visible on Masters & 2x HP Challenge Elites)
-  if (overrideScale === null && (damaged || e.isChallengeElite || isMaster) && e.hp > 0) {
+  if (overrideScale === null && (damaged || e.isChallengeElite || isMaster || e.hpBuffed) && e.hp > 0) {
     const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
     const bx = e.x - bw / 2;
     const by = e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18)));
@@ -458,27 +861,33 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.save();
     ctx.fillStyle = 'rgba(2, 8, 18, 0.88)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
-    ctx.fillStyle = (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC')
-      ? COLORS.aresRed
-      : ((e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') ? COLORS.cyan : COLORS.gold);
+    ctx.fillStyle = (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER')
+      ? COLORS.nullRed
+      : ((e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER')
+        ? COLORS.cyan
+        : (e.type === 'PULSAR'
+          ? COLORS.yellow
+          : (e.type === 'ALPHA_CENTOID'
+            ? COLORS.alphaPink
+            : (e.type === 'CENTOID' ? COLORS.centoidGreen : COLORS.gold))));
     ctx.fillRect(bx, by, bw * ratio, 3);
     ctx.restore();
   }
 }
 
-export function drawLightwingSprite(ctx, lw) {
+export function drawEnforcerWingSprite(ctx, ew) {
   ctx.save();
-  ctx.translate(lw.x, lw.y);
-  ctx.rotate(lw.angle + Math.PI / 2);
-  const isAres = lw.variant === 'ARES';
-  const col = isAres ? COLORS.aresRed : COLORS.cyan;
+  ctx.translate(ew.x, ew.y);
+  ctx.rotate(ew.angle + Math.PI / 2);
+  const isNull = ew.variant === 'NULL';
+  const col = isNull ? COLORS.nullRed : COLORS.cyan;
   ctx.strokeStyle = col;
-  ctx.fillStyle = isAres ? '#1b0309' : '#021726';
+  ctx.fillStyle = isNull ? '#1b0309' : '#021726';
   ctx.shadowColor = col;
   ctx.shadowBlur = 10;
   ctx.lineWidth = 1.6;
   ctx.beginPath();
-  if (isAres) {
+  if (isNull) {
     ctx.moveTo(0, -11);
     ctx.lineTo(9, 2);
     ctx.lineTo(5, 9);
@@ -499,21 +908,41 @@ export function drawLightwingSprite(ctx, lw) {
 
 /**
  * Renders a retro Square Pixelated Power-Up Capsule (Cyan = Homing, Red = Laser, Purple = Arc Wave)
- * Built on an explicit blocky 9x9 pixel grid for crisp pixelated TRON arcade appeal.
+ * Built on an explicit blocky 9x9 pixel grid for crisp pixelated SZARKK arcade appeal.
  */
 export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
   const isCyan = type === 'CYAN';
   const isPurple = type === 'PURPLE';
-  const mainCol = isCyan ? COLORS.cyan : (isPurple ? COLORS.purple : COLORS.aresRed);
-  const glowCol = isCyan ? '#9efcff' : (isPurple ? COLORS.purpleBright : '#ff8ca0');
-  const fillCol = isCyan ? '#041d2e' : (isPurple ? '#1e0532' : '#26040b');
+  const isYellow = type === 'YELLOW';
+  const isClone = type === 'CLONE';
+  const mainCol = isCyan
+    ? COLORS.cyan
+    : (isPurple
+      ? COLORS.purple
+      : (isYellow
+        ? COLORS.yellow
+        : (isClone ? COLORS.cloneBlue : COLORS.nullRed)));
+  const glowCol = isCyan
+    ? '#9efcff'
+    : (isPurple
+      ? COLORS.purpleBright
+      : (isYellow
+        ? COLORS.yellowOrange
+        : (isClone ? COLORS.clonePurple : '#ff8ca0')));
+  const fillCol = isCyan
+    ? '#041d2e'
+    : (isPurple
+      ? '#1e0532'
+      : (isYellow
+        ? '#291b02'
+        : (isClone ? '#0b0c2e' : '#26040b')));
   const px = 2.6 * scale;
   const half = 4.5 * px;
   const pulse = 0.8 + Math.sin(time * 7) * 0.2;
 
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.shadowColor = mainCol;
+  ctx.shadowColor = isClone ? COLORS.clonePurple : mainCol;
   ctx.shadowBlur = 12 * pulse;
 
   // Inner dark square fill
@@ -555,6 +984,27 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
     ctx.fillRect(px * 1.5, px * 0.5, px, px);
     ctx.fillStyle = mainCol;
     ctx.fillRect(-px * 0.5, px * 1.5, px, px);
+  } else if (isYellow) {
+    // Chain Lightning Pixel Bolt Icon (white core + orange sparks!)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px * 0.5, -px * 2.5, px, px);
+    ctx.fillRect(-px * 0.5, -px * 1.5, px * 2, px);
+    ctx.fillRect(-px * 1.5, -px * 0.5, px * 3, px);
+    ctx.fillRect(-px * 0.5, px * 0.5, px * 2, px);
+    ctx.fillRect(-px * 1.5, px * 1.5, px, px);
+    ctx.fillStyle = glowCol;
+    ctx.fillRect(-px * 2.5, -px * 1.5, px, px);
+    ctx.fillRect(px * 1.5, px * 0.5, px, px);
+  } else if (isClone) {
+    // 3 Hologram Fighter Clones Pixel Trio (left, right, back)
+    ctx.fillStyle = '#e5dcff';
+    ctx.fillRect(-px * 2.5, -px * 1.5, px, px * 2);
+    ctx.fillRect(px * 1.5, -px * 1.5, px, px * 2);
+    ctx.fillRect(-px * 0.5, px * 0.5, px, px * 2);
+    ctx.fillStyle = glowCol;
+    ctx.fillRect(-px * 0.5, -px * 2.5, px, px * 2);
+    ctx.fillRect(-px * 1.5, -px * 0.5, px, px);
+    ctx.fillRect(px * 0.5, -px * 0.5, px, px);
   } else {
     // Continuous Vertical Laser Beam Pixel Icon
     ctx.fillRect(-px * 0.5, -px * 3, px, px * 6);
@@ -566,7 +1016,7 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
 }
 
 /**
- * Renders the Classic MCP Recognizer's Galaga-style Tractor Beam cone with animated shimmer bands.
+ * Renders the V1 Enforcer's Arcade-style Tractor Beam cone with animated shimmer bands.
  */
 export function drawTractorBeam(ctx, boss, time = 0, capturing = false) {
   const topY = boss.y + 12;

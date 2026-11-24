@@ -3,47 +3,84 @@
    ========================================================================= */
 
 import {
+  ALPHA_CENTOID_START_SECTOR,
+  CENTOID_START_SECTOR,
   CHALLENGE_ELITE_START,
   CHALLENGE_EXTRA_ROUND_START,
   CHALLENGE_INTERVAL,
   CHALLENGE_MASTER_START,
   COLORS,
-  ELITE_ARES_START_SECTOR,
-  ELITE_LEGACY_START_SECTOR,
-  ELITE_LEGACY_START_WAVE,
-  ELITE_REC_HP,
+  ELITE_ABDUCTION_CHANCE,
+  ELITE_ENFORCER_HP,
+  ELITE_FLUX_START_SECTOR,
+  ELITE_FLUX_START_WAVE,
+  ELITE_NULL_START_SECTOR,
   ELITE_SURGE_INTERVAL,
   FLOATING_CAPSULE_CHANCE,
+  HARD_FIELD_DEBUFF_CHANCE,
+  HARD_FIELD_DEBUFF_DUR,
   LOGICAL_H,
   LOGICAL_W,
-  MASTER_REC_HP,
+  MASTER_ENFORCER_HP,
   MASTER_START_SECTOR,
+  PULSAR_FIRE_INTERVAL,
+  PULSAR_HP,
+  PULSAR_START_SECTOR,
   STANDARD_WAVES_PER_SECTOR,
   TRACTOR_INITIAL_DELAY,
   TRACTOR_INTERVAL,
   TRACTOR_MAX_PER_SECTOR,
-  TRACTOR_POST_CHALLENGE_CHANCE
+  TRACTOR_POST_CHALLENGE_CHANCE,
+  V1_BUFF_AOE_RADIUS,
+  V1_ENFORCER_HP,
+  V1_SYNERGY_RADIUS
 } from './config.js';
 import { clamp, evalCubic, lerp } from './utils.js';
-import { getUnlockedCapsuleTypes, rollEnemyCapsuleDrop } from './powerups.js';
+import { getActivePowerups, getUnlockedCapsuleTypes, rollEnemyCapsuleDrop } from './powerups.js';
 import {
-  handleRecognizerDestroyed,
-  spawnLightwing,
-  startRecognizerBeam,
+  handleEnforcerDestroyed,
+  spawnEnforcerWing,
+  startEnforcerBeam,
   updateCapturedFighterTether,
-  updateRecognizerBeamApproach,
-  updateRecognizerBeaming
-} from './recognizers.js';
+  updateEnforcerBeamApproach,
+  updateEnforcerBeaming
+} from './enforcers.js';
+import { damageFighterClone } from './projectiles.js';
+import {
+  applyCostBasedSwaps,
+  handleCentoidSegmentDestroyed,
+  spawnCentoidChain,
+  spawnPulsarDeathSparks,
+  updateCentoids,
+  updatePulsarAttacks
+} from './special_enemies.js';
 
-const FORMATION_STYLES = ['PHALANX', 'CHEVRON', 'TWIN_FLANKS', 'DIAMOND', 'ARCH'];
-const ENTRY_PATTERNS = ['CROSS', 'SPIRAL', 'TOP_DROP', 'PINCER'];
-const SWAY_MODES = ['SWAY', 'FIGURE8', 'COUNTER_ROW', 'ACCORDION'];
+export const BASE_FORMATION_STYLES = ['PHALANX', 'CHEVRON', 'TWIN_FLANKS', 'DIAMOND', 'ARCH'];
+export const CENTOID_FORMATIONS = [
+  'CENTOID_SERPENT_NEST',
+  'CENTOID_COIL_WALL',
+  'CENTOID_GAUNTLET',
+  'CENTOID_SWARM_NEXUS'
+];
+export const PULSAR_FORMATIONS = [
+  'PULSAR_TESLA_ARC',
+  'PULSAR_STORM_BATTERY',
+  'PULSAR_DIAMOND_COIL',
+  'PULSAR_TWIN_CONDUIT'
+];
+export const FORMATION_STYLES = [
+  ...BASE_FORMATION_STYLES,
+  ...CENTOID_FORMATIONS,
+  ...PULSAR_FORMATIONS
+];
+export const ENTRY_PATTERNS = ['CROSS', 'SPIRAL', 'TOP_DROP', 'PINCER'];
+export const SWAY_MODES = ['SWAY', 'FIGURE8', 'COUNTER_ROW', 'ACCORDION'];
 
 const EXTRA_ROUND_MODES = [
   { id: 'DIAMOND_VORTEX', title: 'ORBITAL DIAMOND VORTEX', color: COLORS.cyan },
   { id: 'TWIN_PINCER', title: 'TWIN PINCER SPEARHEAD', color: COLORS.amber },
   { id: 'HELIX_BARRAGE', title: 'DOUBLE HELIX BARRAGE', color: COLORS.purpleBright },
-  { id: 'PHALANX_ASSAULT', title: 'IRON PHALANX ASSAULT', color: COLORS.aresRed }
+  { id: 'PHALANX_ASSAULT', title: 'IRON PHALANX ASSAULT', color: COLORS.nullRed }
 ];
 
 function pickDifferent(pool, avoid) {
@@ -105,20 +142,89 @@ function rollFloatingCapsuleForWave(game, effSec, waveNum) {
   }
 }
 
+function scheduleMidWaveSpawns(game, effSec, style) {
+  game.midWaveSpawns = [];
+  if (game.sandboxMode && !game.sandboxTrainingRound) return;
+
+  const secForUnlocks = game.hardMode ? Math.max(effSec, 7) : effSec;
+  const isCentoidForm = CENTOID_FORMATIONS.includes(style);
+  const isPulsarForm = PULSAR_FORMATIONS.includes(style);
+
+  // 1) Normal Centoid (Sec 04+): mostly mid-wave in waves WITHOUT Centoid formations (roll 3x at 20% -> 0-3)
+  if (!isCentoidForm && secForUnlocks >= CENTOID_START_SECTOR) {
+    let spawned = 0;
+    for (let r = 0; r < 3; r++) {
+      if (Math.random() < 0.20) {
+        game.midWaveSpawns.push({
+          timer: 2.2 + spawned * 2.1 + Math.random() * 1.4,
+          type: 'CENTOID'
+        });
+        spawned++;
+      }
+    }
+  }
+
+  // 2) Alpha Centoid (Sec 07+):
+  //    - 10% chance (roll 3x -> 0-3) mid-wave in Centoid waves
+  //    - 10% chance (roll 4x -> 0-4) mid-fight in formations NOT featuring any Centoids
+  if (secForUnlocks >= ALPHA_CENTOID_START_SECTOR) {
+    const rolls = isCentoidForm ? 3 : 4;
+    let spawned = 0;
+    for (let r = 0; r < rolls; r++) {
+      if (Math.random() < 0.10) {
+        game.midWaveSpawns.push({
+          timer: 3.0 + spawned * 2.2 + Math.random() * 1.6,
+          type: 'ALPHA_CENTOID'
+        });
+        spawned++;
+      }
+    }
+  }
+
+  // 3) Pulsar (Sec 07+): 20% chance (roll 5x -> 0-5) mid-fight in formations NOT featuring Pulsars
+  if (!isPulsarForm && secForUnlocks >= PULSAR_START_SECTOR) {
+    let spawned = 0;
+    for (let r = 0; r < 5; r++) {
+      if (Math.random() < 0.20) {
+        game.midWaveSpawns.push({
+          timer: 2.5 + spawned * 1.55 + Math.random() * 1.2,
+          type: 'PULSAR'
+        });
+        spawned++;
+      }
+    }
+  }
+
+  game.midWaveSpawns.sort((a, b) => a.timer - b.timer);
+}
+
 export function prepareStandardWave(game, waveNum) {
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+  const secForUnlocks = game.hardMode ? Math.max(effSec, 7) : effSec;
   game.sectorWave = waveNum;
   game.waveQueue = [];
   game.waveSpawnTimer = 0;
   game.formationClock = 0;
 
+  // Build eligible formation pool by sector unlocks (Base 5 + 4 Centoid Sec 04+ + 4 Pulsar Sec 07+)
+  const pool = [...BASE_FORMATION_STYLES];
+  if (secForUnlocks >= CENTOID_START_SECTOR) pool.push(...CENTOID_FORMATIONS);
+  if (secForUnlocks >= PULSAR_START_SECTOR) pool.push(...PULSAR_FORMATIONS);
+
   // Fresh formation geometry and sway mode every wave!
-  game.formationStyle = pickDifferent(FORMATION_STYLES, game.lastFormationStyle);
+  game.formationStyle = pickDifferent(pool, game.lastFormationStyle);
   game.lastFormationStyle = game.formationStyle;
   game.swayMode = pickDifferent(SWAY_MODES, game.swayMode);
 
-  // 50% floating capsule roll every standard wave once unlocked
+  // 20% floating capsule roll every standard wave once unlocked
   rollFloatingCapsuleForWave(game, effSec, waveNum);
+
+  // Elite Enforcers (non-Masters) have a 10% chance per wave to abduct (max 1 per wave)
+  game.waveEliteAbductionQueued = Math.random() < ELITE_ABDUCTION_CHANCE;
+  game.waveEliteAbductionUsed = false;
+
+  // Schedule mid-wave Centoid / Alpha Centoid / Pulsar spontaneous reinforcements
+  scheduleMidWaveSpawns(game, effSec, game.formationStyle);
 
   buildStandardWaveQueue(game, effSec, waveNum);
 }
@@ -135,8 +241,12 @@ export function beginSector(game, num) {
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : num;
   game.enemies = [];
   game.enemyBullets = [];
-  game.lightwings = [];
-  game.ribbonTrails = [];
+  game.enforcerWings = [];
+  game.threadTrails = [];
+  if (game.centoidChains) game.centoidChains.clear();
+  game.electroBalls = [];
+  game.pulsarSparks = [];
+  game.midWaveSpawns = [];
   // NOTE: game.capsules & game.pendingCapsuleDrops intentionally PERSIST across sector transitions!
   game.activeBeamBoss = null;
   game.sectorTractorCount = 0;
@@ -149,7 +259,7 @@ export function beginSector(game, num) {
   game.postChallengeAbductionPending = false;
   if (game.justFinishedChallenge) {
     game.justFinishedChallenge = false;
-    // After each Challenge stage, an existing Classic MCP Recognizer has an 80% chance to abduct
+    // After each Challenge stage, an existing V1 Enforcer has an 80% chance to abduct
     if (Math.random() < TRACTOR_POST_CHALLENGE_CHANCE) {
       game.postChallengeAbductionPending = true;
     }
@@ -157,31 +267,36 @@ export function beginSector(game, num) {
 
   prepareStandardWave(game, 1);
 
+  const fmtLabel = game.formationStyle.replaceAll('_', ' ');
   game.sectorPhase = 'BANNER';
   game.phaseTimer = 1.9;
-  game.bannerTitle = game.hardMode
-    ? `HARD // SECTOR ${String(num).padStart(2, '0')}`
-    : `SECTOR ${String(num).padStart(2, '0')}`;
+  game.bannerTitle = game.sandboxTrainingRound
+    ? `TRAINING // ${game.hardMode ? 'HARD ' : ''}SEC ${String(num).padStart(2, '0')}`
+    : (game.hardMode
+      ? `HARD // SECTOR ${String(num).padStart(2, '0')}`
+      : `SECTOR ${String(num).padStart(2, '0')}`);
   game.bannerSub = game.hardMode
     ? (num === 1
       ? 'SEC 06+ INTENSITY // FULL WAVES & MASTERS LIVE'
-      : `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`)
+      : `MASTER FLEET // ${fmtLabel}`)
     : (effSec === 1
-      ? 'CLASSIC MCP PATROL INBOUND'
-      : (effSec === ELITE_LEGACY_START_SECTOR
-        ? 'ELITE LEGACY & CYAN CAPSULES INBOUND'
-        : (effSec === ELITE_ARES_START_SECTOR
-          ? 'ARES ELITE & RED CAPSULES ONLINE'
+      ? 'V1 ENFORCER PATROL INBOUND'
+      : (effSec === ELITE_FLUX_START_SECTOR
+        ? 'ELITE ENFORCER [FLUX] & CYAN CAPSULES INBOUND'
+        : (effSec === ELITE_NULL_START_SECTOR
+          ? 'ELITE ENFORCER [NULL] & RED CAPSULES ONLINE'
           : (effSec === 4
-            ? 'PURPLE ARC WAVE CAPSULES ONLINE'
+            ? 'CENTOIDS & PURPLE ARC WAVE ONLINE'
             : (effSec === MASTER_START_SECTOR
-              ? 'WARNING: MASTER RECOGNIZERS ONLINE'
-              : (effSec > MASTER_START_SECTOR
-                ? `MASTER FLEET // ${game.formationStyle.replace('_', ' ')}`
-                : `FLEET FORMATION: ${game.formationStyle.replace('_', ' ')}`))))));
+              ? 'WARNING: MASTER ENFORCERS ONLINE'
+              : (effSec === PULSAR_START_SECTOR
+                ? 'PULSARS, ALPHA CENTOIDS & NEW CAPSULES ONLINE'
+                : (effSec > MASTER_START_SECTOR
+                  ? `MASTER FLEET // ${fmtLabel}`
+                  : `FLEET FORMATION: ${fmtLabel}`)))))));
   game.bannerColor = (game.hardMode || effSec >= MASTER_START_SECTOR)
-    ? COLORS.aresRed
-    : (effSec === ELITE_ARES_START_SECTOR ? COLORS.aresRed : (effSec === 4 ? COLORS.purple : COLORS.cyan));
+    ? COLORS.nullRed
+    : (effSec === ELITE_NULL_START_SECTOR ? COLORS.nullRed : (effSec === 4 ? COLORS.purple : COLORS.cyan));
 
   game.synth.playSectorStart(false);
   game.updateHUD();
@@ -194,8 +309,12 @@ export function beginChallengeStage(game, challengeNum) {
 
   game.enemies = [];
   game.enemyBullets = [];
-  game.lightwings = [];
-  game.ribbonTrails = [];
+  game.enforcerWings = [];
+  game.threadTrails = [];
+  if (game.centoidChains) game.centoidChains.clear();
+  game.electroBalls = [];
+  game.pulsarSparks = [];
+  game.midWaveSpawns = [];
   // Active capsules persist across sector <-> challenge transitions!
   game.floatingCapsulePlan = null;
   game.activeBeamBoss = null;
@@ -222,12 +341,12 @@ export function beginChallengeStage(game, challengeNum) {
   game.bannerSub = effChallenge >= 4
     ? 'OVERDRIVE: 3 GUARDED MASTERS + 3 EXTRA ROUNDS'
     : (effChallenge >= CHALLENGE_MASTER_START
-      ? 'CRITICAL: GUARDED MASTER RECOGNIZERS + 2 EXTRA ROUNDS'
+      ? 'CRITICAL: GUARDED MASTER ENFORCERS + 2 EXTRA ROUNDS'
       : (effChallenge >= CHALLENGE_EXTRA_ROUND_START
         ? 'GAUNTLET ALERT: ELITE RAIDERS + 2 EXTRA ROUNDS'
         : `BONUS STAGE // DATA STREAM 0${challengeNum}`));
   game.bannerColor = effChallenge >= CHALLENGE_MASTER_START
-    ? COLORS.aresRed
+    ? COLORS.nullRed
     : (effChallenge >= CHALLENGE_EXTRA_ROUND_START ? COLORS.purpleBright : COLORS.gold);
 
   buildChallengeWaveQueue(game, effChallenge);
@@ -242,81 +361,81 @@ const TOP_ROW_XS = {
 };
 
 export function buildTopRowConfig(sec, waveNum = 4, hardMode = false) {
-  const randElite = () => (Math.random() < 0.5 ? 'LEGACY_REC' : 'ARES_REC');
-  const randMaster = () => (Math.random() < 0.5 ? 'MASTER_LEGACY_REC' : 'MASTER_ARES_REC');
+  const randElite = () => (Math.random() < 0.5 ? 'FLUX_ENFORCER' : 'NULL_ENFORCER');
+  const randMaster = () => (Math.random() < 0.5 ? 'MASTER_FLUX_ENFORCER' : 'MASTER_NULL_ENFORCER');
   let types;
 
   if (hardMode) {
     // Hard Mode (Option A): Masters front-and-center first, then Elites gradually join across Hard Sectors (capped at 5 slots max!)
     if (sec <= MASTER_START_SECTOR) {
       // H01 (eff. Sec 06): 2 Masters + 2 Classics (4 spacious slots)
-      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
+      types = ['MASTER_FLUX_ENFORCER', 'MASTER_NULL_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER'];
     } else if (sec === MASTER_START_SECTOR + 1) {
       // H02 (eff. Sec 07): 2 Masters + 1 random Elite + 2 Classics (5 slots)
-      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', randElite(), 'CLASSIC_REC', 'CLASSIC_REC'];
+      types = ['MASTER_FLUX_ENFORCER', 'MASTER_NULL_ENFORCER', randElite(), 'V1_ENFORCER', 'V1_ENFORCER'];
     } else {
       // H03+ (eff. Sec 08+): 2 Masters + 2 Elites + 1 Classic (5 slots max — clean spacing!)
-      types = ['MASTER_LEGACY_REC', 'MASTER_ARES_REC', 'LEGACY_REC', 'ARES_REC', 'CLASSIC_REC'];
+      types = ['MASTER_FLUX_ENFORCER', 'MASTER_NULL_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', 'V1_ENFORCER'];
     }
-  } else if (sec < ELITE_LEGACY_START_SECTOR) {
-    // Sector 01: Classic MCP Recognizers only
-    types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
-  } else if (sec === ELITE_LEGACY_START_SECTOR) {
-    // Sector 02: Waves 1-2 Classic only; Wave 3 debuts 1 Elite Legacy; Wave 4 escalates to 2 Elite Legacy
-    if (waveNum < ELITE_LEGACY_START_WAVE) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC'];
-    } else if (waveNum === ELITE_LEGACY_START_WAVE) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC'];
+  } else if (sec < ELITE_FLUX_START_SECTOR) {
+    // Sector 01: V1 Enforcers only
+    types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER'];
+  } else if (sec === ELITE_FLUX_START_SECTOR) {
+    // Sector 02: Waves 1-2 Classic only; Wave 3 debuts 1 Elite Enforcer [Flux]; Wave 4 escalates to 2 Elite Enforcer [Flux]
+    if (waveNum < ELITE_FLUX_START_WAVE) {
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER'];
+    } else if (waveNum === ELITE_FLUX_START_WAVE) {
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER'];
     } else {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'LEGACY_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'FLUX_ENFORCER'];
     }
-  } else if (sec === ELITE_ARES_START_SECTOR) {
-    // Sector 03: Elite Ares debuts; escalates across Waves 1 -> 4
+  } else if (sec === ELITE_NULL_START_SECTOR) {
+    // Sector 03: Elite Enforcer [Null] debuts; escalates across Waves 1 -> 4
     if (waveNum === 1) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'NULL_ENFORCER'];
     } else if (waveNum === 2 || waveNum === 3) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER'];
     } else {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', 'NULL_ENFORCER'];
     }
   } else if (sec === 4) {
-    // Sector 04: Purple Capsules online; balanced Legacy & Ares escalation across Waves 1 -> 4
+    // Sector 04: Purple Capsules online; balanced Flux & Null escalation across Waves 1 -> 4
     if (waveNum === 1) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', randElite()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', randElite()];
     } else if (waveNum === 2) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER'];
     } else if (waveNum === 3) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', randElite()];
     } else {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', randElite()];
     }
   } else if (sec < MASTER_START_SECTOR) {
     // Sector 05: Heavy Elite escalation (1 -> 2 -> 3 -> 4 Elites)
     if (waveNum === 1) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', randElite()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', randElite()];
     } else if (waveNum === 2) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER'];
     } else if (waveNum === 3) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', randElite()];
     } else {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'LEGACY_REC', 'ARES_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', 'NULL_ENFORCER'];
     }
   } else {
-    // Sector 06+: Master Recognizers escalate across Waves 1 -> 4 (capped at 5 clean slots!)
+    // Sector 06+: Master Enforcers escalate across Waves 1 -> 4 (capped at 5 clean slots!)
     if (waveNum === 1) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC'];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER'];
     } else if (waveNum === 2) {
-      types = ['CLASSIC_REC', 'CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randMaster()];
+      types = ['V1_ENFORCER', 'V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', randMaster()];
     } else if (waveNum === 3) {
       types = sec >= 8
-        ? ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'MASTER_LEGACY_REC', 'MASTER_ARES_REC']
-        : ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', randElite(), randMaster()];
+        ? ['V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', 'MASTER_FLUX_ENFORCER', 'MASTER_NULL_ENFORCER']
+        : ['V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', randElite(), randMaster()];
     } else {
-      types = ['CLASSIC_REC', 'LEGACY_REC', 'ARES_REC', 'MASTER_LEGACY_REC', 'MASTER_ARES_REC'];
+      types = ['V1_ENFORCER', 'FLUX_ENFORCER', 'NULL_ENFORCER', 'MASTER_FLUX_ENFORCER', 'MASTER_NULL_ENFORCER'];
     }
   }
 
-  // Randomize left-to-right Recognizer placement every wave so Legacy/Ares never lock into a fixed order!
+  // Randomize left-to-right Enforcer placement every wave so Flux/Null never lock into a fixed order!
   return {
     types: shuffleArray(types),
     xs: TOP_ROW_XS[types.length] || TOP_ROW_XS[6]
@@ -382,55 +501,242 @@ function buildEntryPath(entryPattern, squad, homeX, homeY) {
   ];
 }
 
-export function buildStandardWaveQueue(game, sec, waveNum = 4) {
-  const slots = [];
-  const style = game.formationStyle || 'PHALANX';
-  const entryPattern = pickDifferent(ENTRY_PATTERNS, game.lastEntryPattern);
+export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
+  let slots = [];
+  const centoidSpawns = [];
+  const style = opts.forcedStyle || game.formationStyle || 'PHALANX';
+  const entryPattern = opts.forcedEntry || pickDifferent(ENTRY_PATTERNS, game.lastEntryPattern);
   game.lastEntryPattern = entryPattern;
-  const fullFormation = !!game.hardMode || waveNum >= STANDARD_WAVES_PER_SECTOR;
+  const fullFormation = !!game.hardMode || waveNum >= STANDARD_WAVES_PER_SECTOR || !!opts.fullFormation;
   const top = buildTopRowConfig(sec, waveNum, !!game.hardMode);
+  const secForUnlocks = game.hardMode ? Math.max(sec, 7) : sec;
+  const canAlpha = secForUnlocks >= ALPHA_CENTOID_START_SECTOR;
 
-  top.types.forEach((type, idx) => {
-    const pos = shapeSlotPosition(style, top.xs[idx], 92, 0, idx, top.types.length);
-    slots.push({ type, homeX: pos.x, homeY: pos.y, rowIdx: 0, squad: idx % 2 });
-  });
+  if (CENTOID_FORMATIONS.includes(style)) {
+    // 4 Dedicated Centoid Formations (Sec 04+)
+    const topTypes = style === 'CENTOID_GAUNTLET' ? top.types.slice(0, 4) : top.types;
+    const topXs = TOP_ROW_XS[topTypes.length] || top.xs;
+    topTypes.forEach((type, idx) => {
+      slots.push({ type, homeX: topXs[idx], homeY: 88, rowIdx: 0, squad: idx % 2 });
+    });
 
-  // Interceptors: Wave 1 = 1 row (6); Waves 2-4 & Hard Mode = 2 full rows (12)
-  const interceptorRows = (fullFormation || waveNum >= 2) ? 2 : 1;
-  for (let r = 0; r < interceptorRows; r++) {
-    for (let c = 0; c < 6; c++) {
-      const pos = shapeSlotPosition(style, 80 + c * 64, 152 + r * 42, 1 + r, c, 6);
-      slots.push({
-        type: 'INTERCEPTOR',
-        homeX: pos.x,
-        homeY: pos.y,
-        rowIdx: 1 + r,
-        squad: 2 + (c >= 3 ? 1 : 0)
+    if (style === 'CENTOID_SERPENT_NEST') {
+      centoidSpawns.push(
+        { type: 'CENTOID', startX: opts.instant ? 185 : 34, startY: 146, dirX: 1, delay: 0.55 },
+        { type: canAlpha && fullFormation ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 295 : LOGICAL_W - 34, startY: 204, dirX: -1, delay: 1.15 }
+      );
+      [76, 134, 346, 404].forEach((x, idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 162, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
+        if (fullFormation || waveNum >= 2) {
+          slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 208, rowIdx: 2, squad: 2 + (idx >= 2 ? 1 : 0) });
+        }
       });
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 88 + c * 61, homeY: 262, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else if (style === 'CENTOID_COIL_WALL') {
+      centoidSpawns.push(
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 200 : 34, startY: 160, dirX: 1, delay: 0.45 },
+        { type: 'CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 222, dirX: -1, delay: 1.05 }
+      );
+      // Central Interceptor spearhead
+      [172, 218, 262, 308].forEach((x, c) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 148 + (c === 1 || c === 2 ? -10 : 10), rowIdx: 1, squad: 2 });
+      });
+      // Outer Drone flank walls
+      for (let r = 0; r < 2; r++) {
+        [58, 104, 376, 422].forEach((x, c) => {
+          slots.push({ type: 'DRONE', homeX: x, homeY: 192 + r * 44, rowIdx: 2 + r, squad: 4 + (c >= 2 ? 1 : 0) });
+        });
+      }
+    } else if (style === 'CENTOID_GAUNTLET') {
+      centoidSpawns.push(
+        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 126, dirX: 1, delay: 0.35 },
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 300 : LOGICAL_W - 34, startY: 184, dirX: -1, delay: 0.90 },
+        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 242, dirX: 1, delay: 1.45 }
+      );
+      [96, 152, 328, 384].forEach((x, idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 154, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
+      });
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 84 + c * 62, homeY: 278, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else {
+      // CENTOID_SWARM_NEXUS
+      centoidSpawns.push(
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 190 : 34, startY: 144, dirX: 1, delay: 0.50 },
+        { type: 'CENTOID', startX: opts.instant ? 290 : LOGICAL_W - 34, startY: 248, dirX: -1, delay: 1.10 }
+      );
+      const diamInterceptors = [
+        [240, 146], [186, 178], [294, 178], [146, 212], [334, 212], [240, 214]
+      ];
+      diamInterceptors.forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + (idx % 2), squad: 2 + (idx % 2) });
+      });
+      [92, 152, 210, 270, 328, 388].forEach((x, idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: 274 - Math.abs(idx - 2.5) * 8, rowIdx: 3, squad: 4 + (idx % 2) });
+      });
+    }
+  } else if (PULSAR_FORMATIONS.includes(style)) {
+    // 4 Dedicated Pulsar Formations (Sec 07+ / Hard Mode)
+    if (style === 'PULSAR_TESLA_ARC') {
+      top.types.forEach((type, idx) => {
+        slots.push({ type, homeX: top.xs[idx], homeY: 86, rowIdx: 0, squad: idx % 2 });
+      });
+      const arcCoords = [[82, 172], [184, 144], [296, 144], [398, 172]];
+      arcCoords.forEach(([x, y], idx) => {
+        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
+      });
+      for (let c = 0; c < 6; c++) {
+        const norm = (c / 5) * 2 - 1;
+        slots.push({ type: 'INTERCEPTOR', homeX: 80 + c * 64, homeY: 214 + norm * norm * 22, rowIdx: 2, squad: 2 + (c >= 3 ? 1 : 0) });
+      }
+      for (let c = 0; c < 8; c++) {
+        const norm = (c / 7) * 2 - 1;
+        slots.push({ type: 'DRONE', homeX: 54 + c * 53, homeY: 266 + norm * norm * 16, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else if (style === 'PULSAR_STORM_BATTERY') {
+      // Compact central Enforcer core flanked by twin 2x2 Pulsar batteries!
+      const coreTypes = top.types.slice(0, 4);
+      [162, 214, 266, 318].forEach((x, idx) => {
+        if (coreTypes[idx]) slots.push({ type: coreTypes[idx], homeX: x, homeY: 90, rowIdx: 0, squad: idx % 2 });
+      });
+      const batteries = [[70, 142], [126, 194], [354, 194], [410, 142]];
+      batteries.forEach(([x, y], idx) => {
+        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
+      });
+      for (let r = 0; r < 2; r++) {
+        [182, 240, 298].forEach((x, c) => {
+          slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 158 + r * 44, rowIdx: 1 + r, squad: 2 + (c % 2) });
+        });
+      }
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 80 + c * 64, homeY: 256, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else if (style === 'PULSAR_DIAMOND_COIL') {
+      const top4 = top.types.slice(0, 4);
+      [74, 154, 326, 406].forEach((x, idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: 92, rowIdx: 0, squad: idx % 2 });
+      });
+      // Iconic electric diamond of 4 Pulsars!
+      const diamond = [[240, 126], [124, 186], [356, 186], [240, 244]];
+      diamond.forEach(([x, y], idx) => {
+        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1 + (idx > 0 ? 1 : 0), squad: 2 + (idx % 2) });
+      });
+      [[182, 156], [298, 156], [182, 218], [298, 218], [64, 218], [416, 218]].forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
+      });
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 80 + c * 64, homeY: 282, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else {
+      // PULSAR_TWIN_CONDUIT
+      const midTop = top.types.slice(0, 4);
+      [158, 212, 268, 322].forEach((x, idx) => {
+        if (midTop[idx]) slots.push({ type: midTop[idx], homeX: x, homeY: 88, rowIdx: 0, squad: idx % 2 });
+      });
+      const conduitRows = fullFormation ? [132, 192, 252] : [144, 214];
+      conduitRows.forEach((y, r) => {
+        slots.push({ type: 'PULSAR', homeX: 82, homeY: y, rowIdx: 1 + r, squad: 2 });
+        slots.push({ type: 'PULSAR', homeX: 398, homeY: y, rowIdx: 1 + r, squad: 3 });
+      });
+      for (let r = 0; r < 2; r++) {
+        [164, 214, 266, 316].forEach((x, c) => {
+          slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 146 + r * 44, rowIdx: 1 + r, squad: 2 + (c >= 2 ? 1 : 0) });
+        });
+      }
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 140 + c * 40, homeY: 244 + (c % 2) * 26, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    }
+  } else {
+    // 5 Base Formations: PHALANX, CHEVRON, TWIN_FLANKS, DIAMOND, ARCH
+    top.types.forEach((type, idx) => {
+      const pos = shapeSlotPosition(style, top.xs[idx], 92, 0, idx, top.types.length);
+      slots.push({ type, homeX: pos.x, homeY: pos.y, rowIdx: 0, squad: idx % 2 });
+    });
+
+    // Interceptors: Wave 1 = 1 row (6); Waves 2-4 & Hard Mode = 2 full rows (12)
+    const interceptorRows = (fullFormation || waveNum >= 2) ? 2 : 1;
+    for (let r = 0; r < interceptorRows; r++) {
+      for (let c = 0; c < 6; c++) {
+        const pos = shapeSlotPosition(style, 80 + c * 64, 152 + r * 42, 1 + r, c, 6);
+        slots.push({
+          type: 'INTERCEPTOR',
+          homeX: pos.x,
+          homeY: pos.y,
+          rowIdx: 1 + r,
+          squad: 2 + (c >= 3 ? 1 : 0)
+        });
+      }
+    }
+
+    // Drones: Wave 1-2 = 1 row (8); Wave 3 = 1 full + 4 inner (12); Wave 4 & Hard Mode = 2 full rows (16)
+    const droneRowStartY = interceptorRows === 1 ? 210 : 238;
+    const droneRows = (fullFormation || waveNum >= 3) ? 2 : 1;
+    for (let r = 0; r < droneRows; r++) {
+      const partialSecondRow = !fullFormation && waveNum === 3 && r === 1;
+      const cols = partialSecondRow ? [2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6, 7];
+      for (const c of cols) {
+        const pos = shapeSlotPosition(style, 54 + c * 53, droneRowStartY + r * 38, 3 + r, c, 8);
+        slots.push({
+          type: 'DRONE',
+          homeX: pos.x,
+          homeY: pos.y,
+          rowIdx: 3 + r,
+          squad: 4 + (c % 2)
+        });
+      }
     }
   }
 
-  // Bit-Drones: Wave 1-2 = 1 row (8); Wave 3 = 1 full + 4 inner (12); Wave 4 & Hard Mode = 2 full rows (16)
-  const droneRowStartY = interceptorRows === 1 ? 210 : 238;
-  const droneRows = (fullFormation || waveNum >= 3) ? 2 : 1;
-  for (let r = 0; r < droneRows; r++) {
-    const partialSecondRow = !fullFormation && waveNum === 3 && r === 1;
-    const cols = partialSecondRow ? [2, 3, 4, 5] : [0, 1, 2, 3, 4, 5, 6, 7];
-    for (const c of cols) {
-      const pos = shapeSlotPosition(style, 54 + c * 53, droneRowStartY + r * 38, 3 + r, c, 8);
-      slots.push({
-        type: 'DRONE',
-        homeX: pos.x,
-        homeY: pos.y,
-        rowIdx: 3 + r,
-        squad: 4 + (c % 2)
+  // Cost-Based Enemy Swap System (5% per mob per wave, strictly +-1 tier!)
+  if (!opts.skipSwaps) {
+    slots = applyCostBasedSwaps(slots, sec, !!game.hardMode);
+  }
+
+  // Extract any Centoid / Alpha Centoid created by cost swaps into centoidSpawns
+  const regularSlots = [];
+  for (const s of slots) {
+    if (s.type === 'CENTOID' || s.type === 'ALPHA_CENTOID') {
+      centoidSpawns.push({
+        type: s.type,
+        startX: opts.instant ? clamp(s.homeX, 110, LOGICAL_W - 110) : (s.homeX < LOGICAL_W * 0.5 ? 34 : LOGICAL_W - 34),
+        startY: clamp(s.homeY, 86, 240),
+        dirX: s.homeX < LOGICAL_W * 0.5 ? 1 : -1,
+        delay: 0.65 + centoidSpawns.length * 0.55
       });
+    } else {
+      regularSlots.push(s);
     }
   }
 
-  slots.sort((a, b) => a.squad - b.squad);
+  regularSlots.sort((a, b) => a.squad - b.squad);
   const entryDur = Math.max(1.12, 1.46 - sec * 0.025);
-  slots.forEach((s, i) => {
+
+  if (opts.instant) {
+    // Instant Sandbox deployment — place directly in FORMATION without entry swoop!
+    for (const s of regularSlots) {
+      spawnEnemyFromItem(game, {
+        type: s.type,
+        homeX: s.homeX,
+        homeY: s.homeY,
+        rowIdx: s.rowIdx,
+        path: null,
+        instant: true,
+        challenge: false,
+        challengeElite: false
+      });
+    }
+    for (const cs of centoidSpawns) {
+      spawnCentoidChain(game, cs.type === 'ALPHA_CENTOID', cs.startX, cs.startY, cs.dirX);
+    }
+    game.waveQueue = [];
+    game.waveSpawnTimer = 0;
+    return;
+  }
+
+  regularSlots.forEach((s, i) => {
     const path = buildEntryPath(entryPattern, s.squad, s.homeX, s.homeY);
     game.waveQueue.push({
       delay: 0.20 + i * 0.09,
@@ -444,11 +750,28 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4) {
       challengeElite: false
     });
   });
+
+  centoidSpawns.forEach((cs) => {
+    game.waveQueue.push({
+      delay: cs.delay,
+      type: cs.type,
+      isCentoidSpawn: true,
+      startX: cs.startX,
+      startY: cs.startY,
+      dirX: cs.dirX,
+      homeX: cs.startX,
+      homeY: cs.startY,
+      challenge: false,
+      challengeElite: false
+    });
+  });
+
+  game.waveQueue.sort((a, b) => a.delay - b.delay);
   game.waveSpawnTimer = 0;
 }
 
 export function buildChallengeWaveQueue(game, challengeNum) {
-  const types = ['DRONE', 'INTERCEPTOR', 'CLASSIC_REC', 'INTERCEPTOR', 'DRONE'];
+  const types = ['DRONE', 'INTERCEPTOR', 'V1_ENFORCER', 'INTERCEPTOR', 'DRONE'];
   game.challengeTotal = 40;
 
   for (let s = 0; s < 5; s++) {
@@ -471,25 +794,25 @@ export function buildChallengeWaveQueue(game, challengeNum) {
   }
 
   // Starting at Challenge 2 (after Sec 04): 2x HP Elite Raiders;
-  // Starting at Challenge 3 (after Sec 06) / Hard Mode H-CH.01+: Guarded Master Recognizer Battle Groups!
+  // Starting at Challenge 3 (after Sec 06) / Hard Mode H-CH.01+: Guarded Master Enforcer Battle Groups!
   if (challengeNum >= CHALLENGE_ELITE_START) {
     const eliteRaids = challengeNum === CHALLENGE_ELITE_START
       ? [
-          { delay: 2.2, type: 'LEGACY_REC', dir: 1, laneY: 98, speed: 64 },
-          { delay: 6.2, type: 'ARES_REC', dir: -1, laneY: 148, speed: 64 }
+          { delay: 2.2, type: 'FLUX_ENFORCER', dir: 1, laneY: 98, speed: 64 },
+          { delay: 6.2, type: 'NULL_ENFORCER', dir: -1, laneY: 148, speed: 64 }
         ]
       : (challengeNum >= 4
         ? [
-            // Normal Ch.4+ / Hard Mode H-CH.02+: 3 Guarded Master Recognizer Battle Groups!
-            { delay: 1.8, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 96, speed: 54, guardGroup: 'MASTER_G1' },
-            { delay: 5.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 146, speed: 54, guardGroup: 'MASTER_G2' },
-            { delay: 9.0, type: challengeNum % 2 === 0 ? 'MASTER_ARES_REC' : 'MASTER_LEGACY_REC', dir: 1, laneY: 186, speed: 56, guardGroup: 'MASTER_G3' }
+            // Normal Ch.4+ / Hard Mode H-CH.02+: 3 Guarded Master Enforcer Battle Groups!
+            { delay: 1.8, type: 'MASTER_FLUX_ENFORCER', dir: 1, laneY: 96, speed: 54, guardGroup: 'MASTER_G1' },
+            { delay: 5.4, type: 'MASTER_NULL_ENFORCER', dir: -1, laneY: 146, speed: 54, guardGroup: 'MASTER_G2' },
+            { delay: 9.0, type: challengeNum % 2 === 0 ? 'MASTER_NULL_ENFORCER' : 'MASTER_FLUX_ENFORCER', dir: 1, laneY: 186, speed: 56, guardGroup: 'MASTER_G3' }
           ]
         : [
-            // Normal Ch.3 (after Sec 06) & Hard Mode H-CH.01: Elite Raider + 2 Guarded Master Recognizers!
-            { delay: 1.6, type: challengeNum % 2 === 0 ? 'ARES_REC' : 'LEGACY_REC', dir: 1, laneY: 86, speed: 64 },
-            { delay: 4.2, type: 'MASTER_LEGACY_REC', dir: 1, laneY: 132, speed: 52, guardGroup: 'MASTER_G1' },
-            { delay: 8.4, type: 'MASTER_ARES_REC', dir: -1, laneY: 158, speed: 52, guardGroup: 'MASTER_G2' }
+            // Normal Ch.3 (after Sec 06) & Hard Mode H-CH.01: Elite Raider + 2 Guarded Master Enforcers!
+            { delay: 1.6, type: challengeNum % 2 === 0 ? 'NULL_ENFORCER' : 'FLUX_ENFORCER', dir: 1, laneY: 86, speed: 64 },
+            { delay: 4.2, type: 'MASTER_FLUX_ENFORCER', dir: 1, laneY: 132, speed: 52, guardGroup: 'MASTER_G1' },
+            { delay: 8.4, type: 'MASTER_NULL_ENFORCER', dir: -1, laneY: 158, speed: 52, guardGroup: 'MASTER_G2' }
           ]);
 
     const guardOffsets = [
@@ -518,7 +841,7 @@ export function buildChallengeWaveQueue(game, challengeNum) {
         guardGroup: raid.guardGroup || null
       });
 
-      // Spawn a tight protective escort formation shielding each Challenge 5+ Master Recognizer
+      // Spawn a tight protective escort formation shielding each Challenge 5+ Master Enforcer
       if (raid.guardGroup) {
         guardOffsets.forEach((gOff, gIdx) => {
           game.challengeTotal++;
@@ -571,8 +894,8 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
   if (mode.id === 'DIAMOND_VORTEX') {
     // 10 ships lock into a rotating orbital diamond around center screen firing radial salvos before peeling off
     const roster = [
-      'CLASSIC_REC', 'INTERCEPTOR', 'DRONE', 'INTERCEPTOR', 'DRONE',
-      'CLASSIC_REC', 'INTERCEPTOR', 'DRONE', 'INTERCEPTOR', 'DRONE'
+      'V1_ENFORCER', 'INTERCEPTOR', 'DRONE', 'INTERCEPTOR', 'DRONE',
+      'V1_ENFORCER', 'INTERCEPTOR', 'DRONE', 'INTERCEPTOR', 'DRONE'
     ];
     roster.forEach((type, i) => {
       const baseAngle = (i / roster.length) * Math.PI * 2;
@@ -601,7 +924,7 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
     });
   } else if (mode.id === 'TWIN_PINCER') {
     // Two mirrored V-spearhead wings hold flanking crossfire then scissor across the playfield
-    const wingTypes = ['CLASSIC_REC', 'INTERCEPTOR', 'INTERCEPTOR', 'DRONE', 'DRONE', 'DRONE'];
+    const wingTypes = ['V1_ENFORCER', 'INTERCEPTOR', 'INTERCEPTOR', 'DRONE', 'DRONE', 'DRONE'];
     for (const side of [-1, 1]) {
       wingTypes.forEach((type, idx) => {
         const holdX = side < 0 ? 78 + (idx % 3) * 34 : LOGICAL_W - 78 - (idx % 3) * 34;
@@ -629,7 +952,7 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
       });
     }
   } else if (mode.id === 'HELIX_BARRAGE') {
-    // 12 interwoven ships descend in a double-helix DNA wave + 1 Elite Recognizer escort
+    // 12 interwoven ships descend in a double-helix DNA wave + 1 Elite Enforcer escort
     for (let i = 0; i < 12; i++) {
       const strand = i % 2;
       const type = i % 3 === 0 ? 'INTERCEPTOR' : 'DRONE';
@@ -652,8 +975,8 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
         }
       });
     }
-    // Escort Elite Recognizer raider sweeping across the top
-    const eliteType = effChallengeNum % 2 === 0 ? 'LEGACY_REC' : 'ARES_REC';
+    // Escort Elite Enforcer raider sweeping across the top
+    const eliteType = effChallengeNum % 2 === 0 ? 'FLUX_ENFORCER' : 'NULL_ENFORCER';
     items.push({
       delay: 1.4,
       type: eliteType,
@@ -668,8 +991,8 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
       raidSpeed: 64
     });
   } else {
-    // PHALANX_ASSAULT: Fortified advancing battle wall + outer S-loop flankers (randomized Legacy/Ares order!)
-    const wallTypes = shuffleArray(['CLASSIC_REC', 'LEGACY_REC', 'CLASSIC_REC', 'ARES_REC', 'CLASSIC_REC']);
+    // PHALANX_ASSAULT: Fortified advancing battle wall + outer S-loop flankers (randomized Flux/Null order!)
+    const wallTypes = shuffleArray(['V1_ENFORCER', 'FLUX_ENFORCER', 'V1_ENFORCER', 'NULL_ENFORCER', 'V1_ENFORCER']);
     const wallXs = [86, 163, 240, 317, 394];
     wallTypes.forEach((type, idx) => {
       items.push({
@@ -714,9 +1037,9 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
     }
   }
 
-  // H-CH.02+ / Ch.6+ Extra Rounds also include an escalated Master Recognizer escort!
+  // H-CH.02+ / Ch.6+ Extra Rounds also include an escalated Master Enforcer escort!
   if (hardEscalated && mode.id !== 'HELIX_BARRAGE') {
-    const escortType = (effChallengeNum + subRound) % 2 === 0 ? 'MASTER_ARES_REC' : 'MASTER_LEGACY_REC';
+    const escortType = (effChallengeNum + subRound) % 2 === 0 ? 'MASTER_NULL_ENFORCER' : 'MASTER_FLUX_ENFORCER';
     const dir = subRound % 2 === 0 ? -1 : 1;
     items.push({
       delay: 1.5,
@@ -738,69 +1061,114 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
   game.waveQueue = items;
 }
 
+function getInitialDiveHold(type) {
+  if (type === 'MASTER_FLUX_ENFORCER' || type === 'MASTER_NULL_ENFORCER') {
+    return 8.5 + Math.random() * 3.5;
+  }
+  if (type === 'FLUX_ENFORCER' || type === 'NULL_ENFORCER' || type === 'PULSAR') {
+    return 5.5 + Math.random() * 2.5;
+  }
+  return 0;
+}
+
+function getRediveHold(type) {
+  if (type === 'MASTER_FLUX_ENFORCER' || type === 'MASTER_NULL_ENFORCER') {
+    return 6.5 + Math.random() * 3.0;
+  }
+  if (type === 'FLUX_ENFORCER' || type === 'NULL_ENFORCER' || type === 'PULSAR') {
+    return 4.5 + Math.random() * 2.5;
+  }
+  return 0;
+}
+
 export function spawnEnemyFromItem(game, item) {
-  const isRec = item.type.endsWith('_REC');
-  const isMaster = item.type === 'MASTER_LEGACY_REC' || item.type === 'MASTER_ARES_REC';
-  const isElite = isMaster || item.type === 'LEGACY_REC' || item.type === 'ARES_REC';
+  if (item.isCentoidSpawn || item.type === 'CENTOID' || item.type === 'ALPHA_CENTOID') {
+    spawnCentoidChain(
+      game,
+      item.type === 'ALPHA_CENTOID',
+      item.startX !== undefined ? item.startX : null,
+      item.startY !== undefined ? item.startY : (item.homeY !== undefined ? item.homeY : null),
+      item.dirX !== undefined ? item.dirX : null
+    );
+    return;
+  }
+
+  const isEnforcer = item.type.endsWith('_ENFORCER');
+  const isPulsar = item.type === 'PULSAR';
+  const isMaster = item.type === 'MASTER_FLUX_ENFORCER' || item.type === 'MASTER_NULL_ENFORCER';
+  const isElite = isMaster || item.type === 'FLUX_ENFORCER' || item.type === 'NULL_ENFORCER' || isPulsar;
   const isChallengeElite = !!item.challengeElite;
   const isChallengeExtra = !!item.challengeExtra;
   const isChallengeGuard = !!item.challengeGuard;
 
-  // Master Recognizers = 10 HP; Elite Recognizers = 6 HP (12 in 2x HP Ch.3+ Raiders)
+  // Master = 18 HP; Elite / Pulsar = 6 HP (12 in Ch.2+ Raiders); Advanced V1 Enforcer = 3 HP
   const maxHp = isMaster
-    ? MASTER_REC_HP
-    : (isChallengeElite
-      ? ELITE_REC_HP * 2
-      : (isChallengeGuard
-        ? (item.type === 'INTERCEPTOR' ? 2 : 1)
-        : (isChallengeExtra
-          ? (isElite ? ELITE_REC_HP : (item.type === 'CLASSIC_REC' ? 2 : 1))
-          : (item.challenge
-            ? 1
-            : (isElite ? ELITE_REC_HP : (item.type === 'CLASSIC_REC' ? 2 : 1))))));
+    ? MASTER_ENFORCER_HP
+    : (isPulsar
+      ? PULSAR_HP
+      : (isChallengeElite
+        ? ELITE_ENFORCER_HP * 2
+        : (isChallengeGuard
+          ? (item.type === 'INTERCEPTOR' ? 2 : 1)
+          : (isChallengeExtra
+            ? (isElite ? ELITE_ENFORCER_HP : (item.type === 'V1_ENFORCER' ? V1_ENFORCER_HP : 1))
+            : (item.challenge
+              ? 1
+              : (isElite ? ELITE_ENFORCER_HP : (item.type === 'V1_ENFORCER' ? V1_ENFORCER_HP : 1)))))));
 
   const ptsForm = isMaster
-    ? (isChallengeElite ? 2500 : (item.type === 'MASTER_ARES_REC' ? 850 : 750))
-    : (isChallengeElite ? 1500 : (isChallengeGuard ? 250 : (isChallengeExtra
-      ? (isElite ? 900 : (isRec ? 350 : 200))
-      : (item.challenge ? 100 : (
-        item.type === 'ARES_REC' ? 400 :
-        item.type === 'LEGACY_REC' ? 350 :
-        item.type === 'CLASSIC_REC' ? 150 :
-        item.type === 'INTERCEPTOR' ? 80 : 50
-      )))));
+    ? (isChallengeElite ? 2500 : (item.type === 'MASTER_NULL_ENFORCER' ? 850 : 750))
+    : (isPulsar
+      ? 380
+      : (isChallengeElite ? 1500 : (isChallengeGuard ? 250 : (isChallengeExtra
+        ? (isElite ? 900 : (isEnforcer ? 350 : 200))
+        : (item.challenge ? 100 : (
+          item.type === 'NULL_ENFORCER' ? 400 :
+          item.type === 'FLUX_ENFORCER' ? 350 :
+          item.type === 'V1_ENFORCER' ? 150 :
+          item.type === 'INTERCEPTOR' ? 80 : 50
+        ))))));
   const ptsDive = isMaster
-    ? (isChallengeElite ? 2500 : (item.type === 'MASTER_ARES_REC' ? 2000 : 1800))
-    : (isChallengeElite ? 1500 : (isChallengeGuard ? 250 : (isChallengeExtra
-      ? ptsForm
-      : (item.challenge ? 100 : (
-        item.type === 'ARES_REC' ? 1000 :
-        item.type === 'LEGACY_REC' ? 900 :
-        item.type === 'CLASSIC_REC' ? 400 :
-        item.type === 'INTERCEPTOR' ? 160 : 100
-      )))));
+    ? (isChallengeElite ? 2500 : (item.type === 'MASTER_NULL_ENFORCER' ? 2000 : 1800))
+    : (isPulsar
+      ? 950
+      : (isChallengeElite ? 1500 : (isChallengeGuard ? 250 : (isChallengeExtra
+        ? ptsForm
+        : (item.challenge ? 100 : (
+          item.type === 'NULL_ENFORCER' ? 1000 :
+          item.type === 'FLUX_ENFORCER' ? 900 :
+          item.type === 'V1_ENFORCER' ? 400 :
+          item.type === 'INTERCEPTOR' ? 160 : 100
+        ))))));
 
-  const startX = (isChallengeElite || isChallengeExtra || isChallengeGuard) ? item.startX : item.path[0].x;
-  const startY = isChallengeElite
-    ? item.raidLaneY
-    : ((isChallengeExtra || isChallengeGuard) ? item.startY : item.path[0].y);
+  const startX = item.instant
+    ? item.homeX
+    : ((isChallengeElite || isChallengeExtra || isChallengeGuard) ? item.startX : item.path[0].x);
+  const startY = item.instant
+    ? item.homeY
+    : (isChallengeElite
+      ? item.raidLaneY
+      : ((isChallengeExtra || isChallengeGuard) ? item.startY : item.path[0].y));
 
-  const initState = isChallengeElite
-    ? 'CHALLENGE_ELITE'
-    : (isChallengeGuard
-      ? 'CHALLENGE_GUARD'
-      : (isChallengeExtra ? 'CHALLENGE_EXTRA' : (item.challenge ? 'CHALLENGE' : 'ENTERING')));
+  const initState = item.instant
+    ? 'FORMATION'
+    : (isChallengeElite
+      ? 'CHALLENGE_ELITE'
+      : (isChallengeGuard
+        ? 'CHALLENGE_GUARD'
+        : (isChallengeExtra ? 'CHALLENGE_EXTRA' : (item.challenge ? 'CHALLENGE' : 'ENTERING'))));
 
   game.enemies.push({
     id: game.enemyIdSeq++,
     type: item.type,
-    isRec,
+    isEnforcer,
     isElite,
     isMaster,
+    isCentoid: false,
     isChallengeElite,
     isChallengeExtra,
     isChallengeGuard,
-    hitRadius: isMaster ? 30 : (isElite ? 26 : (isRec ? 20 : 16)),
+    hitRadius: isMaster ? 30 : (isPulsar ? 25 : (isElite ? 26 : (isEnforcer ? 20 : 16))),
     maxHp,
     hp: maxHp,
     ptsForm,
@@ -838,7 +1206,9 @@ export function spawnEnemyFromItem(game, item) {
     beamTargetX: startX,
     beamFlankX: startX,
     hasCapturedShip: false,
-    shotCooldown: 0.35 + Math.random() * 0.55,
+    diveReadyTimer: getInitialDiveHold(item.type),
+    shotCooldown: isElite ? (1.2 + Math.random() * 0.9) : (0.35 + Math.random() * 0.55),
+    pulsarTimer: isPulsar ? PULSAR_FIRE_INTERVAL * (0.45 + Math.random() * 0.55) : 0,
     wingSurgeQueue: 0,
     wingSurgeTimer: 0,
     surgePulse: 0,
@@ -854,25 +1224,53 @@ export function spawnEnemyFromItem(game, item) {
     guardIdx: item.guardIdx || 0,
     guardClock: 0,
     guardBroken: false,
+    v1Synergy: null,
+    speedBuffed: false,
+    hpBuffed: false,
     extraPattern: item.extraPattern || null,
     extraData: item.extraData ? { ...item.extraData } : null
   });
 
   if (isChallengeElite) {
-    const isAresKind = item.type === 'ARES_REC' || item.type === 'MASTER_ARES_REC';
+    const isNullKind = item.type === 'NULL_ENFORCER' || item.type === 'MASTER_NULL_ENFORCER';
     const label = isMaster
-      ? (isAresKind
-        ? (item.guardGroup ? 'MASTER ARES + GUARD FORMATION' : 'MASTER ARES RAIDER [15 HP]')
-        : (item.guardGroup ? 'MASTER LEGACY + GUARD FORMATION' : 'MASTER LEGACY RAIDER [15 HP]'))
-      : (isAresKind ? 'ARES RAIDER [2X HP]' : 'LEGACY RAIDER [2X HP]');
+      ? (isNullKind
+        ? (item.guardGroup ? 'MASTER NULL + GUARD FORMATION' : 'MASTER NULL RAIDER [18 HP]')
+        : (item.guardGroup ? 'MASTER FLUX + GUARD FORMATION' : 'MASTER FLUX RAIDER [18 HP]'))
+      : (isNullKind ? 'NULL RAIDER [2X HP]' : 'FLUX RAIDER [2X HP]');
     game.spawnPopup(
       LOGICAL_W * 0.5,
       startY - 14,
       label,
-      isAresKind ? COLORS.aresRed : COLORS.cyan,
+      isNullKind ? COLORS.nullRed : COLORS.cyan,
       1.4
     );
   }
+}
+
+/**
+ * Direct touch/click enemy spawner used by the Training/Sandbox Arena.
+ */
+export function spawnDirectEnemy(game, type, x, y) {
+  const cx = clamp(x, 34, LOGICAL_W - 34);
+  const cy = clamp(y, 58, LOGICAL_H - 120);
+  if (type === 'CENTOID' || type === 'ALPHA_CENTOID') {
+    const dirX = cx < LOGICAL_W * 0.5 ? -1 : 1; // Trail extends inward toward arena center
+    spawnCentoidChain(game, type === 'ALPHA_CENTOID', cx, cy, dirX);
+    game.spawnDeleteBurst(cx, cy, type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen, 12, 110);
+    return;
+  }
+  spawnEnemyFromItem(game, {
+    type,
+    homeX: cx,
+    homeY: cy,
+    rowIdx: 1,
+    path: null,
+    instant: true,
+    challenge: false,
+    challengeElite: false
+  });
+  game.spawnDeleteBurst(cx, cy, COLORS.cyan, 10, 95);
 }
 
 export function finishChallengeStage(game) {
@@ -912,12 +1310,18 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
   diver.divePattern = pattern;
 
   const baseDur = Math.max(1.45, 2.35 - effSec * 0.085);
-  // Elite & Master Recognizers dive heavier and slower than regular fighters
-  const tierDiveMult = diver.isMaster ? 1.65 : (diver.isElite ? 1.40 : 1.0);
+  // Dive speed ladder (higher duration mult = slower dive):
+  // Normal (1.0x) > Advanced V1 (1.25x) > Elite Enforcers (1.45x) > Pulsars (1.75x) > Master Enforcers (2.10x)
+  const tierDiveMult = diver.isMaster
+    ? 2.10
+    : (diver.type === 'PULSAR'
+      ? 1.75
+      : (diver.isElite ? 1.45 : (diver.type === 'V1_ENFORCER' ? 1.25 : 1.0)));
   diver.diveDur = baseDur * tierDiveMult * (pattern === 'LOOP' ? 1.18 : (pattern === 'WEAVE' ? 1.08 : 0.94));
 
   const tx = clamp(game.player.x + flankOffset + (Math.random() - 0.5) * 78, 36, LOGICAL_W - 36);
   const swingDir = diver.x < LOGICAL_W * 0.5 ? 1 : -1;
+  const resetShotCd = !diver.isElite; // Leave Elite/Pulsar/Master bullet timers untouched on dive!
 
   if (pattern === 'WEAVE') {
     diver.weaveAmp = 44 + Math.random() * 34;
@@ -928,7 +1332,7 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
       { x: tx, y: LOGICAL_H - 115 },
       { x: clamp(tx + swingDir * 60, 28, LOGICAL_W - 28), y: LOGICAL_H + 58 }
     ];
-    diver.shotCooldown = 0.28 + Math.random() * 0.25;
+    if (resetShotCd) diver.shotCooldown = 0.28 + Math.random() * 0.25;
   } else if (pattern === 'FEINT') {
     const fakeSide = game.player.x < LOGICAL_W * 0.5 ? 1 : -1;
     const fakeX = clamp(game.player.x + fakeSide * (120 + Math.random() * 45), 42, LOGICAL_W - 42);
@@ -938,7 +1342,7 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
       { x: tx, y: LOGICAL_H - 96 },
       { x: clamp(tx - fakeSide * 75, 24, LOGICAL_W - 24), y: LOGICAL_H + 58 }
     ];
-    diver.shotCooldown = 0.36 + Math.random() * 0.22;
+    if (resetShotCd) diver.shotCooldown = 0.36 + Math.random() * 0.22;
   } else if (pattern === 'LOOP') {
     diver.loopCx = clamp(lerp(diver.x, tx, 0.55), 86, LOGICAL_W - 86);
     diver.loopCy = clamp(diver.y + 185, 240, 380);
@@ -950,7 +1354,7 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
       { x: tx, y: LOGICAL_H - 84 },
       { x: clamp(tx + diver.loopDir * 85, 28, LOGICAL_W - 28), y: LOGICAL_H + 58 }
     ];
-    diver.shotCooldown = 0.32 + Math.random() * 0.25;
+    if (resetShotCd) diver.shotCooldown = 0.32 + Math.random() * 0.25;
   } else {
     // Sharp lead-aimed SWOOP
     diver.divePath = [
@@ -959,20 +1363,24 @@ function assignDivePattern(game, diver, forcedPattern = null, flankOffset = 0) {
       { x: tx, y: LOGICAL_H - 88 },
       { x: clamp(tx + (Math.random() < 0.5 ? -95 : 95), 20, LOGICAL_W - 20), y: LOGICAL_H + 58 }
     ];
-    diver.shotCooldown = 0.26 + Math.random() * 0.28;
+    if (resetShotCd) diver.shotCooldown = 0.26 + Math.random() * 0.28;
+  }
+  // Advanced V1 Enforcers fire noticeably less often than normal tiers
+  if (diver.type === 'V1_ENFORCER') {
+    diver.shotCooldown *= 1.55;
   }
 }
 
 export function launchFormationDiver(game) {
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
-  const ready = game.enemies.filter(e => e.state === 'FORMATION');
+  const ready = game.enemies.filter(e => e.state === 'FORMATION' && (e.diveReadyTimer || 0) <= 0);
   if (ready.length === 0) return;
 
   const activeDivers = game.enemies.filter(e => e.state === 'DIVING').length;
   const maxDivers = Math.min(7, 2 + Math.floor((effSec + 1) / 2));
   if (activeDivers >= maxDivers) return;
 
-  // Slightly higher occasional abduction chance when a Classic MCP Recognizer is ready in formation
+  // Slightly higher occasional abduction chance when a V1 Enforcer is ready in formation
   if (
     !game.player.dual &&
     !game.capturedFighter &&
@@ -982,10 +1390,10 @@ export function launchFormationDiver(game) {
     game.tractorTimer <= 6.0 &&
     Math.random() < 0.08
   ) {
-    const classicRecs = ready.filter(e => e.type === 'CLASSIC_REC' && !e.hasCapturedShip);
-    if (classicRecs.length > 0) {
-      const rec = classicRecs[Math.floor(Math.random() * classicRecs.length)];
-      startRecognizerBeam(game, rec);
+    const v1Enforcers = ready.filter(e => e.type === 'V1_ENFORCER' && !e.hasCapturedShip);
+    if (v1Enforcers.length > 0) {
+      const enforcer = v1Enforcers[Math.floor(Math.random() * v1Enforcers.length)];
+      startEnforcerBeam(game, enforcer);
       game.sectorTractorCount++;
       game.postChallengeAbductionPending = false;
       game.tractorTimer = TRACTOR_INTERVAL + Math.random() * 6.0;
@@ -1061,7 +1469,7 @@ export function updateSectorPhase(game, dt) {
             : (TRACTOR_INITIAL_DELAY + Math.random() * 3.0);
           game.wingLaunchTimer = 1.8;
         }
-      } else if (game.sectorPhase === 'CHALLENGE' && game.enemies.length === 0 && game.lightwings.length === 0) {
+      } else if (game.sectorPhase === 'CHALLENGE' && game.enemies.length === 0 && game.enforcerWings.length === 0) {
         if (game.challengeSubRound < game.challengeExtraRounds) {
           game.challengeSubRound++;
           const effCh = game.getEffectiveChallengeNum ? game.getEffectiveChallengeNum() : game.challengeNum;
@@ -1076,7 +1484,55 @@ export function updateSectorPhase(game, dt) {
 
   if (game.sectorPhase === 'COMBAT') {
     const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
-    if (game.enemies.length === 0 && game.lightwings.length === 0) {
+
+    // Process mid-wave spontaneous Centoid / Alpha Centoid / Pulsar spawns (paused in Sandbox Idle!)
+    if (!game.sandboxIdle && game.midWaveSpawns && game.midWaveSpawns.length > 0) {
+      if (game.enemies.length === 0 && game.enforcerWings.length === 0 && game.midWaveSpawns[0].timer > 0.35) {
+        // Fast-forward next reinforcement if arena emptied so player never waits on dead air
+        const shift = game.midWaveSpawns[0].timer - 0.3;
+        for (const ms of game.midWaveSpawns) ms.timer = Math.max(0.05, ms.timer - shift);
+      }
+      for (let mi = game.midWaveSpawns.length - 1; mi >= 0; mi--) {
+        game.midWaveSpawns[mi].timer -= dt;
+        if (game.midWaveSpawns[mi].timer <= 0) {
+          const ms = game.midWaveSpawns.splice(mi, 1)[0];
+          if (ms.type === 'CENTOID' || ms.type === 'ALPHA_CENTOID') {
+            spawnCentoidChain(game, ms.type === 'ALPHA_CENTOID');
+            game.spawnPopup(
+              LOGICAL_W * 0.5,
+              116,
+              ms.type === 'ALPHA_CENTOID' ? 'ALPHA CENTOID INBOUND!' : 'CENTOID INBOUND!',
+              ms.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen,
+              1.25
+            );
+          } else if (ms.type === 'PULSAR') {
+            const fromLeft = Math.random() < 0.5;
+            const hx = clamp(76 + Math.random() * (LOGICAL_W - 152), 70, LOGICAL_W - 70);
+            const hy = 112 + Math.random() * 102;
+            const path = buildEntryPath(fromLeft ? 'CROSS' : 'TOP_DROP', fromLeft ? 0 : 1, hx, hy);
+            spawnEnemyFromItem(game, {
+              type: 'PULSAR',
+              homeX: hx,
+              homeY: hy,
+              rowIdx: 1,
+              path,
+              pathDur: 1.2,
+              challenge: false,
+              challengeElite: false
+            });
+            game.spawnPopup(hx, hy - 22, 'PULSAR INBOUND!', COLORS.yellow, 1.15);
+          }
+        }
+      }
+    }
+
+    const pendingMidSpawns = game.midWaveSpawns ? game.midWaveSpawns.length : 0;
+    if (game.enemies.length === 0 && game.enforcerWings.length === 0 && pendingMidSpawns === 0) {
+      // Free Sandbox mode: never auto-clear or advance sectors when arena empties
+      if (game.sandboxMode && !game.sandboxTrainingRound) {
+        return;
+      }
+
       if (game.sectorWave < game.sectorTotalWaves) {
         // Silent wave progression — NO wave banner or announcement!
         game.sectorWave++;
@@ -1086,15 +1542,23 @@ export function updateSectorPhase(game, dt) {
       }
       game.sectorPhase = 'CLEARED';
       game.phaseTimer = 1.85;
-      game.bannerTitle = game.hardMode
-        ? `HARD // SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`
-        : `SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`;
-      game.bannerSub = game.sector % CHALLENGE_INTERVAL === 0
-        ? 'INCOMING DATA STREAM...'
-        : 'ADVANCING GRID...';
+      if (game.sandboxTrainingRound) {
+        game.bannerTitle = `TRAINING // SEC ${String(game.sector).padStart(2, '0')} CLEARED`;
+        game.bannerSub = 'RETURNING TO SANDBOX ARENA...';
+      } else {
+        game.bannerTitle = game.hardMode
+          ? `HARD // SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`
+          : `SECTOR ${String(game.sector).padStart(2, '0')} CLEARED`;
+        game.bannerSub = game.sector % CHALLENGE_INTERVAL === 0
+          ? 'INCOMING DATA STREAM...'
+          : 'ADVANCING SECTOR...';
+      }
       game.bannerColor = COLORS.emerald;
       return;
     }
+
+    // In Sandbox IDLE mode, enemies hold formation & sway rhythm without diving, firing, beaming, or launching wings!
+    if (game.sandboxIdle) return;
 
     // Aggressive, variable diving scheduler
     game.diveTimer -= dt;
@@ -1108,58 +1572,94 @@ export function updateSectorPhase(game, dt) {
     game.formationShotTimer -= dt;
     if (game.formationShotTimer <= 0 && game.player.alive) {
       const shooters = game.enemies.filter(
-        e => e.state === 'FORMATION' && (e.type === 'INTERCEPTOR' || e.isRec)
+        e => e.state === 'FORMATION' && (e.type === 'INTERCEPTOR' || e.isEnforcer)
       );
       if (shooters.length > 0) {
-        const s = shooters[Math.floor(Math.random() * shooters.length)];
-        const spd = Math.min(430, 265 + effSec * 11);
-        const col = (s.type === 'ARES_REC' || s.type === 'MASTER_ARES_REC')
-          ? COLORS.aresRed
-          : ((s.type === 'LEGACY_REC' || s.type === 'MASTER_LEGACY_REC') ? COLORS.cyan : COLORS.amber);
-        fireAimedBullet(game, s.x, s.y + 12, spd, col, (Math.random() - 0.5) * 0.14, 0.35);
+        let s = shooters[Math.floor(Math.random() * shooters.length)];
+        // Advanced V1 Enforcers fire bullets less often than normal tiers
+        if (s.type === 'V1_ENFORCER' && Math.random() < 0.55) {
+          const nonV1 = shooters.filter(cand => cand.type !== 'V1_ENFORCER');
+          s = nonV1.length > 0 ? nonV1[Math.floor(Math.random() * nonV1.length)] : null;
+        }
+        if (s) {
+          const spd = Math.min(430, 265 + effSec * 11);
+          const col = (s.type === 'NULL_ENFORCER' || s.type === 'MASTER_NULL_ENFORCER')
+            ? COLORS.nullRed
+            : ((s.type === 'FLUX_ENFORCER' || s.type === 'MASTER_FLUX_ENFORCER') ? COLORS.cyan : COLORS.amber);
+          fireAimedBullet(game, s.x, s.y + 12, spd, col, (Math.random() - 0.5) * 0.14, 0.35);
+          if (s.isElite) {
+            s.shotCooldown = Math.max(0.95, 1.55 - effSec * 0.045);
+          }
+        }
       }
       game.formationShotTimer = Math.max(0.85, 2.2 - effSec * 0.1) * (0.75 + Math.random() * 0.5);
     }
 
-    // Occasional Classic MCP Recognizer Tractor Beam scheduler (paced like original Galaga)
+    // Tractor Beam scheduler: V1 Enforcers + 10%/wave Elite Enforcer (non-Master, max 1/wave) abduction!
     if (
       !game.player.dual &&
       !game.capturedFighter &&
       !game.activeBeamBoss &&
-      game.player.alive &&
-      game.sectorTractorCount < TRACTOR_MAX_PER_SECTOR
+      game.player.alive
     ) {
       game.tractorTimer -= dt;
       if (game.tractorTimer <= 0) {
-        const beamCandidates = game.enemies.filter(
-          e => e.type === 'CLASSIC_REC' && e.state === 'FORMATION' && !e.hasCapturedShip
-        );
-        if (beamCandidates.length > 0) {
-          const chosen = beamCandidates[Math.floor(Math.random() * beamCandidates.length)];
-          startRecognizerBeam(game, chosen);
-          game.sectorTractorCount++;
-          game.postChallengeAbductionPending = false;
+        // Check queued 10% per-wave Elite Enforcer abduction first (strictly non-Masters, max 1 per wave)
+        const eliteBeamCandidates = (game.waveEliteAbductionQueued && !game.waveEliteAbductionUsed)
+          ? game.enemies.filter(
+              e => (e.type === 'FLUX_ENFORCER' || e.type === 'NULL_ENFORCER') && e.state === 'FORMATION' && !e.hasCapturedShip
+            )
+          : [];
+
+        if (eliteBeamCandidates.length > 0) {
+          const chosenElite = eliteBeamCandidates[Math.floor(Math.random() * eliteBeamCandidates.length)];
+          startEnforcerBeam(game, chosenElite);
+          game.waveEliteAbductionUsed = true;
+          game.waveEliteAbductionQueued = false;
           game.tractorTimer = TRACTOR_INTERVAL + Math.random() * 6.0;
-        } else {
-          game.tractorTimer = 2.4;
+        } else if (game.sectorTractorCount < TRACTOR_MAX_PER_SECTOR) {
+          const beamCandidates = game.enemies.filter(
+            e => e.type === 'V1_ENFORCER' && e.state === 'FORMATION' && !e.hasCapturedShip
+          );
+          if (beamCandidates.length > 0) {
+            const chosen = beamCandidates[Math.floor(Math.random() * beamCandidates.length)];
+            startEnforcerBeam(game, chosen);
+            game.sectorTractorCount++;
+            game.postChallengeAbductionPending = false;
+            game.tractorTimer = TRACTOR_INTERVAL + Math.random() * 6.0;
+          } else {
+            game.tractorTimer = 2.4;
+          }
         }
       }
     }
 
-    // Elite & Master Lightwing scheduler
-    const elitesInForm = game.enemies.filter(e => e.isElite && e.state === 'FORMATION');
+    // Elite & Master Enforcer Wing scheduler (strictly Enforcers — Pulsars never launch Enforcer Wings!)
+    const elitesInForm = game.enemies.filter(e => e.isElite && e.isEnforcer && e.state === 'FORMATION');
     if (elitesInForm.length > 0) {
       game.wingLaunchTimer -= dt;
       if (game.wingLaunchTimer <= 0) {
         const boss = elitesInForm[Math.floor(Math.random() * elitesInForm.length)];
-        spawnLightwing(game, boss, true, 0);
+        spawnEnforcerWing(game, boss, true, 0);
         game.wingLaunchTimer = Math.max(2.5, 4.5 - effSec * 0.16);
       }
     }
   } else if (game.sectorPhase === 'CLEARED') {
     game.phaseTimer -= dt;
     if (game.phaseTimer <= 0) {
-      if (!game.isChallengeStage && game.sector % CHALLENGE_INTERVAL === 0) {
+      if (game.sandboxTrainingRound) {
+        game.sandboxTrainingRound = false;
+        game.sectorPhase = 'COMBAT';
+        game.enemies = [];
+        game.enemyBullets = [];
+        game.enforcerWings = [];
+        game.threadTrails = [];
+        game.electroBalls = [];
+        game.pulsarSparks = [];
+        if (game.centoidChains) game.centoidChains.clear();
+        game.spawnPopup(LOGICAL_W * 0.5, 220, 'SANDBOX READY', COLORS.cyan, 1.2);
+        if (game.syncSandboxUI) game.syncSandboxUI();
+      } else if (!game.isChallengeStage && game.sector % CHALLENGE_INTERVAL === 0) {
         beginChallengeStage(game, Math.floor(game.sector / CHALLENGE_INTERVAL));
       } else {
         beginSector(game, game.sector + 1);
@@ -1168,17 +1668,44 @@ export function updateSectorPhase(game, dt) {
   }
 }
 
+function checkV1SynergyShift(game, e) {
+  if (e.type !== 'V1_ENFORCER' || e.v1Synergy || e.hp > 1.001 || e.hp <= 0.001) return;
+  let closestKind = null;
+  let closestDist = V1_SYNERGY_RADIUS;
+  for (const other of game.enemies) {
+    if (other === e) continue;
+    const isFlux = other.type === 'FLUX_ENFORCER' || other.type === 'MASTER_FLUX_ENFORCER';
+    const isNull = other.type === 'NULL_ENFORCER' || other.type === 'MASTER_NULL_ENFORCER';
+    if (!isFlux && !isNull) continue;
+    const d = Math.hypot(other.x - e.x, other.y - e.y);
+    if (d <= closestDist) {
+      closestDist = d;
+      closestKind = isFlux ? 'FLUX' : 'NULL';
+    }
+  }
+  if (closestKind) {
+    e.v1Synergy = closestKind;
+    game.spawnPopup(
+      e.x,
+      e.y - 24,
+      closestKind === 'FLUX' ? 'FLUX LINK!' : 'NULL LINK!',
+      closestKind === 'FLUX' ? COLORS.cyan : COLORS.nullRed,
+      1.0
+    );
+  }
+}
+
 export function damageEnemy(game, idx, dmg, hitX, hitY, sparkCol = COLORS.white, quiet = false) {
   const e = game.enemies[idx];
   if (!e) return;
 
-  // Classic MCP Recognizer Tractor Capacitor Shield absorbs 1.0 hit during approach
+  // Enforcer Tractor Capacitor Shield absorbs 1.0 hit during approach
   if (e.state === 'BEAM_APPROACH' && e.beamShield > 0.001) {
     e.beamShield -= Math.min(1, dmg);
     e.hitFlash = 0.14;
     if (!quiet || e.beamShield <= 0.001) {
-      game.synth.playRibbonDeflect();
-      game.spawnDerez(hitX, hitY, COLORS.cyan, 8, 120);
+      game.synth.playThreadDeflect();
+      game.spawnDeleteBurst(hitX, hitY, COLORS.cyan, 8, 120);
     }
     return;
   }
@@ -1187,9 +1714,12 @@ export function damageEnemy(game, idx, dmg, hitX, hitY, sparkCol = COLORS.white,
   e.hitFlash = 0.12;
   if (e.hp <= 0.001) {
     destroyEnemy(game, idx, true);
-  } else if (!quiet) {
-    game.synth.playArmorPing();
-    game.spawnDerez(hitX, hitY, sparkCol, 4, 85);
+  } else {
+    checkV1SynergyShift(game, e);
+    if (!quiet) {
+      game.synth.playArmorPing();
+      game.spawnDeleteBurst(hitX, hitY, sparkCol, 4, 85);
+    }
   }
 }
 
@@ -1197,15 +1727,69 @@ export function destroyEnemy(game, idx, scored = true) {
   const e = game.enemies[idx];
   if (!e) return;
 
-  handleRecognizerDestroyed(game, e);
+  // Centoid / Alpha Centoid segments handle headshot insta-delete & max-2 body splits!
+  if (e.isCentoid) {
+    handleCentoidSegmentDestroyed(game, e, idx, scored);
+    return;
+  }
 
-  const col = (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC') ? COLORS.aresRed
-    : ((e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') ? COLORS.cyan
-      : (e.type === 'CLASSIC_REC' ? COLORS.mcpOrange
-        : (e.type === 'INTERCEPTOR' ? COLORS.gold : COLORS.cyan)));
+  handleEnforcerDestroyed(game, e);
 
-  game.spawnDerez(e.x, e.y, col, e.isMaster ? 38 : (e.isElite ? 28 : 16), e.isMaster ? 250 : (e.isElite ? 220 : 165));
-  game.synth.playDerez(e.isElite || e.isRec);
+  // Pulsar explodes on death into 3-4 omnidirectional downward-trailing spark lines!
+  if (e.type === 'PULSAR') {
+    spawnPulsarDeathSparks(game, e.x, e.y);
+  }
+
+  // Color-shifted V1 Enforcer death AOE enemy power-up (non-stacking!)
+  if (e.type === 'V1_ENFORCER' && e.v1Synergy) {
+    const isFlux = e.v1Synergy === 'FLUX';
+    const buffCol = isFlux ? COLORS.cyan : COLORS.nullRed;
+    game.enemyBuffWaves.push({
+      x: e.x,
+      y: e.y,
+      radius: 14,
+      maxRadius: V1_BUFF_AOE_RADIUS,
+      color: buffCol,
+      life: 0.55,
+      maxLife: 0.55
+    });
+    let buffedCount = 0;
+    for (const other of game.enemies) {
+      if (other === e) continue;
+      if (Math.hypot(other.x - e.x, other.y - e.y) <= V1_BUFF_AOE_RADIUS) {
+        if (isFlux && !other.speedBuffed) {
+          other.speedBuffed = true;
+          buffedCount++;
+        } else if (!isFlux && !other.hpBuffed) {
+          other.hpBuffed = true;
+          const addHp = Math.ceil(other.maxHp * 0.33);
+          other.maxHp += addHp;
+          other.hp += addHp;
+          buffedCount++;
+        }
+      }
+    }
+    if (buffedCount > 0) {
+      game.spawnPopup(
+        e.x,
+        e.y - 26,
+        isFlux ? 'ENEMY +30% SPD!' : 'ENEMY +33% HP!',
+        buffCol,
+        1.35
+      );
+    }
+  }
+
+  const col = (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER') ? COLORS.nullRed
+    : ((e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER') ? COLORS.cyan
+      : (e.type === 'PULSAR'
+        ? COLORS.yellow
+        : (e.type === 'V1_ENFORCER'
+          ? (e.v1Synergy === 'FLUX' ? COLORS.cyan : (e.v1Synergy === 'NULL' ? COLORS.nullRed : COLORS.v1Orange))
+          : (e.type === 'INTERCEPTOR' ? COLORS.gold : COLORS.cyan))));
+
+  game.spawnDeleteBurst(e.x, e.y, col, e.isMaster ? 38 : (e.isElite ? 28 : 16), e.isMaster ? 250 : (e.isElite ? 220 : 165));
+  game.synth.playDeleteBurst(e.isElite || e.isEnforcer);
 
   if (e.isMaster) {
     game.shake = 0.28;
@@ -1263,7 +1847,7 @@ function updateChallengeExtraEnemy(game, e, dt) {
   d.clock += dt;
   const p = game.player;
   const bulletSpd = Math.min(430, 275 + game.sector * 8);
-  const bCol = e.type === 'ARES_REC' ? COLORS.aresRed : (e.type === 'LEGACY_REC' ? COLORS.cyan : COLORS.amber);
+  const bCol = e.type === 'NULL_ENFORCER' ? COLORS.nullRed : (e.type === 'FLUX_ENFORCER' ? COLORS.cyan : COLORS.amber);
 
   if (e.extraPattern === 'DIAMOND_VORTEX') {
     const cx = LOGICAL_W * 0.5;
@@ -1318,7 +1902,7 @@ function updateChallengeExtraEnemy(game, e, dt) {
       if (d.shotTimer <= 0 && p.alive) {
         // Converging crossfire volley
         fireAimedBullet(game, e.x, e.y + 10, bulletSpd, bCol, -0.14 * d.side, 0.3);
-        if (e.isRec) {
+        if (e.isEnforcer) {
           fireAimedBullet(game, e.x, e.y + 10, bulletSpd, bCol, 0.12 * d.side, 0);
         }
         d.shotTimer = 1.25;
@@ -1357,7 +1941,7 @@ function updateChallengeExtraEnemy(game, e, dt) {
 
     if (e.isElite && !d.wingFired && e.y > 105) {
       d.wingFired = true;
-      spawnLightwing(game, e, false, 0, e.x < LOGICAL_W * 0.5 ? 1 : -1, 0);
+      spawnEnforcerWing(game, e, false, 0, e.x < LOGICAL_W * 0.5 ? 1 : -1, 0);
     }
 
     d.shotTimer -= dt;
@@ -1382,28 +1966,69 @@ function updateChallengeExtraEnemy(game, e, dt) {
 }
 
 export function updateEnemies(game, dt) {
-  game.formationClock += dt;
+  if (!game.sandboxPauseAnim) {
+    game.formationClock += dt;
+  }
   const p = game.player;
   let beamActive = false;
+
+  // Update V1 Enforcer AOE buff shockwave rings
+  for (let wi = game.enemyBuffWaves.length - 1; wi >= 0; wi--) {
+    const bw = game.enemyBuffWaves[wi];
+    bw.life -= dt;
+    const prog = clamp(1 - bw.life / bw.maxLife, 0, 1);
+    bw.radius = lerp(14, bw.maxRadius, 1 - Math.pow(1 - prog, 2.4));
+    if (bw.life <= 0) game.enemyBuffWaves.splice(wi, 1);
+  }
+
+  // Update all living Centoid & Alpha Centoid segment chains
+  updateCentoids(game, dt);
 
   for (let i = game.enemies.length - 1; i >= 0; i--) {
     const e = game.enemies[i];
     if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
     if (e.surgePulse > 0) e.surgePulse = Math.max(0, e.surgePulse - dt);
+    const spdMult = e.speedBuffed ? 1.3 : 1.0;
 
-    // Consecutive Lightwing Surge queue
-    if (e.wingSurgeQueue > 0) {
+    if (e.isCentoid) {
+      // Centoids already moved via updateCentoids — check clone & player collisions!
+      if (game.fighterClones && game.fighterClones.length > 0) {
+        for (let ci = game.fighterClones.length - 1; ci >= 0; ci--) {
+          const cl = game.fighterClones[ci];
+          if (cl.detached && cl.invulnTimer <= 0 && Math.hypot(e.x - cl.x, e.y - cl.y) < e.hitRadius + 10) {
+            damageFighterClone(game, ci);
+          }
+        }
+      }
+      if (
+        p.alive &&
+        !p.capturedById &&
+        p.invulnTimer <= 0 &&
+        Math.hypot(e.x - p.x, e.y - p.y) < e.hitRadius + (p.dual ? 14 : 8)
+      ) {
+        game.damagePlayer();
+      }
+      continue;
+    }
+
+    // Consecutive Enforcer Wing Surge queue — PAUSED while preparing to abduct, abducting, or Sandbox Idle!
+    if (!game.sandboxIdle && e.wingSurgeQueue > 0 && e.state !== 'BEAM_APPROACH' && e.state !== 'BEAMING') {
       e.wingSurgeTimer -= dt;
       if (e.wingSurgeTimer <= 0) {
         const idx = e.wingSurgeQueue;
         e.wingSurgeQueue--;
         e.wingSurgeTimer = ELITE_SURGE_INTERVAL;
-        spawnLightwing(game, e, false, idx);
+        spawnEnforcerWing(game, e, false, idx);
       }
     }
 
+    // Pulsar 3.0s leaf-falling electro ball attacks
+    if (e.type === 'PULSAR') {
+      updatePulsarAttacks(game, e, dt);
+    }
+
     if (e.state === 'ENTERING' || e.state === 'CHALLENGE') {
-      e.pathT += dt / e.pathDur;
+      e.pathT += (dt * spdMult) / e.pathDur;
       const pos = evalCubic(e.path, clamp(e.pathT, 0, 1));
       e.x = pos.x;
       e.y = pos.y;
@@ -1413,8 +2038,12 @@ export function updateEnemies(game, dt) {
           continue;
         }
         e.state = 'FORMATION';
+        e.diveReadyTimer = getInitialDiveHold(e.type);
       }
     } else if (e.state === 'FORMATION') {
+      if (!game.sandboxIdle && e.diveReadyTimer > 0) {
+        e.diveReadyTimer = Math.max(0, e.diveReadyTimer - dt);
+      }
       const target = getFormationTarget(game, e);
       e.x = target.x;
       e.y = target.y;
@@ -1423,7 +2052,7 @@ export function updateEnemies(game, dt) {
       const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
       const prevX = e.x;
       const prevY = e.y;
-      e.diveT += dt / e.diveDur;
+      e.diveT += (dt * spdMult) / e.diveDur;
       const t = clamp(e.diveT, 0, 1);
 
       // Seamless C1-continuous FEINT juke (builds a new curve from exact current pos — zero teleporting!)
@@ -1470,31 +2099,34 @@ export function updateEnemies(game, dt) {
 
       const vx = e.x - prevX;
       const vy = e.y - prevY;
-      if (Math.hypot(vx, vy) > 0.25 && !e.isRec) {
+      if (Math.hypot(vx, vy) > 0.25 && !e.isEnforcer && e.type !== 'PULSAR') {
         e.angle = Math.atan2(vy, vx) - Math.PI * 0.5;
       }
 
-      e.shotCooldown -= dt;
-      if (e.shotCooldown <= 0 && e.y < LOGICAL_H - 145 && p.alive) {
-        const spd = Math.min(460, 275 + effSec * 12);
-        const col = (e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC')
-          ? COLORS.aresRed
-          : ((e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC') ? COLORS.cyan : COLORS.amber);
+      if (e.type !== 'PULSAR' && !game.sandboxIdle) {
+        e.shotCooldown -= dt;
+        if (e.shotCooldown <= 0 && e.y < LOGICAL_H - 145 && p.alive) {
+          const spd = Math.min(460, 275 + effSec * 12);
+          const col = (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER')
+            ? COLORS.nullRed
+            : ((e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER') ? COLORS.cyan : COLORS.amber);
 
-        if (e.isMaster) {
-          // Master Recognizers fire a 3-bolt tactical fan
-          fireAimedBullet(game, e.x, e.y + 14, spd, col, -0.24, 0.25);
-          fireAimedBullet(game, e.x, e.y + 14, spd, col, 0, 0.25);
-          fireAimedBullet(game, e.x, e.y + 14, spd, col, 0.24, 0.25);
-        } else if ((e.type === 'INTERCEPTOR' || e.isRec) && (effSec >= 2 || e.divePattern === 'LOOP')) {
-          // Twin aimed spread volley for higher unpredictability
-          const spread = e.isRec ? 0.20 : 0.15;
-          fireAimedBullet(game, e.x, e.y + 12, spd, col, -spread, 0.25);
-          fireAimedBullet(game, e.x, e.y + 12, spd, col, spread, 0.25);
-        } else {
-          fireAimedBullet(game, e.x, e.y + 12, spd, col, 0, e.divePattern === 'FEINT' ? 0.55 : 0.35);
+          if (e.isMaster) {
+            // Master Enforcers fire a 3-bolt tactical fan
+            fireAimedBullet(game, e.x, e.y + 14, spd, col, -0.24, 0.25);
+            fireAimedBullet(game, e.x, e.y + 14, spd, col, 0, 0.25);
+            fireAimedBullet(game, e.x, e.y + 14, spd, col, 0.24, 0.25);
+          } else if ((e.type === 'INTERCEPTOR' || e.isEnforcer) && (effSec >= 2 || e.divePattern === 'LOOP')) {
+            // Twin aimed spread volley for higher unpredictability
+            const spread = e.isEnforcer ? 0.20 : 0.15;
+            fireAimedBullet(game, e.x, e.y + 12, spd, col, -spread, 0.25);
+            fireAimedBullet(game, e.x, e.y + 12, spd, col, spread, 0.25);
+          } else {
+            fireAimedBullet(game, e.x, e.y + 12, spd, col, 0, e.divePattern === 'FEINT' ? 0.55 : 0.35);
+          }
+          const baseCd = Math.max(0.52, 0.92 - effSec * 0.035);
+          e.shotCooldown = e.type === 'V1_ENFORCER' ? baseCd * 1.55 : baseCd;
         }
-        e.shotCooldown = Math.max(0.52, 0.92 - effSec * 0.035);
       }
 
       if (e.diveT >= 1) {
@@ -1505,24 +2137,54 @@ export function updateEnemies(game, dt) {
           game.capturedFighter.x = e.x;
           game.capturedFighter.y = e.y - 30;
         }
+
+        // Hard Mode CRT Field Debuff: Master Enforcer survived its dive and re-enters while player has 2+ power-ups!
+        if (
+          e.isMaster &&
+          game.hardMode &&
+          !game.fieldDebuff &&
+          getActivePowerups(game).length > 1 &&
+          Math.random() < HARD_FIELD_DEBUFF_CHANCE
+        ) {
+          const isFluxMaster = e.type === 'MASTER_FLUX_ENFORCER';
+          game.fieldDebuff = {
+            type: isFluxMaster ? 'CYAN' : 'RED',
+            timer: HARD_FIELD_DEBUFF_DUR,
+            maxTimer: HARD_FIELD_DEBUFF_DUR
+          };
+          game.synth.playDebuff(!isFluxMaster);
+          game.shake = 0.22;
+          game.spawnPopup(
+            LOGICAL_W * 0.5,
+            135,
+            isFluxMaster ? 'CYAN CRT FIELD // 1.5x SLOW!' : 'RED CRT FIELD // 0.5x DMG!',
+            isFluxMaster ? COLORS.cyan : COLORS.nullRed,
+            1.7
+          );
+        }
       }
     } else if (e.state === 'BEAM_APPROACH') {
-      updateRecognizerBeamApproach(game, e, dt);
+      updateEnforcerBeamApproach(game, e, dt);
     } else if (e.state === 'BEAMING') {
       beamActive = true;
-      updateRecognizerBeaming(game, e, dt);
+      updateEnforcerBeaming(game, e, dt);
     } else if (e.state === 'RETURNING') {
       const target = getFormationTarget(game, e);
       const dx = target.x - e.x;
       const dy = target.y - e.y;
       const dist = Math.hypot(dx, dy);
-      const returnSpd = e.isMaster ? 155 : (e.isElite ? 185 : 255);
-      const step = returnSpd * dt;
+      const baseReturnSpd = e.isMaster
+        ? 135
+        : (e.type === 'PULSAR'
+          ? 160
+          : (e.isElite ? 185 : (e.type === 'V1_ENFORCER' ? Math.floor(255 * 0.8) : 255)));
+      const step = baseReturnSpd * spdMult * dt;
       if (dist <= step) {
         e.x = target.x;
         e.y = target.y;
         e.angle = 0;
         e.state = 'FORMATION';
+        e.diveReadyTimer = getRediveHold(e.type);
       } else {
         e.x += (dx / dist) * step;
         e.y += (dy / dist) * step;
@@ -1534,14 +2196,14 @@ export function updateEnemies(game, dt) {
 
       if (!e.challengeTwinFired && e.x > 64 && e.x < LOGICAL_W - 64) {
         e.challengeTwinFired = true;
-        const isAresKind = e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC';
-        spawnLightwing(game, e, e.isMaster, 0, -1, -18);
-        spawnLightwing(game, e, false, 0, 1, 18);
+        const isNullKind = e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER';
+        spawnEnforcerWing(game, e, e.isMaster, 0, -1, -18);
+        spawnEnforcerWing(game, e, false, 0, 1, 18);
         game.spawnPopup(
           e.x,
           e.y - 34,
           e.isMaster ? 'MASTER LAUNCH x2' : 'TWIN LAUNCH x2',
-          isAresKind ? COLORS.aresRed : COLORS.cyan,
+          isNullKind ? COLORS.nullRed : COLORS.cyan,
           1.25
         );
       }
@@ -1557,7 +2219,7 @@ export function updateEnemies(game, dt) {
         : game.enemies.find(b => b.guardGroup === e.guardTargetGroup && b.state === 'CHALLENGE_ELITE');
 
       if (boss) {
-        // Shielding formation orbits & holds tightly around its Master Recognizer
+        // Shielding formation orbits & holds tightly around its Master Enforcer
         const swayX = Math.sin(e.guardClock * 3.4 + e.guardIdx * 1.1) * 8;
         const swayY = Math.cos(e.guardClock * 3.0 + e.guardIdx * 0.9) * 6;
         const tx = boss.x + e.guardOx + swayX;
@@ -1568,12 +2230,12 @@ export function updateEnemies(game, dt) {
         e.shotCooldown -= dt;
         if (e.shotCooldown <= 0 && e.x > 24 && e.x < LOGICAL_W - 24 && p.alive) {
           const spd = Math.min(430, 275 + game.sector * 6);
-          const col = boss.type === 'MASTER_ARES_REC' ? COLORS.aresRed : COLORS.cyan;
+          const col = boss.type === 'MASTER_NULL_ENFORCER' ? COLORS.nullRed : COLORS.cyan;
           fireAimedBullet(game, e.x, e.y + 10, spd, col, 0, 0.2);
           e.shotCooldown = 1.45 + Math.random() * 0.55;
         }
       } else {
-        // Master Recognizer destroyed or exited — guards break off cleanly down-screen
+        // Master Enforcer destroyed or exited — guards break off cleanly down-screen
         e.guardBroken = true;
         e.x += e.raidDir * 85 * dt;
         e.y += 235 * dt;
@@ -1591,6 +2253,16 @@ export function updateEnemies(game, dt) {
     }
 
     updateCapturedFighterTether(game, e, dt);
+
+    // Direct collision with detached Fighter Clones (3 HP each, respects i-frames)
+    if (game.fighterClones && game.fighterClones.length > 0) {
+      for (let ci = game.fighterClones.length - 1; ci >= 0; ci--) {
+        const cl = game.fighterClones[ci];
+        if (cl.detached && cl.invulnTimer <= 0 && Math.hypot(e.x - cl.x, e.y - cl.y) < e.hitRadius + 10) {
+          damageFighterClone(game, ci);
+        }
+      }
+    }
 
     // Direct collision with player ship
     if (

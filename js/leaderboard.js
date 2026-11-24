@@ -6,6 +6,7 @@ import { STORAGE_KEYS } from './config.js';
 import { readLS, writeLS } from './utils.js';
 
 export const LEADERBOARD_MAX_ENTRIES = 10;
+export const DEFAULT_CALLSIGNS = ['REZNOR', 'AVA', 'RYNZLIR', 'VECTRON', 'ZEKRULIX', 'YORI', 'NYXI', 'LUXEM'];
 
 export function sanitizeCallsign(raw) {
   const cleaned = String(raw || '')
@@ -16,13 +17,30 @@ export function sanitizeCallsign(raw) {
   return cleaned || 'PILOT';
 }
 
+export function isDefaultCallsign(tag) {
+  const clean = sanitizeCallsign(tag);
+  return clean === 'PILOT' || DEFAULT_CALLSIGNS.includes(clean);
+}
+
+export function getRandomDefaultCallsign() {
+  return DEFAULT_CALLSIGNS[Math.floor(Math.random() * DEFAULT_CALLSIGNS.length)];
+}
+
 export function getSavedCallsign() {
-  return sanitizeCallsign(readLS(STORAGE_KEYS.callsign, 'FLYNN'));
+  const saved = readLS(STORAGE_KEYS.callsign, '');
+  if (saved) {
+    const clean = sanitizeCallsign(saved);
+    if (!isDefaultCallsign(clean)) return clean;
+  }
+  return getRandomDefaultCallsign();
 }
 
 export function setSavedCallsign(tag) {
   const clean = sanitizeCallsign(tag);
-  writeLS(STORAGE_KEYS.callsign, clean);
+  // Only persist custom/unique player-typed callsigns; built-in defaults stay randomized!
+  if (!isDefaultCallsign(clean)) {
+    writeLS(STORAGE_KEYS.callsign, clean);
+  }
   return clean;
 }
 

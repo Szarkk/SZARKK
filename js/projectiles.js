@@ -3,18 +3,29 @@
    ========================================================================= */
 
 import {
+  ARC_WAVE_DMG,
   ARC_WAVE_SPEED,
   CANNON_AOE_RADIUS,
   CANNON_SHOT_SPEED,
+  CHAIN_LIGHTNING_DMG,
+  CHAIN_LIGHTNING_JUMP_RANGE,
+  CHAIN_LIGHTNING_MAX_JUMPS,
+  CHAIN_LIGHTNING_RANGE,
+  CLONE_FIRE_COOLDOWN,
+  CLONE_IFRAMES,
   COLORS,
   FIRE_COOLDOWN,
+  FLUX_THREAD_BULLET_SLOW,
   HOMING_MISSILE_SPEED,
-  LEGACY_RIBBON_BULLET_SLOW,
   LOGICAL_H,
   LOGICAL_W,
   PLAYER_BULLET_SPEED,
+  PLAYER_MAX_Y,
+  PLAYER_MIN_Y,
+  PULSAR_JAM_DUR,
+  PULSAR_SPARK_SLOW_DUR,
   RED_LASER_DRAIN_PER_SEC,
-  RED_LASER_RIBBON_CHIP,
+  RED_LASER_THREAD_CHIP,
   RED_LASER_TICK_DMG,
   RED_LASER_TICK_MULT,
   SLOWED_BULLET_DISSOLVE_TIME
@@ -26,14 +37,15 @@ import {
   hasPowerup,
   removePowerupSlot
 } from './powerups.js';
-import { damageLightwing, shatterRibbonTrail } from './recognizers.js';
+import { getPlayerDamageMult, getPlayerFireCooldownMult, getPlayerMoveSpeedMult } from './player.js';
+import { damageEnforcerWing, shatterThreadTrail } from './enforcers.js';
 import { damageEnemy } from './enemies.js';
 
 export function spawnArcWaveFromPlayer(game) {
   const p = game.player;
   if (!p.alive || p.capturedById) return;
-  const weakened = p.dmgDebuffTimer > 0;
-  const baseDmg = weakened ? 0.8 : 1.0;
+  const baseDmg = getPlayerDamageMult(game);
+  const weakened = baseDmg < 0.999;
 
   game.arcWaves.push({
     x: p.x,
@@ -41,11 +53,11 @@ export function spawnArcWaveFromPlayer(game) {
     vy: -ARC_WAVE_SPEED,
     radius: p.dual ? 86 : 68,
     maxRadius: p.dual ? 132 : 108,
-    dmg: baseDmg,
+    dmg: baseDmg * ARC_WAVE_DMG,
     weakened,
     hitEnemyIds: new Set(),
-    hitLightwings: new Set(),
-    hitRibbonIds: new Set()
+    hitEnforcerWings: new Set(),
+    hitThreadIds: new Set()
   });
   game.synth.playArcWave();
 }
@@ -53,8 +65,7 @@ export function spawnArcWaveFromPlayer(game) {
 export function fireCannonShot(game) {
   const p = game.player;
   if (!p.alive || p.capturedById) return;
-  const weakened = p.dmgDebuffTimer > 0;
-  const baseDmg = weakened ? 0.8 : 1.0;
+  const baseDmg = getPlayerDamageMult(game);
 
   game.cannonShots.push({
     x: p.x,
@@ -83,21 +94,21 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
   game.shake = 0.34;
   game.hitStop = 0.04;
   game.synth.playCannonBoom();
-  game.spawnDerez(x, y, COLORS.purpleBright, 34, 260);
-  game.spawnDerez(x, y, COLORS.purple, 22, 195);
+  game.spawnDeleteBurst(x, y, COLORS.purpleBright, 34, 260);
+  game.spawnDeleteBurst(x, y, COLORS.purple, 22, 195);
 
   // Void all enemy projectiles inside the AOE blast
   for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
     const eb = game.enemyBullets[i];
     if (Math.hypot(eb.x - x, eb.y - y) <= aoeRadius) {
-      game.spawnDerez(eb.x, eb.y, COLORS.purpleBright, 4, 80);
+      game.spawnDeleteBurst(eb.x, eb.y, COLORS.purpleBright, 4, 80);
       game.enemyBullets.splice(i, 1);
     }
   }
 
-  // Shatter any Light Ribbon trails caught inside the AOE blast
-  for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-    const trail = game.ribbonTrails[ti];
+  // Shatter any Thread trails caught inside the AOE blast
+  for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+    const trail = game.threadTrails[ti];
     let inside = false;
     for (const seg of trail.segments) {
       if (distToSeg(x, y, seg.x1, seg.y1, seg.x2, seg.y2) <= aoeRadius) {
@@ -106,16 +117,16 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
       }
     }
     if (inside) {
-      shatterRibbonTrail(game, ti, x, y, COLORS.purpleBright);
+      shatterThreadTrail(game, ti, x, y, COLORS.purpleBright);
     }
   }
 
-  // Damage all Lightwings inside the AOE blast
-  for (let li = game.lightwings.length - 1; li >= 0; li--) {
-    const lw = game.lightwings[li];
-    if (Math.hypot(lw.x - x, lw.y - y) <= aoeRadius + 14) {
+  // Damage all Enforcer Wings inside the AOE blast
+  for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+    const ew = game.enforcerWings[li];
+    if (Math.hypot(ew.x - x, ew.y - y) <= aoeRadius + 14) {
       game.shotsHit++;
-      damageLightwing(game, li, dmg);
+      damageEnforcerWing(game, li, dmg);
     }
   }
 
@@ -138,9 +149,9 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
 }
 
 /**
- * CYAN BOXED CAPSULE — Homing Missiles:
- * 2x shot count per fighter, assigns different enemies across the volley,
- * breaks Ares light ribbons in 1 hit, and deals 1.3x damage to Ares Recognizers.
+ * CYAN POWER-UP — Homing Missiles:
+ * 2x shot count per glider, assigns different enemies across the volley,
+ * breaks Null Threads in 1 hit, and deals 1.3x damage to Elite/Master Enforcers [Null].
  */
 export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
   const p = game.player;
@@ -151,8 +162,8 @@ export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
   for (const e of game.enemies) {
     if (e.y > -24 && e.y < LOGICAL_H - 20) candidates.push({ kind: 'ENEMY', ref: e });
   }
-  for (const lw of game.lightwings) {
-    candidates.push({ kind: 'LIGHTWING', ref: lw });
+  for (const ew of game.enforcerWings) {
+    candidates.push({ kind: 'ENFORCER_WING', ref: ew });
   }
   candidates.sort((a, b) => Math.hypot(a.ref.x - p.x, a.ref.y - p.y) - Math.hypot(b.ref.x - p.x, b.ref.y - p.y));
 
@@ -188,12 +199,12 @@ export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
 }
 
 /**
- * RED BOXED CAPSULE — High-Frequency Piercing Continuous Straight Laser Beam:
- * Shoots straight through ALL enemy ships, lightwings & capsules!
- * Deals 0.1 base dmg @ 20x tick rate (~121 ticks/sec = identical 2.0 dmg/cycle per fighter)
+ * RED POWER-UP — High-Frequency Piercing Continuous Straight Laser Beam:
+ * Shoots straight through ALL enemy ships, Enforcer Wings & capsules!
+ * Deals 0.1 base dmg @ 20x tick rate (~121 ticks/sec = identical 2.0 dmg/cycle per glider)
  * so rapid mobile swipes never phase through targets.
- * Stopped ONLY by Red (Ares) ribbons (chips -0.05/tick = same ~1s shatter) or Cyan (Legacy)
- * ribbons (converts into slowed red laser-bullets that dissolve after 2.0s).
+ * Stopped ONLY by crimson Null Threads (chips -0.05/tick = same ~1s shatter) or cyan Flux
+ * Threads (converts into slowed red laser-bullets that dissolve after 2.0s).
  */
 export function updateContinuousLaserBeams(game, dt = 0) {
   const p = game.player;
@@ -209,9 +220,10 @@ export function updateContinuousLaserBeams(game, dt = 0) {
     return;
   }
 
-  const weakened = p.dmgDebuffTimer > 0;
-  const baseDmg = weakened ? 0.8 : 1.0;
-  const tickInterval = FIRE_COOLDOWN / RED_LASER_TICK_MULT; // 0.00825s (~121 ticks/sec)
+  const baseDmg = getPlayerDamageMult(game);
+  const weakened = baseDmg < 0.999;
+  const fireMult = getPlayerFireCooldownMult(game);
+  const tickInterval = (FIRE_COOLDOWN * fireMult) / RED_LASER_TICK_MULT; // 0.00825s (~121 ticks/sec), 1.5x slower in Cyan Field
   const shipOffsets = p.dual ? [-14, 14] : [0];
 
   // Accumulate exact sub-ticks so 30Hz, 60Hz & 120Hz all produce identical DPS with zero swipe phasing
@@ -230,11 +242,11 @@ export function updateContinuousLaserBeams(game, dt = 0) {
   const shouldDamageTick = tickMult > 0;
   const shouldFxTick = p.laserFxCooldown <= 0;
   if (shouldFxTick) {
-    p.laserFxCooldown = FIRE_COOLDOWN; // Standard cadence for laser pulse SFX, refracted bolts & accuracy ticks
+    p.laserFxCooldown = FIRE_COOLDOWN * fireMult; // Standard cadence for laser pulse SFX, refracted bolts & accuracy ticks
   }
 
   const tickBeamDmg = baseDmg * RED_LASER_TICK_DMG * tickMult; // 0.1 dmg per rapid tick (exact 2.0 dmg per 0.165s)
-  const refractBoltDmg = baseDmg * 2.0; // Full 2.0 dmg per refracted cyan-ribbon red bolt
+  const refractBoltDmg = baseDmg * 2.0; // Full 2.0 dmg per refracted Flux Thread red bolt
   const quietTick = !shouldFxTick;
 
   game.activeLaserBeams = [];
@@ -243,11 +255,11 @@ export function updateContinuousLaserBeams(game, dt = 0) {
     const beamX = p.x + ox;
     const beamBottomY = p.y - 16;
     let stopY = 0;
-    let ribbonBlock = null; // { y, kind: 'ARES_RIBBON' | 'LEGACY_RIBBON', idx, trailId }
+    let threadBlock = null; // { y, kind: 'NULL_THREAD' | 'FLUX_THREAD', idx, trailId }
 
-    // 1) Find the closest Light Ribbon blocking or refracting this fighter's beam
-    for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-      const trail = game.ribbonTrails[ti];
+    // 1) Find the closest Thread blocking or refracting this glider's beam
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
       let hitSegY = null;
       for (const seg of trail.segments) {
         const yCross = verticalRaySegIntersectY(beamX, beamBottomY, seg.x1, seg.y1, seg.x2, seg.y2);
@@ -255,18 +267,18 @@ export function updateContinuousLaserBeams(game, dt = 0) {
           hitSegY = yCross;
         }
       }
-      if (hitSegY !== null && (!ribbonBlock || hitSegY > ribbonBlock.y)) {
-        ribbonBlock = {
+      if (hitSegY !== null && (!threadBlock || hitSegY > threadBlock.y)) {
+        threadBlock = {
           y: hitSegY,
-          kind: trail.variant === 'ARES' ? 'ARES_RIBBON' : 'LEGACY_RIBBON',
+          kind: trail.variant === 'NULL' ? 'NULL_THREAD' : 'FLUX_THREAD',
           idx: ti,
           trailId: trail.id
         };
       }
     }
 
-    if (ribbonBlock) {
-      stopY = ribbonBlock.y;
+    if (threadBlock) {
+      stopY = threadBlock.y;
     }
 
     // 2) Pop any floating Power-Up Capsules pierced by the beam (stacks without canceling laser)
@@ -280,14 +292,14 @@ export function updateContinuousLaserBeams(game, dt = 0) {
 
     const impacts = [];
 
-    // 3) Pierce ALL Lightwings along the beam segment [stopY .. beamBottomY]
-    for (let li = game.lightwings.length - 1; li >= 0; li--) {
-      const lw = game.lightwings[li];
-      if (lw.y <= beamBottomY && lw.y >= stopY && Math.abs(lw.x - beamX) <= 18) {
-        impacts.push(lw.y);
+    // 3) Pierce ALL Enforcer Wings along the beam segment [stopY .. beamBottomY]
+    for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+      const ew = game.enforcerWings[li];
+      if (ew.y <= beamBottomY && ew.y >= stopY && Math.abs(ew.x - beamX) <= 18) {
+        impacts.push(ew.y);
         if (shouldDamageTick) {
           if (shouldFxTick) game.shotsHit++;
-          damageLightwing(game, li, tickBeamDmg, quietTick);
+          damageEnforcerWing(game, li, tickBeamDmg, quietTick);
         }
       }
     }
@@ -300,56 +312,59 @@ export function updateContinuousLaserBeams(game, dt = 0) {
         impacts.push(e.y);
         if (shouldDamageTick) {
           if (shouldFxTick) game.shotsHit++;
-          const isLegacyBoss = e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC';
-          const finalDmg = isLegacyBoss ? tickBeamDmg * 1.3 : tickBeamDmg;
+          const isFluxBoss = e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER';
+          const isNormalTier = e.type === 'DRONE' || e.type === 'INTERCEPTOR';
+          const finalDmg = isNormalTier
+            ? tickBeamDmg * 2.0
+            : (isFluxBoss ? tickBeamDmg * 1.3 : tickBeamDmg);
           damageEnemy(
             game,
             ei,
             finalDmg,
             beamX,
             e.y,
-            isLegacyBoss ? COLORS.aresRed : COLORS.white,
+            isFluxBoss ? COLORS.nullRed : COLORS.white,
             quietTick
           );
         }
       }
     }
 
-    // 5) Resolve ribbon interaction:
-    //    - Ares Red Ribbon chips proportionally on every rapid tick (same ~1s / 6-hit shatter)
-    //    - Legacy Cyan Ribbon refracts slowed red bolts on the normal FX cadence (no bullet spam)
+    // 5) Resolve Thread interaction:
+    //    - Null Red Thread chips proportionally on every rapid tick (same ~1s / 6-hit shatter)
+    //    - Flux Cyan Thread refracts slowed red bolts on the normal FX cadence (no bullet spam)
     if (shouldFxTick) {
       game.shotsFired++;
     }
-    if (ribbonBlock) {
-      if (ribbonBlock.kind === 'ARES_RIBBON' && shouldDamageTick) {
-        const trail = game.ribbonTrails[ribbonBlock.idx];
-        if (trail && trail.id === ribbonBlock.trailId) {
-          trail.hitsRemaining -= RED_LASER_RIBBON_CHIP * tickMult;
+    if (threadBlock) {
+      if (threadBlock.kind === 'NULL_THREAD' && shouldDamageTick) {
+        const trail = game.threadTrails[threadBlock.idx];
+        if (trail && trail.id === threadBlock.trailId) {
+          trail.hitsRemaining -= RED_LASER_THREAD_CHIP * tickMult;
           trail.flashTimer = 0.14;
           if (trail.hitsRemaining <= 0.001) {
-            shatterRibbonTrail(game, ribbonBlock.idx, beamX, stopY, COLORS.aresRed);
+            shatterThreadTrail(game, threadBlock.idx, beamX, stopY, COLORS.nullRed);
           } else if (shouldFxTick) {
-            game.synth.playRibbonDeflect();
-            game.spawnDerez(beamX, stopY, COLORS.amber, 5, 95);
+            game.synth.playThreadDeflect();
+            game.spawnDeleteBurst(beamX, stopY, COLORS.amber, 5, 95);
           }
         }
-      } else if (ribbonBlock.kind === 'LEGACY_RIBBON' && shouldFxTick) {
-        // Beam refracts through cyan ribbon into slowed red bullets that dissolve after 2.0s!
+      } else if (threadBlock.kind === 'FLUX_THREAD' && shouldFxTick) {
+        // Beam refracts through cyan Flux Thread into slowed red bullets that dissolve after 2.0s!
         game.playerBullets.push({
           x: beamX,
           y: stopY - 6,
-          vy: -PLAYER_BULLET_SPEED / LEGACY_RIBBON_BULLET_SLOW,
+          vy: -PLAYER_BULLET_SPEED / FLUX_THREAD_BULLET_SLOW,
           dmg: refractBoltDmg,
           weakened,
           purple: false,
           redLaserBullet: true,
-          slowedByLegacy: true,
+          slowedByFlux: true,
           dissolveTimer: SLOWED_BULLET_DISSOLVE_TIME,
           dissolveMax: SLOWED_BULLET_DISSOLVE_TIME
         });
         game.synth.playShotSlow();
-        game.spawnDerez(beamX, stopY, COLORS.aresRed, 4, 68);
+        game.spawnDeleteBurst(beamX, stopY, COLORS.nullRed, 4, 68);
       }
     }
 
@@ -359,8 +374,8 @@ export function updateContinuousLaserBeams(game, dt = 0) {
       y1: beamBottomY,
       y2: stopY,
       weakened,
-      hit: !!ribbonBlock,
-      hitColor: ribbonBlock && ribbonBlock.kind === 'LEGACY_RIBBON' ? COLORS.cyan : COLORS.aresRed,
+      hit: !!threadBlock,
+      hitColor: threadBlock && threadBlock.kind === 'FLUX_THREAD' ? COLORS.cyan : COLORS.nullRed,
       impacts
     });
   }
@@ -383,7 +398,7 @@ export function updateArcWavesAndCannon(game, dt) {
   if (aw.phase === 'CANNON_CHARGING' && game.player.alive && !game.player.capturedById) {
     aw.cannonTimer -= dt;
     if (Math.random() < 0.35) {
-      game.spawnDerez(
+      game.spawnDeleteBurst(
         game.player.x + (Math.random() - 0.5) * 26,
         game.player.y + (Math.random() - 0.5) * 20,
         COLORS.purpleBright,
@@ -415,16 +430,16 @@ export function updateArcWavesAndCannon(game, dt) {
       const dx = eb.x - w.x;
       const dy = eb.y - w.y;
       if (Math.abs(dx) <= w.radius + 6 && dy >= -24 && dy <= 18) {
-        game.spawnDerez(eb.x, eb.y, COLORS.purpleBright, 6, 95);
+        game.spawnDeleteBurst(eb.x, eb.y, COLORS.purpleBright, 6, 95);
         game.synth.playProjectileVoid();
         game.enemyBullets.splice(bi, 1);
       }
     }
 
-    // 2) Chip Ares ribbons once per wave
-    for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-      const trail = game.ribbonTrails[ti];
-      if (trail.variant !== 'ARES' || w.hitRibbonIds.has(trail.id)) continue;
+    // 2) Chip Null Threads once per wave
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
+      if (trail.variant !== 'NULL' || w.hitThreadIds.has(trail.id)) continue;
       let touched = false;
       for (const seg of trail.segments) {
         if (distToSeg(w.x, w.y, seg.x1, seg.y1, seg.x2, seg.y2) <= w.radius * 0.72) {
@@ -433,24 +448,24 @@ export function updateArcWavesAndCannon(game, dt) {
         }
       }
       if (touched) {
-        w.hitRibbonIds.add(trail.id);
+        w.hitThreadIds.add(trail.id);
         trail.hitsRemaining -= 1;
         trail.flashTimer = 0.14;
         if (trail.hitsRemaining <= 0) {
-          shatterRibbonTrail(game, ti, w.x, w.y, COLORS.aresRed);
+          shatterThreadTrail(game, ti, w.x, w.y, COLORS.nullRed);
         } else {
-          game.synth.playRibbonDeflect();
+          game.synth.playThreadDeflect();
         }
       }
     }
 
-    // 3) Damage Lightwings
-    for (let li = game.lightwings.length - 1; li >= 0; li--) {
-      const lw = game.lightwings[li];
-      if (w.hitLightwings.has(lw)) continue;
-      if (Math.abs(lw.x - w.x) <= w.radius + 10 && Math.abs(lw.y - w.y) <= 22) {
-        w.hitLightwings.add(lw);
-        damageLightwing(game, li, w.dmg);
+    // 3) Damage Enforcer Wings
+    for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+      const ew = game.enforcerWings[li];
+      if (w.hitEnforcerWings.has(ew)) continue;
+      if (Math.abs(ew.x - w.x) <= w.radius + 10 && Math.abs(ew.y - w.y) <= 22) {
+        w.hitEnforcerWings.add(ew);
+        damageEnforcerWing(game, li, w.dmg);
       }
     }
 
@@ -481,8 +496,8 @@ export function updateArcWavesAndCannon(game, dt) {
     if (c.trail.length > 9) c.trail.shift();
 
     let detonated = false;
-    for (const lw of game.lightwings) {
-      if (Math.hypot(c.x - lw.x, c.y - lw.y) <= c.radius + 16) {
+    for (const ew of game.enforcerWings) {
+      if (Math.hypot(c.x - ew.x, c.y - ew.y) <= c.radius + 16) {
         detonated = true;
         break;
       }
@@ -530,11 +545,11 @@ export function updatePlayerBullets(game, dt) {
     const b = game.playerBullets[i];
     b.y += b.vy * dt;
 
-    // Bullets slowed by a cyan light ribbon dissolve after 2.0 seconds
-    if (b.slowedByLegacy) {
+    // Bullets slowed by a cyan Flux Thread dissolve after 2.0 seconds
+    if (b.slowedByFlux) {
       b.dissolveTimer -= dt;
       if (b.dissolveTimer <= 0) {
-        game.spawnDerez(b.x, b.y, b.redLaserBullet ? COLORS.aresRed : COLORS.cyan, 3, 45);
+        game.spawnDeleteBurst(b.x, b.y, b.redLaserBullet ? COLORS.nullRed : COLORS.cyan, 3, 45);
         game.playerBullets.splice(i, 1);
         continue;
       }
@@ -547,36 +562,36 @@ export function updatePlayerBullets(game, dt) {
 
     let removed = false;
 
-    // 1) Check Light Ribbons
-    for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-      const trail = game.ribbonTrails[ti];
-      let hitRibbon = false;
+    // 1) Check Threads
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
+      let hitThread = false;
       for (const seg of trail.segments) {
         if (distToSeg(b.x, b.y, seg.x1, seg.y1, seg.x2, seg.y2) < 9) {
-          hitRibbon = true;
+          hitThread = true;
           break;
         }
       }
-      if (hitRibbon) {
-        if (trail.variant === 'LEGACY') {
-          if (!b.slowedByLegacy) {
-            b.slowedByLegacy = true;
-            b.vy /= LEGACY_RIBBON_BULLET_SLOW;
+      if (hitThread) {
+        if (trail.variant === 'FLUX') {
+          if (!b.slowedByFlux) {
+            b.slowedByFlux = true;
+            b.vy /= FLUX_THREAD_BULLET_SLOW;
             b.dissolveTimer = SLOWED_BULLET_DISSOLVE_TIME;
             b.dissolveMax = SLOWED_BULLET_DISSOLVE_TIME;
             game.synth.playShotSlow();
-            game.spawnDerez(b.x, b.y, COLORS.cyan, 4, 55);
+            game.spawnDeleteBurst(b.x, b.y, COLORS.cyan, 4, 55);
           }
         } else {
-          // Ares crimson ribbons block regular/purple/laser-bolt shots (6 hits to shatter)
+          // Crimson Null Threads block regular/purple/laser-bolt shots (6 hits to shatter)
           trail.hitsRemaining -= 1;
           trail.flashTimer = 0.14;
           removed = true;
           if (trail.hitsRemaining <= 0) {
-            shatterRibbonTrail(game, ti, b.x, b.y, COLORS.aresRed);
+            shatterThreadTrail(game, ti, b.x, b.y, COLORS.nullRed);
           } else {
-            game.synth.playRibbonDeflect();
-            game.spawnDerez(b.x, b.y, COLORS.amber, 5, 95);
+            game.synth.playThreadDeflect();
+            game.spawnDeleteBurst(b.x, b.y, COLORS.amber, 5, 95);
           }
           break;
         }
@@ -595,10 +610,10 @@ export function updatePlayerBullets(game, dt) {
     ) {
       const owner = game.enemies.find(e => e.id === game.capturedFighter.ownerId);
       if (owner) owner.hasCapturedShip = false;
-      game.spawnDerez(game.capturedFighter.x, game.capturedFighter.y, '#ffffff', 22, 190);
-      game.spawnPopup(game.capturedFighter.x, game.capturedFighter.y, 'CAPTURED SHIP DESTROYED', COLORS.aresRed, 1.3);
+      game.spawnDeleteBurst(game.capturedFighter.x, game.capturedFighter.y, '#ffffff', 22, 190);
+      game.spawnPopup(game.capturedFighter.x, game.capturedFighter.y, 'CAPTURED SHIP DESTROYED', COLORS.nullRed, 1.3);
       game.capturedFighter = null;
-      game.synth.playDerez(true);
+      game.synth.playDeleteBurst(true);
       game.playerBullets.splice(i, 1);
       continue;
     }
@@ -618,12 +633,12 @@ export function updatePlayerBullets(game, dt) {
       continue;
     }
 
-    // 3) Check Lightwings
-    for (let li = game.lightwings.length - 1; li >= 0; li--) {
-      const lw = game.lightwings[li];
-      if (Math.hypot(b.x - lw.x, b.y - lw.y) < 16) {
+    // 3) Check Enforcer Wings
+    for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+      const ew = game.enforcerWings[li];
+      if (Math.hypot(b.x - ew.x, b.y - ew.y) < 16) {
         game.shotsHit++;
-        damageLightwing(game, li, b.dmg);
+        damageEnforcerWing(game, li, b.dmg);
         removed = true;
         break;
       }
@@ -638,9 +653,12 @@ export function updatePlayerBullets(game, dt) {
       const e = game.enemies[ei];
       if (Math.hypot(b.x - e.x, b.y - e.y) < e.hitRadius) {
         game.shotsHit++;
-        const isLegacyBoss = e.type === 'LEGACY_REC' || e.type === 'MASTER_LEGACY_REC';
-        const finalDmg = (b.redLaserBullet && isLegacyBoss) ? b.dmg * 1.3 : b.dmg;
-        damageEnemy(game, ei, finalDmg, b.x, b.y, b.redLaserBullet ? COLORS.aresRed : COLORS.white);
+        const isFluxBoss = e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER';
+        const isNormalTier = e.type === 'DRONE' || e.type === 'INTERCEPTOR';
+        const finalDmg = b.redLaserBullet
+          ? (isNormalTier ? b.dmg * 2.0 : (isFluxBoss ? b.dmg * 1.3 : b.dmg))
+          : b.dmg;
+        damageEnemy(game, ei, finalDmg, b.x, b.y, b.redLaserBullet ? COLORS.nullRed : COLORS.white);
         removed = true;
         break;
       }
@@ -661,7 +679,7 @@ export function updateHomingMissiles(game, dt) {
       validTarget = m.targetRef;
     } else if (m.targetKind === 'ENEMY' && game.enemies.includes(m.targetRef)) {
       validTarget = m.targetRef;
-    } else if (m.targetKind === 'LIGHTWING' && game.lightwings.includes(m.targetRef)) {
+    } else if (m.targetKind === 'ENFORCER_WING' && game.enforcerWings.includes(m.targetRef)) {
       validTarget = m.targetRef;
     } else {
       let bestD = Infinity;
@@ -683,13 +701,13 @@ export function updateHomingMissiles(game, dt) {
           m.targetRef = e;
         }
       }
-      for (const lw of game.lightwings) {
-        const d = Math.hypot(lw.x - m.x, lw.y - m.y);
+      for (const ew of game.enforcerWings) {
+        const d = Math.hypot(ew.x - m.x, ew.y - m.y);
         if (d < bestD) {
           bestD = d;
-          validTarget = lw;
-          m.targetKind = 'LIGHTWING';
-          m.targetRef = lw;
+          validTarget = ew;
+          m.targetKind = 'ENFORCER_WING';
+          m.targetRef = ew;
         }
       }
     }
@@ -718,19 +736,19 @@ export function updateHomingMissiles(game, dt) {
 
     let removed = false;
 
-    // 1) Breaks Ares crimson light ribbons in ONE HIT
-    for (let ti = game.ribbonTrails.length - 1; ti >= 0; ti--) {
-      const trail = game.ribbonTrails[ti];
-      if (trail.variant !== 'ARES') continue;
-      let hitAresRibbon = false;
+    // 1) Breaks crimson Null Threads in ONE HIT
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
+      if (trail.variant !== 'NULL') continue;
+      let hitNullThread = false;
       for (const seg of trail.segments) {
         if (distToSeg(m.x, m.y, seg.x1, seg.y1, seg.x2, seg.y2) < 11) {
-          hitAresRibbon = true;
+          hitNullThread = true;
           break;
         }
       }
-      if (hitAresRibbon) {
-        shatterRibbonTrail(game, ti, m.x, m.y, COLORS.aresRed);
+      if (hitNullThread) {
+        shatterThreadTrail(game, ti, m.x, m.y, COLORS.nullRed);
         removed = true;
         break;
       }
@@ -740,12 +758,12 @@ export function updateHomingMissiles(game, dt) {
       continue;
     }
 
-    // 2) Check Lightwings
-    for (let li = game.lightwings.length - 1; li >= 0; li--) {
-      const lw = game.lightwings[li];
-      if (Math.hypot(m.x - lw.x, m.y - lw.y) < 18) {
+    // 2) Check Enforcer Wings
+    for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+      const ew = game.enforcerWings[li];
+      if (Math.hypot(m.x - ew.x, m.y - ew.y) < 18) {
         game.shotsHit++;
-        damageLightwing(game, li, m.dmg);
+        damageEnforcerWing(game, li, m.dmg);
         removed = true;
         break;
       }
@@ -770,13 +788,13 @@ export function updateHomingMissiles(game, dt) {
       continue;
     }
 
-    // 3) Check Enemies (1.3x damage bonus against Elite & Master Ares Recognizers)
+    // 3) Check Enemies (1.3x damage bonus against Elite & Master Enforcers [Null])
     for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
       const e = game.enemies[ei];
       if (Math.hypot(m.x - e.x, m.y - e.y) < e.hitRadius + 3) {
         game.shotsHit++;
-        const isAresBoss = e.type === 'ARES_REC' || e.type === 'MASTER_ARES_REC';
-        const finalDmg = isAresBoss ? m.dmg * 1.3 : m.dmg;
+        const isNullBoss = e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER';
+        const finalDmg = isNullBoss ? m.dmg * 1.3 : m.dmg;
         damageEnemy(game, ei, finalDmg, m.x, m.y, COLORS.cyan);
         removed = true;
         break;
@@ -784,6 +802,347 @@ export function updateHomingMissiles(game, dt) {
     }
     if (removed) {
       game.homingMissiles.splice(i, 1);
+    }
+  }
+}
+
+function buildLightningPath(x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.max(3, Math.min(8, Math.round(dist / 22)));
+  const nx = dist > 0.1 ? -dy / dist : 1;
+  const ny = dist > 0.1 ? dx / dist : 0;
+  const pts = [{ x: x1, y: y1 }];
+  for (let s = 1; s < steps; s++) {
+    const f = s / steps;
+    const jitter = (Math.random() - 0.5) * 18;
+    pts.push({ x: x1 + dx * f + nx * jitter, y: y1 + dy * f + ny * jitter });
+  }
+  pts.push({ x: x2, y: y2 });
+  return pts;
+}
+
+/**
+ * YELLOW POWER-UP — Chain Lightning:
+ * Short-range (~4 fighters long = 152px) lightning bolt at 1/2 fire rate;
+ * deals 1.0 base dmg and jumps at short range (118px) to up to 4 additional targets!
+ */
+export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
+  const p = game.player;
+  const dmg = baseDmg * CHAIN_LIGHTNING_DMG;
+
+  for (const ox of shipOffsets) {
+    const startX = p.x + ox;
+    const startY = p.y - 16;
+    const endY = Math.max(8, startY - CHAIN_LIGHTNING_RANGE);
+    game.shotsFired++;
+
+    // 1) Check if a Null Thread intercepts the bolt within its 152px range
+    let blockedY = endY;
+    let blockedTrailIdx = -1;
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
+      if (trail.variant !== 'NULL') continue;
+      for (const seg of trail.segments) {
+        const yCross = verticalRaySegIntersectY(startX, startY, seg.x1, seg.y1, seg.x2, seg.y2);
+        if (yCross !== null && yCross >= endY && yCross > blockedY) {
+          blockedY = yCross;
+          blockedTrailIdx = ti;
+        }
+      }
+    }
+
+    // 2) Find closest primary target inside the short-range bolt corridor (edge-to-edge!)
+    let primary = null;
+    let bestBottomY = -Infinity; // Highest bottom-edge Y = closest upward to fighter nose
+
+    for (let ci = game.capsules.length - 1; ci >= 0; ci--) {
+      const cap = game.capsules[ci];
+      const r = cap.hitRadius;
+      if (cap.y - r <= startY && cap.y + r >= blockedY && Math.abs(cap.x - startX) <= r + 16 && cap.y + r > bestBottomY) {
+        bestBottomY = cap.y + r;
+        primary = { kind: 'CAPSULE', ref: cap, x: cap.x, y: cap.y, radius: r };
+      }
+    }
+    for (const ew of game.enforcerWings) {
+      const r = 14;
+      if (ew.y - r <= startY && ew.y + r >= blockedY && Math.abs(ew.x - startX) <= r + 16 && ew.y + r > bestBottomY) {
+        bestBottomY = ew.y + r;
+        primary = { kind: 'ENFORCER_WING', ref: ew, x: ew.x, y: ew.y, radius: r };
+      }
+    }
+    for (const e of game.enemies) {
+      const r = e.hitRadius;
+      if (e.y - r <= startY && e.y + r >= blockedY && Math.abs(e.x - startX) <= r + 18 && e.y + r > bestBottomY) {
+        bestBottomY = e.y + r;
+        primary = { kind: 'ENEMY', ref: e, x: e.x, y: e.y, radius: r };
+      }
+    }
+
+    if (!primary) {
+      if (blockedTrailIdx >= 0) {
+        const trail = game.threadTrails[blockedTrailIdx];
+        if (trail) {
+          trail.hitsRemaining -= 1;
+          trail.flashTimer = 0.14;
+          if (trail.hitsRemaining <= 0.001) {
+            shatterThreadTrail(game, blockedTrailIdx, startX, blockedY, COLORS.nullRed);
+          } else {
+            game.synth.playThreadDeflect();
+          }
+        }
+      }
+      game.lightningBolts.push({
+        segments: [buildLightningPath(startX, startY, startX, blockedY)],
+        life: 0.16,
+        maxLife: 0.16
+      });
+      continue;
+    }
+
+    // Build chain sequence: 1 primary + up to 4 additional edge-to-edge short-range jumps!
+    const chainTargets = [primary];
+    const visitedRefs = new Set([primary.ref]);
+    let curX = primary.x;
+    let curY = primary.y;
+    let curRadius = primary.radius;
+
+    for (let jump = 0; jump < CHAIN_LIGHTNING_MAX_JUMPS; jump++) {
+      let nextTarget = null;
+      let bestEdgeDist = CHAIN_LIGHTNING_JUMP_RANGE;
+
+      for (const e of game.enemies) {
+        if (visitedRefs.has(e)) continue;
+        const edgeDist = Math.max(0, Math.hypot(e.x - curX, e.y - curY) - curRadius - e.hitRadius);
+        if (edgeDist <= bestEdgeDist) {
+          bestEdgeDist = edgeDist;
+          nextTarget = { kind: 'ENEMY', ref: e, x: e.x, y: e.y, radius: e.hitRadius };
+        }
+      }
+      for (const ew of game.enforcerWings) {
+        if (visitedRefs.has(ew)) continue;
+        const r = 14;
+        const edgeDist = Math.max(0, Math.hypot(ew.x - curX, ew.y - curY) - curRadius - r);
+        if (edgeDist <= bestEdgeDist) {
+          bestEdgeDist = edgeDist;
+          nextTarget = { kind: 'ENFORCER_WING', ref: ew, x: ew.x, y: ew.y, radius: r };
+        }
+      }
+      for (const cap of game.capsules) {
+        if (visitedRefs.has(cap)) continue;
+        const edgeDist = Math.max(0, Math.hypot(cap.x - curX, cap.y - curY) - curRadius - cap.hitRadius);
+        if (edgeDist <= bestEdgeDist) {
+          bestEdgeDist = edgeDist;
+          nextTarget = { kind: 'CAPSULE', ref: cap, x: cap.x, y: cap.y, radius: cap.hitRadius };
+        }
+      }
+
+      if (!nextTarget) break;
+      visitedRefs.add(nextTarget.ref);
+      chainTargets.push(nextTarget);
+      curX = nextTarget.x;
+      curY = nextTarget.y;
+      curRadius = nextTarget.radius;
+    }
+
+    // Record jagged lightning arcs and apply 1.0 damage across the entire chain
+    const segments = [];
+    let prevX = startX;
+    let prevY = startY;
+    for (const tgt of chainTargets) {
+      segments.push(buildLightningPath(prevX, prevY, tgt.x, tgt.y));
+      prevX = tgt.x;
+      prevY = tgt.y;
+
+      game.shotsHit++;
+      game.spawnDeleteBurst(tgt.x, tgt.y, COLORS.yellow, 5, 95);
+      if (tgt.kind === 'CAPSULE') {
+        const ci = game.capsules.indexOf(tgt.ref);
+        if (ci >= 0) destroyAndCollectCapsule(game, ci);
+      } else if (tgt.kind === 'ENFORCER_WING') {
+        const li = game.enforcerWings.indexOf(tgt.ref);
+        if (li >= 0) damageEnforcerWing(game, li, dmg);
+      } else if (tgt.kind === 'ENEMY') {
+        const ei = game.enemies.indexOf(tgt.ref);
+        if (ei >= 0) damageEnemy(game, ei, dmg, tgt.x, tgt.y, COLORS.yellow);
+      }
+    }
+
+    game.lightningBolts.push({
+      segments,
+      life: 0.2,
+      maxLife: 0.2
+    });
+  }
+
+  game.synth.playChainLightning();
+}
+
+export function updateFighterClonesAndBolts(game, dt) {
+  // 1) Fade visual Chain Lightning arcs
+  for (let i = game.lightningBolts.length - 1; i >= 0; i--) {
+    game.lightningBolts[i].life -= dt;
+    if (game.lightningBolts[i].life <= 0) game.lightningBolts.splice(i, 1);
+  }
+
+  // 2) Update Fighter Clones (0.8s tethered left/right/back -> detach w/ 1.0s i-frames & 3 HP, 2x dark-purple bolts!)
+  const p = game.player;
+  if (!game.fighterClones || game.fighterClones.length === 0) return;
+
+  const moveMult = getPlayerMoveSpeedMult(game);
+  const fireMult = getPlayerFireCooldownMult(game);
+  const dmgMult = getPlayerDamageMult(game);
+  const inPauseWindow =
+    game.sectorPhase === 'BANNER' ||
+    game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CLEARED' ||
+    game.sectorPhase === 'WAVE_GAP';
+
+  for (let i = game.fighterClones.length - 1; i >= 0; i--) {
+    const cl = game.fighterClones[i];
+    if (cl.invulnTimer > 0) cl.invulnTimer = Math.max(0, cl.invulnTimer - dt);
+    if (cl.hitFlash > 0) cl.hitFlash = Math.max(0, cl.hitFlash - dt);
+
+    if (!cl.detached) {
+      // Tethered in left / right / back formation around player for 0.8s
+      cl.x = clamp(p.x + cl.ox, 22, LOGICAL_W - 22);
+      cl.y = clamp(p.y + cl.oy, PLAYER_MIN_Y - 12, LOGICAL_H - 18);
+      if (!inPauseWindow) {
+        cl.tetherTimer -= dt;
+        if (cl.tetherTimer <= 0) {
+          cl.detached = true;
+          cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off!
+          game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 8, 95);
+        }
+      }
+      continue;
+    }
+
+    // Autonomous patrol & targeting AI
+    cl.patrolPhase += dt * 2.2 * moveMult;
+    const laneSpread = (cl.role === 'LEFT' ? -95 : (cl.role === 'RIGHT' ? 95 : 0));
+    let desiredX = clamp(LOGICAL_W * 0.5 + laneSpread + Math.sin(cl.patrolPhase) * 72, 28, LOGICAL_W - 28);
+    let desiredY = clamp(PLAYER_MIN_Y + 70 + (cl.role === 'BACK' ? 75 : 22) + Math.cos(cl.patrolPhase * 1.3) * 32, PLAYER_MIN_Y + 12, PLAYER_MAX_Y - 14);
+
+    if (game.enemies.length > 0) {
+      // Spread each clone onto its own target index so all 3 engage across the formation!
+      const tgt = game.enemies[(cl.id - 1) % game.enemies.length];
+      if (tgt) {
+        desiredX = clamp(tgt.x + Math.sin(cl.patrolPhase * 1.4) * 28, 28, LOGICAL_W - 28);
+      }
+    }
+
+    const dx = desiredX - cl.x;
+    const dy = desiredY - cl.y;
+    const dist = Math.hypot(dx, dy);
+    const maxStep = 235 * moveMult * dt;
+    if (dist > maxStep) {
+      cl.x += (dx / dist) * maxStep;
+      cl.y += (dy / dist) * maxStep;
+    } else {
+      cl.x = desiredX;
+      cl.y = desiredY;
+    }
+
+    // Autonomous rapid dark-purple bolts at 2x speed!
+    if (!inPauseWindow && (game.enemies.length > 0 || game.enforcerWings.length > 0 || game.capsules.length > 0)) {
+      cl.fireCooldown -= dt;
+      if (cl.fireCooldown <= 0) {
+        cl.fireCooldown = CLONE_FIRE_COOLDOWN * fireMult;
+        game.playerBullets.push({
+          x: cl.x,
+          y: cl.y - 14,
+          vy: -PLAYER_BULLET_SPEED * 2.0,
+          dmg: dmgMult,
+          weakened: dmgMult < 0.999,
+          purple: true,
+          cloneBolt: true,
+          redLaserBullet: false,
+          slowedByFlux: false,
+          dissolveTimer: 0,
+          dissolveMax: 0
+        });
+        game.shotsFired++;
+      }
+    }
+  }
+}
+
+export function damageFighterClone(game, cloneIdx) {
+  const cl = game.fighterClones[cloneIdx];
+  if (!cl || !cl.detached || cl.invulnTimer > 0) return false;
+  cl.hp -= 1;
+  cl.hitFlash = 0.16;
+  cl.invulnTimer = 0.28;
+  if (cl.hp <= 0) {
+    game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 14, 145);
+    game.synth.playDeleteBurst(false);
+    game.fighterClones.splice(cloneIdx, 1);
+    if (game.fighterClones.length === 0 && hasPowerup(game, 'CLONE')) {
+      removePowerupSlot(game, 'CLONE', false);
+    }
+  } else {
+    game.spawnDeleteBurst(cl.x, cl.y, COLORS.cloneBlue, 6, 85);
+    game.synth.playArmorPing();
+  }
+  return true;
+}
+
+export function updatePulsarHazards(game, dt) {
+  const p = game.player;
+
+  // 1) Yellow Electro Balls (size of a Drone, falls like a leaf -> 2.0s Fire Jam, NO damage!)
+  for (let i = game.electroBalls.length - 1; i >= 0; i--) {
+    const eb = game.electroBalls[i];
+    eb.age += dt;
+    eb.x = clamp(eb.baseX + Math.sin(eb.age * eb.swayFreq + eb.phase) * eb.swayAmp, 16, LOGICAL_W - 16);
+    eb.y += eb.vy * dt;
+    if (eb.y > LOGICAL_H + 26) {
+      game.electroBalls.splice(i, 1);
+      continue;
+    }
+    if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 26 : 19)) {
+      p.fireJamTimer = PULSAR_JAM_DUR;
+      p.fireJamMax = PULSAR_JAM_DUR;
+      game.redLaserActive = false;
+      game.activeLaserBeams = [];
+      game.synth.playShockJam();
+      game.spawnDeleteBurst(eb.x, eb.y, '#ffffff', 12, 120);
+      game.spawnPopup(p.x, p.y - 30, 'WEAPONS JAMMED 2.0s!', COLORS.yellow, 1.25);
+      game.electroBalls.splice(i, 1);
+    }
+  }
+
+  // 2) Pulsar Death Spark Lines (3-4 omnidirectional burst lines that curve & trail downward -> 4.0s 2x fire rate slow, NO damage!)
+  for (let i = game.pulsarSparks.length - 1; i >= 0; i--) {
+    const sp = game.pulsarSparks[i];
+    sp.age += dt;
+    if (sp.age < sp.burstDur) {
+      sp.x += sp.burstVx * dt;
+      sp.y += sp.burstVy * dt;
+    } else {
+      // Smoothly transition into downward-trailing spark arcs
+      sp.vx = lerp(sp.vx, sp.driftVx, Math.min(1, dt * 4.5));
+      sp.vy = lerp(sp.vy, sp.fallVy, Math.min(1, dt * 4.5));
+      sp.x += sp.vx * dt;
+      sp.y += sp.vy * dt;
+    }
+    sp.trail.push({ x: sp.x, y: sp.y });
+    if (sp.trail.length > 9) sp.trail.shift();
+
+    if (sp.y > LOGICAL_H + 34 || sp.x < -34 || sp.x > LOGICAL_W + 34) {
+      game.pulsarSparks.splice(i, 1);
+      continue;
+    }
+
+    if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(sp.x - p.x, sp.y - p.y) < (p.dual ? 22 : 14)) {
+      p.sparkSlowTimer = PULSAR_SPARK_SLOW_DUR;
+      p.sparkSlowMax = PULSAR_SPARK_SLOW_DUR;
+      game.synth.playShockJam();
+      game.spawnDeleteBurst(sp.x, sp.y, '#ffffff', 8, 90);
+      game.spawnPopup(p.x, p.y - 30, 'FIRE RATE 2x SLOW 4.0s!', '#ffffff', 1.25);
+      game.pulsarSparks.splice(i, 1);
     }
   }
 }
@@ -798,6 +1157,22 @@ export function updateEnemyBullets(game, dt) {
       game.enemyBullets.splice(i, 1);
       continue;
     }
+
+    // Check hits against detached Fighter Clones (3 HP each, respects 1.0s i-frames)
+    let hitClone = false;
+    if (game.fighterClones && game.fighterClones.length > 0) {
+      for (let ci = game.fighterClones.length - 1; ci >= 0; ci--) {
+        const cl = game.fighterClones[ci];
+        if (cl.detached && cl.invulnTimer <= 0 && Math.hypot(eb.x - cl.x, eb.y - cl.y) < 13) {
+          damageFighterClone(game, ci);
+          game.enemyBullets.splice(i, 1);
+          hitClone = true;
+          break;
+        }
+      }
+    }
+    if (hitClone) continue;
+
     if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 22 : 13)) {
       game.damagePlayer();
       game.enemyBullets.splice(i, 1);
