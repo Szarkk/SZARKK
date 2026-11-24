@@ -360,10 +360,12 @@ export function syncControlsUI(game) {
     ? `PC 2D KEYS • AUTO: ${game.autoFire ? 'ON' : 'OFF'}`
     : `2D DRAG • AUTO: ${game.autoFire ? 'ON' : 'OFF'}`;
 
-  game.dockDot.className = `status-dot ${game.autoFire ? '' : 'manual'}`;
-  game.dockStatusText.textContent = game.autoFire
-    ? 'TOUCH ANYWHERE BELOW TO MOVE // AUTO-FIRE ON'
-    : 'TOUCH ANYWHERE BELOW TO MOVE // HOLD FIRE';
+  if (game.dockDot) game.dockDot.className = `status-dot ${game.autoFire ? '' : 'manual'}`;
+  if (game.dockStatusText) {
+    game.dockStatusText.textContent = game.autoFire
+      ? 'TOUCH ANYWHERE TO MOVE // AUTO-FIRE ON'
+      : 'TOUCH ANYWHERE TO MOVE // HOLD FIRE';
+  }
 
   const modalAuto = document.getElementById('btn-ctrl-auto');
   if (modalAuto) {
@@ -440,7 +442,7 @@ function buildPowerupGaugeSlots(game, activeTypes) {
   const slotClsFor = (t) =>
     t === 'CYAN' ? 'pwr-cyan'
       : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow seg-15'
+        : (t === 'YELLOW' ? 'pwr-yellow seg-24'
           : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6')));
 
   bar.className = activeTypes.length > 1 ? 'pwr-multi' : barClsFor(activeTypes[0]);

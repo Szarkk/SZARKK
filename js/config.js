@@ -71,8 +71,8 @@ export const YELLOW_POWERUP_START_SECTOR = 7;   // Yellow Capsule (Chain Lightni
 export const CLONE_POWERUP_START_SECTOR = 7;    // Dark Blue/Purple Capsule (Fighter Clones) starts Sector 07+
 export const POWERUP_MAX_ENERGY = 100;          // Full horizontal power-up gauge capacity per slot
 export const CYAN_SHOT_ENERGY_COST = 100 / 30;  // 30 conserved Homing Missile volleys per full gauge
-export const YELLOW_SHOT_ENERGY_COST = 100 / 15;// 15 conserved Chain Lightning shots (3 individual bolts per burst = 3 ammo)
-export const CHAIN_LIGHTNING_MAX_SHOTS = 15;
+export const YELLOW_SHOT_ENERGY_COST = 100 / 24;// 24 conserved Chain Lightning shots (3 individual bolts per burst = 3 ammo, 8 bursts)
+export const CHAIN_LIGHTNING_MAX_SHOTS = 24;
 export const CHAIN_LIGHTNING_RANGE = 152;       // Short range (~4 fighters long) across front 270-degree arc
 export const CHAIN_LIGHTNING_JUMP_RANGE = 118;  // Short-range edge-to-edge chain jump distance
 export const CHAIN_LIGHTNING_MAX_JUMPS = 4;     // Jumps to 4 additional targets
@@ -238,12 +238,12 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'commander',
     cardClass: 'tier-pwr-yellow',
     stats: [
-      { text: '15 SHOTS (3x BOLTS)', cls: 'gold' },
+      { text: '24 SHOTS (3x BOLTS)', cls: 'gold' },
       { text: 'FRONT 270° ARC', cls: '' },
       { text: 'ZAPS ENEMY BULLETS', cls: 'emerald' },
       { text: 'JUMPS +4 TARGETS', cls: 'warn' }
     ],
-    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — transforms your Aurex Fighter yellow/gold and charges 15 shots fired as rapid 3-bolt bursts (3 individual lightning lines over 0.5s using 3 shots, then 0.8s cooldown) across a front 270-degree radius (~4 fighters). Each bolt independently zaps enemies, capsules, Enforcer Wings, and enemy bullets, dealing 1 damage and chaining edge-to-edge to up to 4 additional targets!'
+    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — transforms your Aurex Fighter yellow/gold and charges 24 shots fired as rapid 3-bolt bursts (3 individual lightning lines over 0.5s using 3 shots, then 0.8s cooldown) across a front 270-degree radius (~4 fighters). Each bolt independently zaps enemies, capsules, Enforcer Wings, and enemy bullets, dealing 1 damage and chaining edge-to-edge to up to 4 additional targets!'
   },
   {
     id: 'CAPSULE_CLONE',
