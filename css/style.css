@@ -1328,6 +1328,17 @@ button:active {
   );
 }
 
+.pwr-slot.seg-15 .pwr-gauge-ticks {
+  opacity: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent calc(6.6667% - 1px),
+    rgba(2, 8, 18, 0.88) calc(6.6667% - 1px),
+    rgba(2, 8, 18, 0.88) 6.6667%
+  );
+}
+
 #powerup-gauge-bar.pwr-cyan {
   border-top-color: rgba(0, 246, 255, 0.72);
   box-shadow: inset 0 2px 12px rgba(0, 246, 255, 0.16);
@@ -2111,6 +2122,47 @@ body.sandbox-active #status-bar {
 .sbx-training-box {
   border-color: rgba(255, 212, 71, 0.56);
   background: rgba(26, 20, 4, 0.78);
+}
+
+.sbx-field-box {
+  border-color: rgba(196, 77, 255, 0.56);
+  background: rgba(18, 8, 34, 0.8);
+}
+
+.sbx-field-box .sbx-sec-title {
+  color: #e4b4ff;
+}
+
+.sbx-field-chip {
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 6px;
+}
+
+.sbx-field-sub {
+  font-size: 7.4px;
+  font-weight: 700;
+  opacity: 0.82;
+  letter-spacing: 0.5px;
+}
+
+.sbx-field-chip.is-active {
+  background: rgba(0, 128, 155, 0.36);
+  color: #ffffff;
+  border-color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 246, 255, 0.62);
+}
+
+.sbx-field-chip.sbx-c-red.is-active {
+  background: rgba(165, 16, 46, 0.48);
+  box-shadow: 0 0 12px rgba(255, 30, 66, 0.7);
+}
+
+.sbx-action-btn.hard-on {
+  background: linear-gradient(180deg, rgba(152, 16, 40, 0.96), rgba(74, 8, 20, 0.96));
+  color: #ffffff;
+  border-color: var(--null-red);
+  box-shadow: 0 0 12px rgba(255, 30, 66, 0.62);
 }
 
 .sbx-sec-head {

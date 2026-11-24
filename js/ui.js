@@ -388,9 +388,9 @@ export function updateHUD(game) {
     if (game.sandboxTrainingRound) {
       game.elSector.textContent = `${game.hardMode ? 'TH' : 'T'}${String(game.sector).padStart(2, '0')}`;
     } else {
-      game.elSector.textContent = 'SBX';
+      game.elSector.textContent = game.hardMode ? 'SBX-H' : 'SBX';
     }
-    game.elSector.classList.toggle('is-hard', game.hardMode && game.sandboxTrainingRound);
+    game.elSector.classList.toggle('is-hard', !!game.hardMode);
     game.elLives.innerHTML = `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(180,255,232,0.9)" stroke="#00ffaa" stroke-width="1.8"/></svg><span class="life-inf-badge">&infin;</span>`;
     return;
   }
@@ -440,7 +440,7 @@ function buildPowerupGaugeSlots(game, activeTypes) {
   const slotClsFor = (t) =>
     t === 'CYAN' ? 'pwr-cyan'
       : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow seg-10'
+        : (t === 'YELLOW' ? 'pwr-yellow seg-15'
           : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6')));
 
   bar.className = activeTypes.length > 1 ? 'pwr-multi' : barClsFor(activeTypes[0]);
@@ -521,7 +521,7 @@ export function updateStatusPills(game) {
         refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
         refs.fill.style.width = `${pct}%`;
       } else if (type === 'YELLOW') {
-        const shotsLeft = Math.ceil(energy / YELLOW_SHOT_ENERGY_COST);
+        const shotsLeft = Math.max(0, Math.min(CHAIN_LIGHTNING_MAX_SHOTS, Math.ceil((energy - 0.01) / YELLOW_SHOT_ENERGY_COST)));
         refs.elName.textContent = compact ? 'LIGHTNING' : 'CHAIN LIGHTNING';
         refs.elVal.textContent = compact
           ? `${shotsLeft}/${CHAIN_LIGHTNING_MAX_SHOTS}`
@@ -554,13 +554,15 @@ export function updateStatusPills(game) {
   }
 
   if (game.pillField) {
-    if (game.fieldDebuff && game.fieldDebuff.timer > 0) {
+    if (game.fieldDebuff && (game.fieldDebuff.indefinite || game.fieldDebuff.timer > 0)) {
       const fd = game.fieldDebuff;
       const isCyan = fd.type === 'CYAN';
       game.pillField.className = `status-pill ${isCyan ? 'slow' : 'dmg'}`;
       game.pillFieldLabel.textContent = isCyan ? 'CYAN FIELD 1.5x SLOW' : 'RED FIELD 0.5x DMG';
-      game.pillFieldTime.textContent = `${fd.timer.toFixed(1)}s`;
-      game.pillFieldFill.style.width = `${clamp((fd.timer / Math.max(0.1, fd.maxTimer)) * 100, 0, 100)}%`;
+      game.pillFieldTime.textContent = fd.indefinite ? '∞' : `${fd.timer.toFixed(1)}s`;
+      game.pillFieldFill.style.width = fd.indefinite
+        ? '100%'
+        : `${clamp((fd.timer / Math.max(0.1, fd.maxTimer)) * 100, 0, 100)}%`;
     } else {
       game.pillField.classList.add('hidden');
     }

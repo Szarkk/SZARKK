@@ -247,27 +247,137 @@ export function spawnEnforcerWing(
       wpIndex: 0
     });
   } else {
-    // Double-length connected double-S cyan Flux Thread sweep (~1500px span, 4.8s lifetime)
+    // Varied curved Cyan Flux Thread flight patterns (never repeats the same curve back-to-back!)
     const startX = clamp(boss.x + spawnOffsetX, 44, LOGICAL_W - 44);
     const startY = boss.y + 20;
     const sweepRight = forcedSide !== null
       ? (forcedSide > 0)
-      : ((startX < LOGICAL_W * 0.5) !== (surgeOffsetIdx % 2 === 1));
-    const midX = clamp((sweepRight ? 105 : 375) - spread * 0.5, 44, LOGICAL_W - 44);
-    const midY = 395 + (surgeOffsetIdx % 2) * 24;
+      : (Math.random() < 0.5 ? (startX < LOGICAL_W * 0.5) : (surgeOffsetIdx % 2 === 0));
+    const dir = sweepRight ? 1 : -1;
+    const jitterY = (Math.random() - 0.5) * 44;
 
-    const curve1 = [
-      { x: startX, y: startY },
-      { x: clamp((sweepRight ? 415 : 65) + spread, 36, LOGICAL_W - 36), y: 215 + surgeOffsetIdx * 10 },
-      { x: clamp((sweepRight ? 370 : 110) + spread * 0.5, 36, LOGICAL_W - 36), y: 345 },
-      { x: midX, y: midY }
-    ];
-    const curve2 = [
-      { x: midX, y: midY },
-      { x: clamp((sweepRight ? 58 : 422), 36, LOGICAL_W - 36), y: 500 },
-      { x: clamp((sweepRight ? 408 : 72) - spread * 0.4, 36, LOGICAL_W - 36), y: LOGICAL_H - 52 },
-      { x: sweepRight ? LOGICAL_W + 42 : -42, y: LOGICAL_H - 165 }
-    ];
+    const patternPool = [0, 1, 2, 3, 4].filter(idx => idx !== boss.lastFluxCurveIdx);
+    const patIdx = patternPool[Math.floor(Math.random() * patternPool.length)];
+    boss.lastFluxCurveIdx = patIdx;
+
+    let curves;
+    let dur = 2.25;
+
+    if (patIdx === 1) {
+      // 1) FIGURE_8_LOOP: Swoops into a graceful crossing figure-8 ribbon loop across mid & lower deck
+      const cx = clamp(LOGICAL_W * 0.5 + (Math.random() - 0.5) * 70, 145, LOGICAL_W - 145);
+      const midY = clamp(365 + jitterY, 315, 415);
+      const lowY = clamp(545 + jitterY * 0.5, 505, LOGICAL_H - 52);
+      curves = [
+        [
+          { x: startX, y: startY },
+          { x: clamp(cx + dir * 165, 34, LOGICAL_W - 34), y: 200 },
+          { x: clamp(cx + dir * 145, 34, LOGICAL_W - 34), y: midY + 40 },
+          { x: cx, y: midY }
+        ],
+        [
+          { x: cx, y: midY },
+          { x: clamp(cx - dir * 175, 34, LOGICAL_W - 34), y: midY - 45 },
+          { x: clamp(cx - dir * 185, 34, LOGICAL_W - 34), y: lowY },
+          { x: cx, y: lowY - 22 }
+        ],
+        [
+          { x: cx, y: lowY - 22 },
+          { x: clamp(cx + dir * 155, 34, LOGICAL_W - 34), y: lowY + 22 },
+          { x: clamp(cx + dir * 170, 34, LOGICAL_W - 34), y: 425 },
+          { x: dir > 0 ? LOGICAL_W + 42 : -42, y: 310 + jitterY }
+        ]
+      ];
+      dur = 1.65;
+    } else if (patIdx === 2) {
+      // 2) DEEP_U_SWOOP: Steep flank plunge into a sweeping wide parabolic U-turn across the dodge zone
+      const flankX = dir > 0 ? clamp(52 + Math.random() * 44, 38, 110) : clamp(LOGICAL_W - 52 - Math.random() * 44, LOGICAL_W - 110, LOGICAL_W - 38);
+      const farX = dir > 0 ? LOGICAL_W - 54 : 54;
+      const bottomY = LOGICAL_H - 42 - Math.random() * 34;
+      curves = [
+        [
+          { x: startX, y: startY },
+          { x: flankX, y: 210 },
+          { x: flankX, y: 470 },
+          { x: LOGICAL_W * 0.5, y: bottomY }
+        ],
+        [
+          { x: LOGICAL_W * 0.5, y: bottomY },
+          { x: farX, y: bottomY + 12 },
+          { x: farX, y: 390 + jitterY },
+          { x: dir > 0 ? LOGICAL_W + 42 : -42, y: 255 + jitterY }
+        ]
+      ];
+      dur = 2.15;
+    } else if (patIdx === 3) {
+      // 3) CORKSCREW_SPIRAL: 3-band tight descending helical weave from top deck down to bottom playfield
+      const y1 = 245 + jitterY * 0.4;
+      const y2 = 410 + jitterY * 0.4;
+      const y3 = LOGICAL_H - 64;
+      const x1 = dir > 0 ? LOGICAL_W - 64 : 64;
+      const x2 = dir > 0 ? 64 : LOGICAL_W - 64;
+      curves = [
+        [
+          { x: startX, y: startY },
+          { x: clamp(startX + dir * 150, 36, LOGICAL_W - 36), y: 165 },
+          { x: x1, y: y1 - 45 },
+          { x: LOGICAL_W * 0.5, y: y1 + 35 }
+        ],
+        [
+          { x: LOGICAL_W * 0.5, y: y1 + 35 },
+          { x: x2, y: y1 + 85 },
+          { x: x2, y: y2 - 20 },
+          { x: LOGICAL_W * 0.5, y: y2 + 38 }
+        ],
+        [
+          { x: LOGICAL_W * 0.5, y: y2 + 38 },
+          { x: x1, y: y2 + 92 },
+          { x: x1, y: y3 },
+          { x: dir > 0 ? -42 : LOGICAL_W + 42, y: y3 - 48 }
+        ]
+      ];
+      dur = 1.55;
+    } else if (patIdx === 4) {
+      // 4) APEX_CROSS_ARC: Player-targeted sweeping dive banking into a whip-back cross-arena exit arc
+      const px = game.player && game.player.alive ? game.player.x : LOGICAL_W * 0.5;
+      const apexX = clamp(px + (Math.random() - 0.5) * 90, 68, LOGICAL_W - 68);
+      const apexY = clamp(LOGICAL_H - 96 - Math.random() * 56, 465, LOGICAL_H - 62);
+      const whipDir = apexX < LOGICAL_W * 0.5 ? 1 : -1;
+      curves = [
+        [
+          { x: startX, y: startY },
+          { x: clamp(startX - whipDir * 130, 36, LOGICAL_W - 36), y: 235 },
+          { x: clamp(apexX - whipDir * 85, 36, LOGICAL_W - 36), y: apexY - 70 },
+          { x: apexX, y: apexY }
+        ],
+        [
+          { x: apexX, y: apexY },
+          { x: clamp(apexX + whipDir * 175, 34, LOGICAL_W - 34), y: apexY + 34 },
+          { x: clamp(apexX + whipDir * 210, 34, LOGICAL_W - 34), y: 315 + jitterY },
+          { x: whipDir > 0 ? LOGICAL_W + 42 : -42, y: 215 + jitterY }
+        ]
+      ];
+      dur = 2.05;
+    } else {
+      // 0) DOUBLE_S: Classic wide double-S sweep with randomized vertical & lateral offsets
+      const midX = clamp((sweepRight ? 96 : LOGICAL_W - 96) + (Math.random() - 0.5) * 60 - spread * 0.4, 44, LOGICAL_W - 44);
+      const midY = clamp(388 + jitterY + (surgeOffsetIdx % 2) * 24, 330, 445);
+      curves = [
+        [
+          { x: startX, y: startY },
+          { x: clamp((sweepRight ? 415 : 65) + spread, 36, LOGICAL_W - 36), y: 210 + jitterY * 0.5 + surgeOffsetIdx * 10 },
+          { x: clamp((sweepRight ? 368 : 112) + spread * 0.5, 36, LOGICAL_W - 36), y: midY - 45 },
+          { x: midX, y: midY }
+        ],
+        [
+          { x: midX, y: midY },
+          { x: clamp((sweepRight ? 54 : LOGICAL_W - 54), 36, LOGICAL_W - 36), y: midY + 108 },
+          { x: clamp((sweepRight ? 410 : 70) - spread * 0.4, 36, LOGICAL_W - 36), y: LOGICAL_H - 52 },
+          { x: sweepRight ? LOGICAL_W + 42 : -42, y: LOGICAL_H - 165 + jitterY * 0.6 }
+        ]
+      ];
+      dur = 2.3;
+    }
 
     game.enforcerWings.push({
       variant: 'FLUX',
@@ -279,10 +389,10 @@ export function spawnEnforcerWing(
       hp: 1,
       maxHp: 1,
       angle: Math.PI / 2,
-      curves: [curve1, curve2],
+      curves,
       curveIdx: 0,
       t: 0,
-      dur: 2.35
+      dur
     });
   }
 }

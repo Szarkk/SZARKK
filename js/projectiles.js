@@ -823,64 +823,93 @@ function buildLightningPath(x1, y1, x2, y2) {
   return pts;
 }
 
+function inFront270Arc(dx, dy) {
+  // Screen-space straight down (rear) is +PI/2 (+90 deg).
+  // Front 270-degree arc excludes ONLY the rear 90-degree wedge (+45 deg .. +135 deg).
+  if (dx === 0 && dy === 0) return true;
+  const ang = Math.atan2(dy, dx);
+  return !(ang > Math.PI * 0.25 && ang < Math.PI * 0.75);
+}
+
 /**
- * YELLOW POWER-UP — Chain Lightning:
- * Short-range (~4 fighters long = 152px) lightning bolt at 1/2 fire rate;
- * deals 1.0 base dmg and jumps at short range (118px) to up to 4 additional targets!
+ * YELLOW POWER-UP — Chain Lightning (Reworked):
+ * Fires 3 individual lightning bolt lines over 0.50s (1 shot each = 3 ammo, 0.80s cooldown)
+ * across a front 270-degree radius (~4 fighters = 152px, edge-to-edge);
+ * each bolt independently prefers an unhit target inside the arc (enemies, Enforcer Wings,
+ * capsules, AND enemy bullets), deals 1.0 base dmg, and chains edge-to-edge (118px) to +4 targets!
  */
-export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
+export function fireChainLightning(game, shipOffsets, baseDmg, _weakened, boltIdx = 0, burstExcludeSet = null) {
   const p = game.player;
   const dmg = baseDmg * CHAIN_LIGHTNING_DMG;
+  // Randomized forward-hull emitter jitter so bolts spark out organically rather than on a fixed grid
+  const emitX = (Math.random() - 0.5) * 14;
+  const emitY = -4 - Math.random() * 7;
 
   for (const ox of shipOffsets) {
-    const startX = p.x + ox;
-    const startY = p.y - 16;
-    const endY = Math.max(8, startY - CHAIN_LIGHTNING_RANGE);
+    const startX = p.x + ox + emitX;
+    const startY = p.y + emitY;
+    const noseY = p.y - 16;
     game.shotsFired++;
 
-    // 1) Check if a Null Thread intercepts the bolt within its 152px range
-    let blockedY = endY;
-    let blockedTrailIdx = -1;
-    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
-      const trail = game.threadTrails[ti];
-      if (trail.variant !== 'NULL') continue;
-      for (const seg of trail.segments) {
-        const yCross = verticalRaySegIntersectY(startX, startY, seg.x1, seg.y1, seg.x2, seg.y2);
-        if (yCross !== null && yCross >= endY && yCross > blockedY) {
-          blockedY = yCross;
-          blockedTrailIdx = ti;
-        }
-      }
-    }
+    // 1) Find closest primary target inside the front 270-degree radius (edge-to-edge!),
+    //    strongly preferring a fresh target not yet picked by an earlier bolt in this 3-bolt salvo.
+    let bestFresh = null;
+    let bestFreshDist = CHAIN_LIGHTNING_RANGE;
+    let bestAny = null;
+    let bestAnyDist = CHAIN_LIGHTNING_RANGE;
 
-    // 2) Find closest primary target inside the short-range bolt corridor (edge-to-edge!)
-    let primary = null;
-    let bestBottomY = -Infinity; // Highest bottom-edge Y = closest upward to fighter nose
+    const considerPrimary = (kind, ref, tx, ty, r) => {
+      const dx = tx - startX;
+      const dy = ty - startY;
+      if (!inFront270Arc(dx, dy)) return;
+      const edgeDist = Math.max(0, Math.hypot(dx, dy) - r);
+      if (edgeDist > CHAIN_LIGHTNING_RANGE) return;
 
-    for (let ci = game.capsules.length - 1; ci >= 0; ci--) {
-      const cap = game.capsules[ci];
-      const r = cap.hitRadius;
-      if (cap.y - r <= startY && cap.y + r >= blockedY && Math.abs(cap.x - startX) <= r + 16 && cap.y + r > bestBottomY) {
-        bestBottomY = cap.y + r;
-        primary = { kind: 'CAPSULE', ref: cap, x: cap.x, y: cap.y, radius: r };
+      const alreadyUsed = burstExcludeSet && burstExcludeSet.has(ref);
+      if (!alreadyUsed && edgeDist <= bestFreshDist) {
+        bestFreshDist = edgeDist;
+        bestFresh = { kind, ref, x: tx, y: ty, radius: r };
       }
+      if (edgeDist <= bestAnyDist) {
+        bestAnyDist = edgeDist;
+        bestAny = { kind, ref, x: tx, y: ty, radius: r };
+      }
+    };
+
+    for (const e of game.enemies) {
+      considerPrimary('ENEMY', e, e.x, e.y, e.hitRadius);
     }
     for (const ew of game.enforcerWings) {
-      const r = 14;
-      if (ew.y - r <= startY && ew.y + r >= blockedY && Math.abs(ew.x - startX) <= r + 16 && ew.y + r > bestBottomY) {
-        bestBottomY = ew.y + r;
-        primary = { kind: 'ENFORCER_WING', ref: ew, x: ew.x, y: ew.y, radius: r };
-      }
+      considerPrimary('ENFORCER_WING', ew, ew.x, ew.y, 14);
     }
-    for (const e of game.enemies) {
-      const r = e.hitRadius;
-      if (e.y - r <= startY && e.y + r >= blockedY && Math.abs(e.x - startX) <= r + 18 && e.y + r > bestBottomY) {
-        bestBottomY = e.y + r;
-        primary = { kind: 'ENEMY', ref: e, x: e.x, y: e.y, radius: r };
-      }
+    for (const cap of game.capsules) {
+      considerPrimary('CAPSULE', cap, cap.x, cap.y, cap.hitRadius);
+    }
+    for (const eb of game.enemyBullets) {
+      considerPrimary('ENEMY_BULLET', eb, eb.x, eb.y, 6);
+    }
+
+    const primary = bestFresh || bestAny;
+    if (primary && burstExcludeSet) {
+      burstExcludeSet.add(primary.ref);
     }
 
     if (!primary) {
+      // No target in 270-degree radius: check if a crimson Null Thread lies straight ahead to chip it
+      const endY = Math.max(8, noseY - CHAIN_LIGHTNING_RANGE);
+      let blockedY = endY;
+      let blockedTrailIdx = -1;
+      for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+        const trail = game.threadTrails[ti];
+        if (trail.variant !== 'NULL') continue;
+        for (const seg of trail.segments) {
+          const yCross = verticalRaySegIntersectY(startX, noseY, seg.x1, seg.y1, seg.x2, seg.y2);
+          if (yCross !== null && yCross >= endY && yCross > blockedY) {
+            blockedY = yCross;
+            blockedTrailIdx = ti;
+          }
+        }
+      }
       if (blockedTrailIdx >= 0) {
         const trail = game.threadTrails[blockedTrailIdx];
         if (trail) {
@@ -892,16 +921,73 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
             game.synth.playThreadDeflect();
           }
         }
+        game.lightningBolts.push({
+          segments: [buildLightningPath(startX, noseY, startX, blockedY)],
+          life: 0.28,
+          maxLife: 0.28
+        });
+      } else {
+        // Organic, randomized real-lightning discharge across the front 270-degree arc (never clockwork!)
+        const recentAngles = Array.isArray(game._recentLightningAngles) ? game._recentLightningAngles : [];
+        let arcAngle = -Math.PI * 0.5 + (Math.random() - 0.5) * (Math.PI * 1.44);
+        let bestCandidate = arcAngle;
+        let bestMinSep = -1;
+        for (let attempt = 0; attempt < 12; attempt++) {
+          const cand = -Math.PI * 0.5 + (Math.random() - 0.5) * (Math.PI * 1.44);
+          let minSep = Math.PI;
+          for (const prevAng of recentAngles) {
+            const sep = Math.abs(cand - prevAng);
+            if (sep < minSep) minSep = sep;
+          }
+          if (minSep > bestMinSep) {
+            bestMinSep = minSep;
+            bestCandidate = cand;
+          }
+          if (minSep >= 0.62) {
+            bestCandidate = cand;
+            break;
+          }
+        }
+        arcAngle = bestCandidate;
+        recentAngles.push(arcAngle);
+        if (recentAngles.length > 3) recentAngles.shift();
+        game._recentLightningAngles = recentAngles;
+
+        const reach = CHAIN_LIGHTNING_RANGE * (0.72 + Math.random() * 0.28);
+        const ex = clamp(startX + Math.cos(arcAngle) * reach, 10, LOGICAL_W - 10);
+        const ey = clamp(startY + Math.sin(arcAngle) * reach, 10, LOGICAL_H - 10);
+        const mainTrunk = buildLightningPath(startX, startY, ex, ey);
+        const boltSegments = [mainTrunk];
+
+        // Sprout 1-2 natural forked lightning offshoots along the main trunk
+        if (mainTrunk.length >= 4) {
+          const branchCount = Math.random() < 0.65 ? 2 : 1;
+          const firstForkSign = Math.random() < 0.5 ? -1 : 1;
+          for (let b = 0; b < branchCount; b++) {
+            const pivotIdx = 1 + Math.floor(Math.random() * (mainTrunk.length - 2));
+            const pivot = mainTrunk[pivotIdx];
+            const forkSign = b === 0 ? firstForkSign : -firstForkSign;
+            const forkDir = forkSign * (0.34 + Math.random() * 0.48);
+            const forkAngle = arcAngle + forkDir;
+            const forkLen = reach * (0.24 + Math.random() * 0.22);
+            const fx = clamp(pivot.x + Math.cos(forkAngle) * forkLen, 8, LOGICAL_W - 8);
+            const fy = clamp(pivot.y + Math.sin(forkAngle) * forkLen, 8, LOGICAL_H - 8);
+            boltSegments.push(buildLightningPath(pivot.x, pivot.y, fx, fy));
+          }
+        }
+
+        const boltLife = 0.24 + Math.random() * 0.12;
+        game.lightningBolts.push({
+          segments: boltSegments,
+          branchStartIdx: 1,
+          life: boltLife,
+          maxLife: boltLife
+        });
       }
-      game.lightningBolts.push({
-        segments: [buildLightningPath(startX, startY, startX, blockedY)],
-        life: 0.16,
-        maxLife: 0.16
-      });
       continue;
     }
 
-    // Build chain sequence: 1 primary + up to 4 additional edge-to-edge short-range jumps!
+    // 2) Build chain sequence: 1 primary + up to 4 additional edge-to-edge short-range jumps!
     const chainTargets = [primary];
     const visitedRefs = new Set([primary.ref]);
     let curX = primary.x;
@@ -910,32 +996,28 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
 
     for (let jump = 0; jump < CHAIN_LIGHTNING_MAX_JUMPS; jump++) {
       let nextTarget = null;
-      let bestEdgeDist = CHAIN_LIGHTNING_JUMP_RANGE;
+      let bestJumpDist = CHAIN_LIGHTNING_JUMP_RANGE;
+
+      const considerJump = (kind, ref, tx, ty, r) => {
+        if (visitedRefs.has(ref)) return;
+        const edgeDist = Math.max(0, Math.hypot(tx - curX, ty - curY) - curRadius - r);
+        if (edgeDist <= bestJumpDist) {
+          bestJumpDist = edgeDist;
+          nextTarget = { kind, ref, x: tx, y: ty, radius: r };
+        }
+      };
 
       for (const e of game.enemies) {
-        if (visitedRefs.has(e)) continue;
-        const edgeDist = Math.max(0, Math.hypot(e.x - curX, e.y - curY) - curRadius - e.hitRadius);
-        if (edgeDist <= bestEdgeDist) {
-          bestEdgeDist = edgeDist;
-          nextTarget = { kind: 'ENEMY', ref: e, x: e.x, y: e.y, radius: e.hitRadius };
-        }
+        considerJump('ENEMY', e, e.x, e.y, e.hitRadius);
       }
       for (const ew of game.enforcerWings) {
-        if (visitedRefs.has(ew)) continue;
-        const r = 14;
-        const edgeDist = Math.max(0, Math.hypot(ew.x - curX, ew.y - curY) - curRadius - r);
-        if (edgeDist <= bestEdgeDist) {
-          bestEdgeDist = edgeDist;
-          nextTarget = { kind: 'ENFORCER_WING', ref: ew, x: ew.x, y: ew.y, radius: r };
-        }
+        considerJump('ENFORCER_WING', ew, ew.x, ew.y, 14);
       }
       for (const cap of game.capsules) {
-        if (visitedRefs.has(cap)) continue;
-        const edgeDist = Math.max(0, Math.hypot(cap.x - curX, cap.y - curY) - curRadius - cap.hitRadius);
-        if (edgeDist <= bestEdgeDist) {
-          bestEdgeDist = edgeDist;
-          nextTarget = { kind: 'CAPSULE', ref: cap, x: cap.x, y: cap.y, radius: cap.hitRadius };
-        }
+        considerJump('CAPSULE', cap, cap.x, cap.y, cap.hitRadius);
+      }
+      for (const eb of game.enemyBullets) {
+        considerJump('ENEMY_BULLET', eb, eb.x, eb.y, 6);
       }
 
       if (!nextTarget) break;
@@ -946,7 +1028,7 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
       curRadius = nextTarget.radius;
     }
 
-    // Record jagged lightning arcs and apply 1.0 damage across the entire chain
+    // 3) Record jagged lightning arcs and apply damage / void enemy bullets across the entire chain
     const segments = [];
     let prevX = startX;
     let prevY = startY;
@@ -956,8 +1038,11 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
       prevY = tgt.y;
 
       game.shotsHit++;
-      game.spawnDeleteBurst(tgt.x, tgt.y, COLORS.yellow, 5, 95);
-      if (tgt.kind === 'CAPSULE') {
+      game.spawnDeleteBurst(tgt.x, tgt.y, COLORS.yellow, tgt.kind === 'ENEMY_BULLET' ? 4 : 5, 95);
+      if (tgt.kind === 'ENEMY_BULLET') {
+        const bi = game.enemyBullets.indexOf(tgt.ref);
+        if (bi >= 0) game.enemyBullets.splice(bi, 1);
+      } else if (tgt.kind === 'CAPSULE') {
         const ci = game.capsules.indexOf(tgt.ref);
         if (ci >= 0) destroyAndCollectCapsule(game, ci);
       } else if (tgt.kind === 'ENFORCER_WING') {
@@ -971,8 +1056,8 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened) {
 
     game.lightningBolts.push({
       segments,
-      life: 0.2,
-      maxLife: 0.2
+      life: 0.32,
+      maxLife: 0.32
     });
   }
 

@@ -7,6 +7,9 @@ import {
   ARC_WAVE_MANUAL_COOLDOWN,
   ARC_WAVE_MAX,
   CANNON_AUTO_FIRE_DELAY,
+  CHAIN_LIGHTNING_BURST_COOLDOWN,
+  CHAIN_LIGHTNING_BURST_COUNT,
+  CHAIN_LIGHTNING_BURST_INTERVAL,
   COLORS,
   CYAN_SHOT_ENERGY_COST,
   FIRE_COOLDOWN,
@@ -44,6 +47,9 @@ export function createPlayerState() {
     laserFxCooldown: 0,
     arcWaveCooldown: 0,
     lightningCooldown: 0,
+    lightningBurstLeft: 0,
+    lightningBurstTimer: 0,
+    lightningBurstExclude: null,
     vibrateAmp: 0,
     missileVibTimer: 0,
     slowTimer: 0,
@@ -174,6 +180,8 @@ export function damagePlayer(game) {
   p.dmgDebuffTimer = 0;
   p.fireJamTimer = 0;
   p.sparkSlowTimer = 0;
+  p.lightningBurstLeft = 0;
+  p.lightningBurstTimer = 0;
   game.masterFluxStreak = 0;
   game.masterNullStreak = 0;
   game.masterFluxRewardSpawned = false;
@@ -258,6 +266,9 @@ export function updatePlayer(game, dt) {
 
   if (!p.alive || p.capturedById) {
     p.vibrateAmp = 0;
+    p.lightningBurstLeft = 0;
+    p.lightningBurstTimer = 0;
+    p.lightningBurstExclude = null;
     game.redLaserActive = false;
     game.activeLaserBeams = [];
     game.freshFirePress = false;
@@ -369,11 +380,42 @@ export function updatePlayer(game, dt) {
     }
   }
 
-  // 4) Yellow Chain Lightning layer (10 short-range bolts @ 1/2 normal fire rate, chains to +4 targets!)
-  if (hasYellow && wantsFire && p.lightningCooldown <= 0) {
-    p.lightningCooldown = FIRE_COOLDOWN * 2.0 * getPlayerFireCooldownMult(game);
-    fireChainLightning(game, shipOffsets, baseDmg, weakened);
+  // 4) Yellow Chain Lightning layer (3 individual lightning bolt lines over 0.50s, 1 shot each = 3 ammo, then 0.80s cooldown!)
+  if (fireJammed || !hasYellow) {
+    p.lightningBurstLeft = 0;
+    p.lightningBurstTimer = 0;
+    p.lightningBurstExclude = null;
+  } else if (p.lightningBurstLeft > 0) {
+    p.lightningBurstTimer -= dt;
+    if (p.lightningBurstTimer <= 0) {
+      const boltIdx = CHAIN_LIGHTNING_BURST_COUNT - p.lightningBurstLeft;
+      fireChainLightning(game, shipOffsets, baseDmg, weakened, boltIdx, p.lightningBurstExclude);
+      consumePowerupEnergy(game, 'YELLOW', YELLOW_SHOT_ENERGY_COST);
+      p.lightningBurstLeft--;
+      const fireMult = getPlayerFireCooldownMult(game);
+      if (p.lightningBurstLeft > 0 && hasPowerup(game, 'YELLOW')) {
+        p.lightningBurstTimer = CHAIN_LIGHTNING_BURST_INTERVAL * fireMult;
+      } else {
+        p.lightningBurstLeft = 0;
+        p.lightningBurstTimer = 0;
+        p.lightningBurstExclude = null;
+        p.lightningCooldown = CHAIN_LIGHTNING_BURST_COOLDOWN * fireMult;
+      }
+    }
+  } else if (hasYellow && wantsFire && p.lightningCooldown <= 0) {
+    const fireMult = getPlayerFireCooldownMult(game);
+    p.lightningBurstExclude = new Set();
+    fireChainLightning(game, shipOffsets, baseDmg, weakened, 0, p.lightningBurstExclude);
     consumePowerupEnergy(game, 'YELLOW', YELLOW_SHOT_ENERGY_COST);
+    if (hasPowerup(game, 'YELLOW')) {
+      p.lightningBurstLeft = Math.max(0, CHAIN_LIGHTNING_BURST_COUNT - 1);
+      p.lightningBurstTimer = CHAIN_LIGHTNING_BURST_INTERVAL * fireMult;
+    } else {
+      p.lightningBurstLeft = 0;
+      p.lightningBurstTimer = 0;
+      p.lightningBurstExclude = null;
+      p.lightningCooldown = CHAIN_LIGHTNING_BURST_COOLDOWN * fireMult;
+    }
     consumedTap = true;
   }
 

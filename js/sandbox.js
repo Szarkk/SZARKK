@@ -2,7 +2,7 @@
    TRAINING / SANDBOX ARENA & TRAINING ROUNDS CONTROLLER
    ========================================================================= */
 
-import { COLORS, LOGICAL_H, LOGICAL_W, PLAYER_DEFAULT_Y, PLAYER_MIN_Y } from './config.js';
+import { COLORS, HARD_FIELD_DEBUFF_DUR, LOGICAL_H, LOGICAL_W, PLAYER_DEFAULT_Y, PLAYER_MIN_Y } from './config.js';
 import { clamp } from './utils.js';
 import {
   clearActivePowerup,
@@ -44,6 +44,12 @@ export const SANDBOX_CAPSULES = [
   { id: 'CLONE', label: 'CLONES', cls: 'sbx-c-clone' }
 ];
 
+// Extensible registry of Field Buffs / Debuffs for Sandbox toggling
+export const SANDBOX_FIELD_EFFECTS = [
+  { id: 'CYAN', label: 'CYAN FIELD', sub: '1.5x SLOW', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-cyan' },
+  { id: 'RED', label: 'RED FIELD', sub: '0.5x DMG', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-red' }
+];
+
 function createDefaultSandboxConfig() {
   return {
     formation: 'PHALANX',
@@ -56,6 +62,7 @@ function createDefaultSandboxConfig() {
     deployValue: null,
     deployLabel: '',
     capsuleDeployMode: 'TOUCH', // 'TOUCH' | 'FLOAT'
+    fieldIndefinite: true, // Default: Field Buffs / Debuffs stay active indefinitely until toggled off
     trainingSec: 7,
     trainingHard: false,
     drawerOpen: false,
@@ -470,6 +477,22 @@ export function syncSandboxUI(game) {
     btnDualDrawer.className = `sbx-action-btn ${game.player.dual ? 'emerald' : 'secondary'}`;
   }
 
+  const btnHardMode = document.getElementById('sbx-btn-hard-mode');
+  if (btnHardMode) {
+    btnHardMode.textContent = game.hardMode ? 'HARD MODE: ON' : 'HARD MODE: OFF';
+    btnHardMode.className = `sbx-action-btn ${game.hardMode ? 'hard-on' : 'secondary'}`;
+  }
+
+  const btnFieldInf = document.getElementById('sbx-field-mode-inf');
+  const btnFieldTimed = document.getElementById('sbx-field-mode-timed');
+  if (btnFieldInf) btnFieldInf.classList.toggle('selected', !!sb.fieldIndefinite);
+  if (btnFieldTimed) btnFieldTimed.classList.toggle('selected', !sb.fieldIndefinite);
+
+  document.querySelectorAll('.sbx-field-chip').forEach((chip) => {
+    const isOn = !!(game.fieldDebuff && game.fieldDebuff.type === chip.dataset.fieldId);
+    chip.classList.toggle('is-active', isOn);
+  });
+
   const btnCapTouch = document.getElementById('sbx-cap-mode-touch');
   const btnCapFloat = document.getElementById('sbx-cap-mode-float');
   if (btnCapTouch) btnCapTouch.classList.toggle('selected', sb.capsuleDeployMode === 'TOUCH');
@@ -653,6 +676,46 @@ function populateSandboxDom(game) {
       pwrTrayList.appendChild(btn);
     }
   }
+
+  // Extensible Field Buffs / Debuffs Grid
+  const fieldGrid = document.getElementById('sbx-field-grid');
+  if (fieldGrid && fieldGrid.childElementCount === 0) {
+    for (const eff of SANDBOX_FIELD_EFFECTS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `sbx-chip sbx-field-chip ${eff.cls}`;
+      btn.dataset.fieldId = eff.id;
+      btn.innerHTML = `<span>${eff.label}</span><span class="sbx-field-sub">${eff.sub}</span>`;
+      btn.addEventListener('click', (e) => {
+        e.currentTarget.blur();
+        game.synth.unlock();
+        const alreadyActive = game.fieldDebuff && game.fieldDebuff.type === eff.id;
+        if (alreadyActive) {
+          game.fieldDebuff = null;
+          game.spawnPopup(LOGICAL_W * 0.5, 190, `${eff.label} OFF`, COLORS.white, 1.0);
+        } else {
+          const isIndef = !!(game.sandbox && game.sandbox.fieldIndefinite);
+          game.fieldDebuff = {
+            type: eff.id,
+            timer: eff.dur,
+            maxTimer: eff.dur,
+            indefinite: isIndef
+          };
+          game.synth.playDebuff(eff.id === 'RED');
+          game.spawnPopup(
+            LOGICAL_W * 0.5,
+            190,
+            `${eff.label} ${isIndef ? '[∞]' : `[${eff.dur.toFixed(0)}s]`}`,
+            eff.id === 'RED' ? COLORS.nullRed : COLORS.cyan,
+            1.2
+          );
+        }
+        updateStatusPills(game);
+        syncSandboxUI(game);
+      });
+      fieldGrid.appendChild(btn);
+    }
+  }
 }
 
 export function bindSandboxEvents(game) {
@@ -766,6 +829,44 @@ export function bindSandboxEvents(game) {
     game.spawnPopup(LOGICAL_W * 0.5, 200, 'ARENA CLEARED', COLORS.cyan, 1.0);
   });
 
+  document.getElementById('sbx-btn-hard-mode')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    game.hardMode = !game.hardMode;
+    game.spawnPopup(
+      LOGICAL_W * 0.5,
+      195,
+      game.hardMode ? 'SANDBOX HARD MODE: ON' : 'SANDBOX HARD MODE: OFF',
+      game.hardMode ? COLORS.nullRed : COLORS.cyan,
+      1.15
+    );
+    syncSandboxUI(game);
+    updateHUD(game);
+  });
+
+  document.getElementById('sbx-field-mode-inf')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    if (!game.sandbox) return;
+    game.sandbox.fieldIndefinite = true;
+    if (game.fieldDebuff) {
+      game.fieldDebuff.indefinite = true;
+      game.fieldDebuff.timer = game.fieldDebuff.maxTimer;
+    }
+    updateStatusPills(game);
+    syncSandboxUI(game);
+  });
+
+  document.getElementById('sbx-field-mode-timed')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    if (!game.sandbox) return;
+    game.sandbox.fieldIndefinite = false;
+    if (game.fieldDebuff) {
+      game.fieldDebuff.indefinite = false;
+      game.fieldDebuff.timer = game.fieldDebuff.maxTimer;
+    }
+    updateStatusPills(game);
+    syncSandboxUI(game);
+  });
+
   const clearPowerupsAction = (e) => {
     if (e && e.currentTarget) e.currentTarget.blur();
     clearActivePowerup(game);
@@ -773,7 +874,9 @@ export function bindSandboxEvents(game) {
     game.player.dmgDebuffTimer = 0;
     game.player.fireJamTimer = 0;
     game.player.sparkSlowTimer = 0;
-    game.fieldDebuff = null;
+    if (game.fieldDebuff && !game.fieldDebuff.indefinite) {
+      game.fieldDebuff = null;
+    }
     updateStatusPills(game);
     syncSandboxPowerupTray(game);
     game.spawnPopup(game.player.x, game.player.y - 28, 'POWER-UPS CLEARED', COLORS.white, 1.0);

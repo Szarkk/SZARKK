@@ -4,25 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>SZARKK — Alpha Test 0.1.2</title>
-  <link rel="stylesheet" href="css/style.css?v=0.1.2">
+  <link rel="stylesheet" href="css/style.css?v=0.1.2f">
   <script type="importmap">
     {
       "imports": {
-        "./js/audio.js": "./js/audio.js?v=0.1.2",
-        "./js/config.js": "./js/config.js?v=0.1.2",
-        "./js/enemies.js": "./js/enemies.js?v=0.1.2",
-        "./js/enforcers.js": "./js/enforcers.js?v=0.1.2",
-        "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.2",
-        "./js/main.js": "./js/main.js?v=0.1.2",
-        "./js/player.js": "./js/player.js?v=0.1.2",
-        "./js/powerups.js": "./js/powerups.js?v=0.1.2",
-        "./js/projectiles.js": "./js/projectiles.js?v=0.1.2",
-        "./js/renderer.js": "./js/renderer.js?v=0.1.2b",
-        "./js/sandbox.js": "./js/sandbox.js?v=0.1.2",
-        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.2",
-        "./js/sprites.js": "./js/sprites.js?v=0.1.2",
-        "./js/ui.js": "./js/ui.js?v=0.1.2",
-        "./js/utils.js": "./js/utils.js?v=0.1.2"
+        "./js/audio.js": "./js/audio.js?v=0.1.2f",
+        "./js/config.js": "./js/config.js?v=0.1.2f",
+        "./js/enemies.js": "./js/enemies.js?v=0.1.2f",
+        "./js/enforcers.js": "./js/enforcers.js?v=0.1.2f",
+        "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.2f",
+        "./js/main.js": "./js/main.js?v=0.1.2f",
+        "./js/player.js": "./js/player.js?v=0.1.2f",
+        "./js/powerups.js": "./js/powerups.js?v=0.1.2f",
+        "./js/projectiles.js": "./js/projectiles.js?v=0.1.2f",
+        "./js/renderer.js": "./js/renderer.js?v=0.1.2f",
+        "./js/sandbox.js": "./js/sandbox.js?v=0.1.2f",
+        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.2f",
+        "./js/sprites.js": "./js/sprites.js?v=0.1.2f",
+        "./js/ui.js": "./js/ui.js?v=0.1.2f",
+        "./js/utils.js": "./js/utils.js?v=0.1.2f"
       }
     }
   </script>
@@ -204,10 +204,25 @@
                 <button type="button" id="sbx-drawer-dual" class="sbx-action-btn secondary">DUAL FIGHTER: OFF</button>
                 <button type="button" id="sbx-btn-start-drag" class="sbx-action-btn secondary">DRAG ENTITIES</button>
               </div>
-              <button type="button" id="sbx-btn-clear-pwr" class="sbx-action-btn secondary">CLEAR POWER-UPS &amp; DEBUFFS</button>
+              <div class="btn-pair">
+                <button type="button" id="sbx-btn-hard-mode" class="sbx-action-btn secondary">HARD MODE: OFF</button>
+                <button type="button" id="sbx-btn-clear-pwr" class="sbx-action-btn secondary">CLEAR POWER-UPS</button>
+              </div>
             </div>
 
-            <!-- 5. TRAINING ROUNDS -->
+            <!-- 5. FIELD BUFFS / DEBUFFS (EXTENSIBLE SECTION) -->
+            <div class="sbx-section sbx-field-box">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">FIELD BUFFS / DEBUFFS</span>
+                <div class="sbx-mini-seg">
+                  <button type="button" id="sbx-field-mode-inf" class="sbx-seg-btn selected">INDEFINITE</button>
+                  <button type="button" id="sbx-field-mode-timed" class="sbx-seg-btn">TIMED (4s)</button>
+                </div>
+              </div>
+              <div id="sbx-field-grid" class="sbx-chip-grid"></div>
+            </div>
+
+            <!-- 6. TRAINING ROUNDS -->
             <div class="sbx-section sbx-training-box">
               <div class="sbx-sec-head">
                 <span class="sbx-sec-title">TRAINING ROUNDS (REAL SECTOR SIM)</span>
@@ -503,6 +518,6 @@
     </nav>
   </div>
 
-  <script type="module" src="js/main.js?v=0.1.2"></script>
+  <script type="module" src="js/main.js?v=0.1.2f"></script>
 </body>
 </html>

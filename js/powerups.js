@@ -89,6 +89,11 @@ export function clearActivePowerup(game) {
   game.activeLaserBeams = [];
   game.fighterClones = [];
   game.cloneTimer = 0;
+  if (game.player) {
+    game.player.lightningBurstLeft = 0;
+    game.player.lightningBurstTimer = 0;
+    game.player.lightningBurstExclude = null;
+  }
 }
 
 export function removePowerupSlot(game, type, silent = false) {
@@ -101,6 +106,10 @@ export function removePowerupSlot(game, type, silent = false) {
     game.activeLaserBeams = [];
   } else if (type === 'PURPLE') {
     resetArcWaveState(game);
+  } else if (type === 'YELLOW' && game.player) {
+    game.player.lightningBurstLeft = 0;
+    game.player.lightningBurstTimer = 0;
+    game.player.lightningBurstExclude = null;
   } else if (type === 'CLONE') {
     game.fighterClones = [];
     game.cloneTimer = 0;
@@ -449,7 +458,7 @@ export function collectCapsule(game, cap) {
   } else if (cap.type === 'CLONE') {
     spawnFighterClones(game);
     const label = alreadyHasSame
-      ? 'CLONES REFRESHED 10s!'
+      ? `CLONES REFRESHED ${Math.round(CLONE_DURATION)}s!`
       : (isStacking ? 'STACKED // FIGHTER CLONES!' : 'FIGHTER CLONES x3!');
     game.spawnPopup(game.player.x, game.player.y - 34, label, '#b9a6ff', 1.45);
   } else {
@@ -464,7 +473,7 @@ export function collectCapsule(game, cap) {
 
 export function updatePowerupTimers(game, dt) {
   // Conserved weapons (Cyan/Red/Purple/Yellow) never passively decay;
-  // Fighter Clones run a 10.0s timer that PAUSES between sectors, waves, and challenge banners!
+  // Fighter Clones run a 20.0s timer that PAUSES between sectors, waves, and challenge banners!
   if (hasPowerup(game, 'CLONE')) {
     const inPauseWindow =
       game.sectorPhase === 'BANNER' ||

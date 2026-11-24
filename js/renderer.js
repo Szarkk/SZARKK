@@ -90,47 +90,60 @@ function drawShipLightningRuler(ctx, game) {
 
   ctx.save();
   const offsets = p.dual ? [-14, 14] : [0];
+  // Front 270-degree sector: from +135 deg (3*PI/4) clockwise through up (-PI/2) to +45 deg (PI/4)
+  const startAng = Math.PI * 0.75;
+  const endAng = Math.PI * 2.25;
+
   for (const ox of offsets) {
-    const bx = p.x + ox;
-    const noseY = p.y - 16;
-    const endY = Math.max(8, noseY - CHAIN_LIGHTNING_RANGE);
+    const cx = p.x + ox;
+    const cy = p.y - 6;
 
-    // Translucent primary bolt corridor (+-18px)
-    ctx.fillStyle = 'rgba(255, 230, 64, 0.08)';
-    ctx.fillRect(bx - 18, endY, 36, noseY - endY);
-
-    // Dashed vertical reach beam & cap
-    ctx.strokeStyle = 'rgba(255, 230, 64, 0.82)';
-    ctx.setLineDash([4, 3]);
-    ctx.lineWidth = 1.2;
+    // Translucent 270-degree sector fill
+    ctx.fillStyle = 'rgba(255, 230, 64, 0.065)';
     ctx.beginPath();
-    ctx.moveTo(bx, noseY);
-    ctx.lineTo(bx, endY);
-    ctx.moveTo(bx - 18, endY);
-    ctx.lineTo(bx + 18, endY);
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, CHAIN_LIGHTNING_RANGE, startAng, endAng);
+    ctx.closePath();
+    ctx.fill();
+
+    // Outer 270-degree boundary arc + rear blind-wedge boundary rays (+45 deg & +135 deg)
+    ctx.strokeStyle = 'rgba(255, 230, 64, 0.82)';
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(startAng) * CHAIN_LIGHTNING_RANGE, cy + Math.sin(startAng) * CHAIN_LIGHTNING_RANGE);
+    ctx.arc(cx, cy, CHAIN_LIGHTNING_RANGE, startAng, endAng);
+    ctx.lineTo(cx, cy);
     ctx.stroke();
+
+    // Concentric 1F / 2F / 3F range rings (every 38px) inside the 270-degree sector
+    ctx.strokeStyle = 'rgba(255, 230, 64, 0.28)';
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 0.9;
+    for (let f = 1; f <= 3; f++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, f * 38, startAng, endAng);
+      ctx.stroke();
+    }
     ctx.setLineDash([]);
 
-    // 1F / 2F / 3F / 4F ticks (every 38px)
-    ctx.font = '700 8px ui-monospace, Consolas, monospace';
-    ctx.fillStyle = COLORS.yellow;
-    ctx.textAlign = 'left';
-    for (let f = 1; f <= 4; f++) {
-      const ty = noseY - f * 38;
-      if (ty < 10) break;
-      ctx.beginPath();
-      ctx.moveTo(bx - 5, ty);
-      ctx.lineTo(bx + 5, ty);
-      ctx.stroke();
-      if (ox === offsets[offsets.length - 1]) {
-        ctx.fillText(f === 4 ? '4F (152px)' : `${f}F`, bx + 8, ty + 3);
+    // Vertical 1F..4F scale labels (only once on rightmost fighter when dual)
+    if (ox === offsets[offsets.length - 1]) {
+      ctx.font = '700 8px ui-monospace, Consolas, monospace';
+      ctx.fillStyle = COLORS.yellow;
+      ctx.textAlign = 'center';
+      for (let f = 1; f <= 4; f++) {
+        const ty = cy - f * 38;
+        if (ty < 12) break;
+        ctx.fillText(f === 4 ? '270° • 4F (152px)' : `${f}F`, cx, ty - 3);
       }
     }
 
     // Ship hull comparison frame (26x28px)
     ctx.strokeStyle = 'rgba(0, 246, 255, 0.55)';
     ctx.lineWidth = 1;
-    ctx.strokeRect(bx - 13, p.y - 15, 26, 28);
+    ctx.strokeRect(cx - 13, p.y - 15, 26, 28);
   }
   ctx.restore();
 }
@@ -725,13 +738,15 @@ export function renderFrame(game) {
       ctx.globalAlpha = alpha;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      for (const pts of bolt.segments) {
+      for (let si = 0; si < bolt.segments.length; si++) {
+        const pts = bolt.segments[si];
         if (pts.length < 2) continue;
+        const wScale = (bolt.branchStartIdx !== undefined && si >= bolt.branchStartIdx) ? 0.58 : 1.0;
         // Outer golden-orange electric bloom
         ctx.strokeStyle = COLORS.yellowOrange;
         ctx.shadowColor = COLORS.yellow;
-        ctx.shadowBlur = 18;
-        ctx.lineWidth = 5.4 * alpha + 1.4;
+        ctx.shadowBlur = 18 * wScale;
+        ctx.lineWidth = (5.4 * alpha + 1.4) * wScale;
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
@@ -739,7 +754,7 @@ export function renderFrame(game) {
 
         // Crisp neon yellow inner arc
         ctx.strokeStyle = COLORS.yellow;
-        ctx.lineWidth = 2.8 * alpha + 0.8;
+        ctx.lineWidth = (2.8 * alpha + 0.8) * wScale;
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
@@ -747,7 +762,7 @@ export function renderFrame(game) {
 
         // White-hot plasma core
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.3;
+        ctx.lineWidth = 1.3 * wScale;
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
         for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k].x, pts[k].y);
@@ -989,58 +1004,58 @@ export function renderFrame(game) {
   }
   ctx.restore();
 
-  // 13) Hard Mode Heavy Cyan / Red CRT Field Debuff Visual Overlay
-  if (game.fieldDebuff && game.fieldDebuff.timer > 0) {
+  // 13) Hard Mode Cyan / Red CRT Field Debuff Visual Overlay (balanced exposure for full readability)
+  if (game.fieldDebuff && (game.fieldDebuff.indefinite || game.fieldDebuff.timer > 0)) {
     const fd = game.fieldDebuff;
     const isCyanField = fd.type === 'CYAN';
-    const fadeOut = clamp(fd.timer / 0.6, 0, 1);
-    const flicker = 0.82 + Math.sin(game.clock * 38) * 0.12 + Math.cos(game.clock * 17) * 0.06;
+    const fadeOut = fd.indefinite ? 1 : clamp(fd.timer / 0.6, 0, 1);
+    const flicker = 0.86 + Math.sin(game.clock * 34) * 0.08 + Math.cos(game.clock * 15) * 0.04;
     const intensity = fadeOut * flicker;
 
     ctx.save();
-    // Heavy phosphor full-screen tint + deep CRT edge vignette
+    // Balanced phosphor screen tint + CRT edge vignette (keeps center playfield crisp)
     const vig = ctx.createRadialGradient(
-      LOGICAL_W * 0.5, LOGICAL_H * 0.5, LOGICAL_W * 0.16,
+      LOGICAL_W * 0.5, LOGICAL_H * 0.5, LOGICAL_W * 0.22,
       LOGICAL_W * 0.5, LOGICAL_H * 0.5, LOGICAL_H * 0.65
     );
     if (isCyanField) {
-      vig.addColorStop(0, `rgba(0, 165, 255, ${0.09 * intensity})`);
-      vig.addColorStop(0.65, `rgba(0, 120, 255, ${0.22 * intensity})`);
-      vig.addColorStop(1, `rgba(0, 246, 255, ${0.46 * intensity})`);
+      vig.addColorStop(0, `rgba(0, 165, 255, ${0.035 * intensity})`);
+      vig.addColorStop(0.65, `rgba(0, 120, 255, ${0.11 * intensity})`);
+      vig.addColorStop(1, `rgba(0, 246, 255, ${0.26 * intensity})`);
     } else {
-      vig.addColorStop(0, `rgba(255, 24, 58, ${0.10 * intensity})`);
-      vig.addColorStop(0.65, `rgba(210, 10, 40, ${0.24 * intensity})`);
-      vig.addColorStop(1, `rgba(255, 30, 66, ${0.48 * intensity})`);
+      vig.addColorStop(0, `rgba(255, 24, 58, ${0.04 * intensity})`);
+      vig.addColorStop(0.65, `rgba(210, 10, 40, ${0.12 * intensity})`);
+      vig.addColorStop(1, `rgba(255, 30, 66, ${0.28 * intensity})`);
     }
     ctx.fillStyle = vig;
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
 
-    // Heavy animated CRT scanlines
+    // Subtle animated CRT scanlines
     ctx.fillStyle = isCyanField
-      ? `rgba(0, 225, 255, ${0.13 * intensity})`
-      : `rgba(255, 35, 72, ${0.14 * intensity})`;
+      ? `rgba(0, 225, 255, ${0.065 * intensity})`
+      : `rgba(255, 35, 72, ${0.07 * intensity})`;
     const scanOffset = Math.floor((game.clock * 42) % 6);
     for (let sy = scanOffset; sy < LOGICAL_H; sy += 6) {
-      ctx.fillRect(0, sy, LOGICAL_W, 2);
+      ctx.fillRect(0, sy, LOGICAL_W, 1.5);
     }
 
-    // Rolling CRT interference bar
+    // Soft rolling CRT interference bar
     const rollY = ((game.clock * 165) % (LOGICAL_H + 80)) - 40;
-    const rollGrad = ctx.createLinearGradient(0, rollY - 28, 0, rollY + 28);
+    const rollGrad = ctx.createLinearGradient(0, rollY - 22, 0, rollY + 22);
     const barRgb = isCyanField ? '0, 246, 255' : '255, 30, 66';
     rollGrad.addColorStop(0, `rgba(${barRgb}, 0)`);
-    rollGrad.addColorStop(0.5, `rgba(${barRgb}, ${0.22 * intensity})`);
+    rollGrad.addColorStop(0.5, `rgba(${barRgb}, ${0.11 * intensity})`);
     rollGrad.addColorStop(1, `rgba(${barRgb}, 0)`);
     ctx.fillStyle = rollGrad;
-    ctx.fillRect(0, rollY - 28, LOGICAL_W, 56);
+    ctx.fillRect(0, rollY - 22, LOGICAL_W, 44);
 
     // Pulsing CRT border frame
     ctx.strokeStyle = isCyanField ? COLORS.cyan : COLORS.nullRed;
     ctx.shadowColor = isCyanField ? COLORS.cyan : COLORS.nullRed;
-    ctx.shadowBlur = 18;
-    ctx.globalAlpha = 0.72 * intensity;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(2, 2, LOGICAL_W - 4, LOGICAL_H - 4);
+    ctx.shadowBlur = 12;
+    ctx.globalAlpha = 0.54 * intensity;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(1.5, 1.5, LOGICAL_W - 3, LOGICAL_H - 3);
     ctx.restore();
   }
 

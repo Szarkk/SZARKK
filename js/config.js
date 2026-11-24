@@ -71,16 +71,19 @@ export const YELLOW_POWERUP_START_SECTOR = 7;   // Yellow Capsule (Chain Lightni
 export const CLONE_POWERUP_START_SECTOR = 7;    // Dark Blue/Purple Capsule (Fighter Clones) starts Sector 07+
 export const POWERUP_MAX_ENERGY = 100;          // Full horizontal power-up gauge capacity per slot
 export const CYAN_SHOT_ENERGY_COST = 100 / 30;  // 30 conserved Homing Missile volleys per full gauge
-export const YELLOW_SHOT_ENERGY_COST = 100 / 10;// 10 conserved Chain Lightning shots per full gauge
-export const CHAIN_LIGHTNING_MAX_SHOTS = 10;
-export const CHAIN_LIGHTNING_RANGE = 152;       // Short range (~4 fighters long)
-export const CHAIN_LIGHTNING_JUMP_RANGE = 118;  // Short-range chain jump distance
+export const YELLOW_SHOT_ENERGY_COST = 100 / 15;// 15 conserved Chain Lightning shots (3 individual bolts per burst = 3 ammo)
+export const CHAIN_LIGHTNING_MAX_SHOTS = 15;
+export const CHAIN_LIGHTNING_RANGE = 152;       // Short range (~4 fighters long) across front 270-degree arc
+export const CHAIN_LIGHTNING_JUMP_RANGE = 118;  // Short-range edge-to-edge chain jump distance
 export const CHAIN_LIGHTNING_MAX_JUMPS = 4;     // Jumps to 4 additional targets
 export const CHAIN_LIGHTNING_DMG = 1.0;         // 1.0 base damage per hit & jump
-export const CLONE_DURATION = 10.0;             // 10.0s countdown (pauses between sectors/challenges/waves!)
+export const CHAIN_LIGHTNING_BURST_COUNT = 3;   // 3 bolts fired per burst
+export const CHAIN_LIGHTNING_BURST_INTERVAL = 0.25; // 3 bolts go out over 0.50s (0.00s, 0.25s, 0.50s)
+export const CHAIN_LIGHTNING_BURST_COOLDOWN = 0.80; // Waits 0.80s after burst before firing again
+export const CLONE_DURATION = 20.0;             // 20.0s countdown (pauses between sectors/challenges/waves!)
 export const CLONE_BREAKOFF_TIME = 0.8;         // Clones stay left/right/back for 0.8s then break off
 export const CLONE_IFRAMES = 1.0;               // 1.0s invincibility frames upon breaking off
-export const CLONE_HP = 3;                      // 3 HP per autonomous hologram clone
+export const CLONE_HP = 4;                      // 4 HP per autonomous hologram clone
 export const CLONE_FIRE_COOLDOWN = 0.24;        // Rapid dark-purple bolt cadence (2x bolt velocity!)
 export const RED_LASER_DRAIN_PER_SEC = 100 / 11.0; // 11.0s of active firing time (drains ONLY while firing)
 export const RED_LASER_TICK_MULT = 20;          // 20x tick rate (~121 ticks/sec) at 0.1 dmg = exact 2.0 dmg/cycle with zero swipe phasing
@@ -235,12 +238,12 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'commander',
     cardClass: 'tier-pwr-yellow',
     stats: [
-      { text: '10 CHAIN SHOTS', cls: 'gold' },
-      { text: 'JUMPS +4 TARGETS', cls: '' },
-      { text: '1 DMG • 1/2 FIRE RATE', cls: 'warn' },
-      { text: 'STACKABLE', cls: 'emerald' }
+      { text: '15 SHOTS (3x BOLTS)', cls: 'gold' },
+      { text: 'FRONT 270° ARC', cls: '' },
+      { text: 'ZAPS ENEMY BULLETS', cls: 'emerald' },
+      { text: 'JUMPS +4 TARGETS', cls: 'warn' }
     ],
-    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — transforms your Aurex Fighter yellow/gold and charges 10 short-range (~4 fighters long) lightning bolts at 1/2 fire rate. Each hit deals 1 damage and arcs to up to 4 additional nearby targets!'
+    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — transforms your Aurex Fighter yellow/gold and charges 15 shots fired as rapid 3-bolt bursts (3 individual lightning lines over 0.5s using 3 shots, then 0.8s cooldown) across a front 270-degree radius (~4 fighters). Each bolt independently zaps enemies, capsules, Enforcer Wings, and enemy bullets, dealing 1 damage and chaining edge-to-edge to up to 4 additional targets!'
   },
   {
     id: 'CAPSULE_CLONE',
@@ -249,12 +252,12 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'deploy',
     cardClass: 'tier-pwr-clone',
     stats: [
-      { text: '3 HOLOGRAMS (3 HP)', cls: 'emerald' },
-      { text: '10s TIMER (PAUSES)', cls: 'gold' },
+      { text: '3 HOLOGRAMS (4 HP)', cls: 'emerald' },
+      { text: '20s TIMER (PAUSES)', cls: 'gold' },
       { text: '2x BOLT SPEED', cls: '' },
       { text: 'STACKABLE', cls: '' }
     ],
-    desc: 'Dark blue & purple power-up (Sector 07+ & 20% Alpha Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after 0.8s with 1s invincibility frames and 3 HP each, firing dark purple bolts at 2x speed for 10s (timer pauses between sectors & challenges; clones vanish if you die).'
+    desc: 'Dark blue & purple power-up (Sector 07+ & 20% Alpha Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after 0.8s with 1s invincibility frames and 4 HP each, firing dark purple bolts at 2x speed for 20s (timer pauses between sectors & challenges; clones vanish if you die).'
   },
   {
     id: 'DRONE',

@@ -439,7 +439,7 @@ export class SzarkkGame {
         this.touchHintState = 'OFF';
       }
     }
-    if (this.fieldDebuff) {
+    if (this.fieldDebuff && !this.fieldDebuff.indefinite) {
       const inTransition =
         this.sectorPhase === 'BANNER' ||
         this.sectorPhase === 'CHALLENGE_BANNER' ||
@@ -448,6 +448,7 @@ export class SzarkkGame {
         this.fieldDebuff.timer -= dt;
         if (this.fieldDebuff.timer <= 0) {
           this.fieldDebuff = null;
+          if (this.sandboxMode && this.syncSandboxUI) this.syncSandboxUI();
         }
       }
     }
