@@ -1,14 +1,16 @@
 <div align="center">
 
-# GRID GALAGA // 1982
+# SZARKK
 
-**A neon arcade shooter for the browser.**  
-Dive the Grid, stack capsules, and rescue your captured fighter before the Recognizers close in.
+**SENTIENT ZENITH AUGMENTATION RECURSIVE KNOWLEDGE KERNEL**
+
+A neon arcade shooter for the browser.  
+Pilot the AUREX fighter, stack capsules, and carve a path through the Nexus.
 
 [![Play Now](https://img.shields.io/badge/%E2%96%B6_PLAY_NOW-00f6ff?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/SZARKK/)
-[![Version](https://img.shields.io/badge/Alpha_Test-0.1.1-ff1e42?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/SZARKK/)
+[![Version](https://img.shields.io/badge/Alpha_Test-0.1.2-ff1e42?style=for-the-badge&labelColor=05080c)](https://szarkk.github.io/SZARKK/)
 
-**[ENTER THE GRID](https://szarkk.github.io/SZARKK/)** — phone or desktop, no install.
+**[ENTER THE NEXUS](https://szarkk.github.io/SZARKK/)** — phone or desktop, no install.
 
 *Early test build. Expect rough edges.*
 
@@ -19,14 +21,16 @@ Dive the Grid, stack capsules, and rescue your captured fighter before the Recog
 ## Features
 
 - **2D dodge zone** — weave freely across the bottom 2/5ths of the arena
-- **Dual-Fighter** — break a Classic MCP Recognizer tractor beam without hitting your captured ship and unlock twin-volley fire
-- **Stackable capsules** — shoot floating mid-arena pickups to charge Cyan, Red, and Purple gauges (they stack and paint an RGB glow on your ship)
-- **Nose-locked red laser** — a true piercing beam that stays locked to the fighter and drains only while firing
+- **Dual-Fighter** — break a V1 Enforcer tractor beam without hitting your captured ship and unlock twin-volley fire
+- **Five stackable capsules** — shoot floating mid-arena pickups to charge Cyan, Red, Purple, Yellow, and Clone gauges
+- **Nose-locked red laser** — a piercing beam locked to the fighter that drains only while firing (2x DPS vs Normal-tier enemies)
+- **Chain Lightning & Fighter Clones** — short-range arcing bolts and a trio of autonomous holograms from Sector 07
 - **Sector campaign** — 4 waves per sector, with a Challenge stage after every 2nd sector
-- **Elites & Masters** — Elite Recognizers from Sector 02/03, Master Recognizers from Sector 06+
-- **Hard Mode [SEC 06+]** — start already at Sector 06 intensity, with full waves and Masters live
+- **Enforcers, Centoids & Pulsars** — Flux / Null Elites and Masters, splitting serpents, and fire-jamming Pulsars
+- **Hard Mode [SEC 06+]** — start already at Sector 06 intensity, with full waves, Masters, and CRT Field debuffs
+- **Training / Sandbox** — infinite-lives arena to deploy enemies, test loadouts, and simulate real sectors
 - **Local leaderboard** — top 10 scores per mode, saved in your browser with callsign, sector, and accuracy
-- **Grid Archive** — in-game tactical database of ships, enemies, and power-ups
+- **Nexus Archive** — in-game tactical database of ships, enemies, and power-ups
 - **CRT / SFX / Auto-Fire** — toggle scanlines, sound, and continuous fire from the HUD
 
 ## Controls
@@ -49,28 +53,31 @@ The HUD also has **AUTO**, **CRT**, **SFX**, and pause buttons. Switch to **Touc
 
 | Action | Input |
 | :--- | :--- |
-| Move | Drag directly on or **below** your fighter (the extended handle keeps your finger off the ship) |
+| Move | Touch and drag **anywhere below the dotted line** (you do not need to touch the ship) |
 | Fire | Hold or tap **FIRE** with your other thumb |
 | PC Mode | Switch back to the compact desktop keybar from the dock |
 
 ## Power-Ups
 
-Capsules float mid-arena (50% chance each standard wave once unlocked) or drop one second after a destroyed enemy. **Shoot the capsule** to activate it. Gauges stack — different colors split the bottom meter. Active energy persists between sectors and Challenges.
+Capsules float mid-arena (20% chance each standard wave once unlocked) or drop one second after a destroyed enemy. **Shoot the capsule** to activate it. Gauges stack — different colors split the bottom meter. Active energy persists between sectors and Challenges.
 
 | Capsule | Unlocks | What you get |
 | :--- | :--- | :--- |
-| **Cyan — Homing Missiles** | Sector 02, Wave 3+ | 30 conserved volleys of twin missiles. They track enemies, Lightwings, and floating capsules. Shatter Ares ribbons in one hit and deal **1.3x** damage to Elite/Master Ares Recognizers. |
-| **Red — Continuous Laser** | Sector 03+ | 12 seconds of nose-locked piercing laser (drains **only while firing**). Deals **1.3x** to Legacy Recognizers. Blocked by crimson ribbons; cyan ribbons convert the beam into slowed, dissolving bolts. |
-| **Purple — Arc Wave** | Sector 04+ | 6 wide waves that void enemy shots. After the 6th wave, **double-tap Fire** for a massive AOE Cannon Shot (tap 1 charges, tap 2 fires — or it auto-fires after 3 seconds). |
+| **Cyan — Homing Missiles** | Sector 02, Wave 3+ | 30 conserved volleys of twin missiles. They track enemies, Enforcer Wings, and floating capsules. Shatter Null Threads in one hit and deal **1.3x** damage to Elite/Master Enforcers [Null]. |
+| **Red — Continuous Laser** | Sector 03+ | 11 seconds of nose-locked piercing laser (drains **only while firing**). **2x** DPS vs Normal-tier enemies and **1.3x** vs Flux Enforcers. Blocked by Null Threads; Flux Threads convert the beam into slowed, dissolving bolts. |
+| **Purple — Arc Wave** | Sector 04+ | 6 wide waves (0.5 dmg each) that void enemy shots. After the 6th wave, **double-tap Fire** for a massive AOE Cannon Shot (tap 1 charges, tap 2 fires — or it auto-fires after 3 seconds). |
+| **Yellow — Chain Lightning** | Sector 07+ (also 10% Pulsar drop) | Turns the AUREX gold and charges 10 short-range bolts at half fire rate. Each hit deals 1 damage and jumps to up to 4 nearby targets. |
+| **Fighter Clones** | Sector 07+ (also 20% Alpha Centoid drop) | Deploys 3 hologram clones (left, right, back). They break off after 0.8s with 1s of invincibility and 3 HP each, firing 2x-speed dark-purple bolts for 10 seconds. The timer pauses between sectors, waves, and Challenges. Clones vanish if you die. |
 
-## The Grid
+## The Nexus
 
 Start with **3 lives** (cap of 5). An extra fighter arrives at **20,000** points, then every **35,000**.
 
 - Standard sectors run **4 waves**
 - A **Challenge** stage starts after every 2nd sector (`Sec 02 → CH.01`, `Sec 04 → CH.02`, and so on)
 - Perfect Challenge clear: **+10,000**. Otherwise: **+100** per hit
-- **Hard Mode** labels sectors `H01+` and Challenges `H-CH`. `H01` plays at Sector 06 intensity; `H-CH.01` starts at Challenge 3 rules (guarded Masters and extra rounds). Hard Mode has its own hi-score and leaderboard
+- Each wave, a unit has a **5%** chance to swap one tier up or down
+- **Hard Mode** labels sectors `H01+` and Challenges `H-CH`. `H01` plays at Sector 06 intensity; `H-CH.01` starts at Challenge 3 rules (guarded Masters and extra rounds). Hard Mode has its own hi-score and leaderboard. When a surviving Master re-enters while you have two or more power-ups active, there is a 50% chance of a 4s CRT Field: Cyan Flux slows move and fire rate by 1.5x; Red Null halves your damage
 
 ### Hostiles
 
@@ -78,13 +85,22 @@ Points are formation / diving unless noted.
 
 | Unit | Debut | HP | Points | Notes |
 | :--- | :--- | ---: | ---: | :--- |
-| Bit-Drone | Sector 01 | 1 | 50 / 100 | Swarming scouts. Rare capsule drop from Sec 02 W3 |
-| Grid-Interceptor | Sector 01 | 1 | 80 / 160 | Wide-arc divers that fire amber plasma |
-| MCP Recognizer [1982] | Early sectors | 2 | 150 / 400 | Tractor beam kidnap. Destroy it, not your captured ship, for Dual-Fighter |
-| Elite Legacy Recognizer | Sec 02, Wave 3+ | 6 (12 in CH.2+ raids) | 350 / 900 | Launches cyan Lightwings whose ribbons slow your ship and dissolve bullets |
-| Elite Ares Recognizer | Sector 03+ | 6 (12 in CH.2+ raids) | 400 / 1000 | Launches crimson Lightwings. Ribbons block shots (6 hits) and inflict Slow + −20% DMG |
-| Master Legacy / Ares Recognizer | Sector 06+ | 15 | 750 / 1800 · 850 / 2000 | Aura-ringed dreadnoughts with heavy drops; guarded in Challenge 3+ / Hard Mode |
-| Lightwings | Deployed by Elites & Masters | 1 | 150 | High-speed drones that paint cyan or crimson light ribbons |
+| Drone | Sector 01 | 1 | 50 / 100 | Swarming scouts. Rare capsule drop from Sec 02 W3 |
+| Interceptor | Sector 01 | 1 | 80 / 160 | Wide-arc divers that fire amber plasma |
+| V1 Enforcer | Early sectors | 3 | 150 / 400 | Tractor beam kidnap for Dual-Fighter. At 1 HP, proximity to Flux or Null shifts its color and bursts an AOE buff on death (+30% speed or +33% HP) |
+| Centoid | Sector 04+ | 8 segments × 1 | 220 head / 60 seg | Horizontal zig-zag serpent. Headshots erase the whole chain with no split. Otherwise it can split (max 2 living snakes) |
+| Elite Enforcer [Flux] | Sec 02, Wave 3+ | 6 (12 in CH.2+ raids) | 350 / 900 | 10% abduction chance per wave. Cyan Enforcer Wings paint Flux Threads that slow your ship and dissolve bullets |
+| Elite Enforcer [Null] | Sector 03+ | 6 (12 in CH.2+ raids) | 400 / 1000 | 10% abduction chance per wave. Crimson wings paint Null Threads that block shots (6 hits) and inflict Slow + −20% DMG |
+| Alpha Centoid | Sector 07+ | 8 segments × 2 | 450 head / 120 seg | Elite 90°-corridor serpent. Headshots insta-clear the chain. 20% chance to drop Fighter Clones |
+| Pulsar | Sector 07+ | 6 | 380 / 950 | Electro orbs jam firing for 2s (no HP damage). Death sparks halve fire rate for 4s. 10% chance to drop Chain Lightning |
+| Master Enforcer [Flux / Null] | Sector 06+ | 18 | 750 / 1800 · 850 / 2000 | Aura-ringed dreadnoughts. Kill 10 of one type without dying for a glowing reward capsule. Guarded in Challenge 3+ / Hard Mode |
+| Enforcer Wings | Deployed by Elites & Masters | 1 | 150 | High-speed drones that paint cyan Flux Threads or crimson Null Threads |
+
+## Training / Sandbox
+
+Open **TRAINING / SANDBOX** from the main menu for an infinite-lives test arena. Deploy or drag any enemy, float or tap-place capsules, toggle Dual-Fighter and all five power-ups, pause idle animation, and switch enemies between attack and idle. You can also run a **Training Round** that simulates a real Normal or Hard sector.
+
+Sandbox runs are for practice — they do not write to the leaderboard.
 
 ## Leaderboard
 
@@ -108,16 +124,18 @@ You can also skip the local setup and [play the live build](https://szarkk.githu
 ## Project structure
 
 ```
-index.html              # Game shell, HUD, and overlays
+index.html              # Game shell, HUD, overlays, and sandbox UI
 css/style.css           # Neon arcade UI
 js/
   main.js               # Game loop and boot
-  config.js             # Version, tuning, and Grid Archive catalog
-  player.js             # Light-Fighter movement and fire
+  config.js             # Version, tuning, and Nexus Archive catalog
+  player.js             # AUREX movement and fire
   enemies.js            # Sectors, waves, and Challenge stages
-  recognizers.js        # Tractor beam, Elites, Masters, Lightwings
+  enforcers.js          # Tractor beam, Flux / Null Elites & Masters, Wings
+  special_enemies.js    # Centoids, Pulsars, and cost-based swaps
   powerups.js           # Capsules and stackable gauges
-  projectiles.js        # Shots, laser, ribbons, Arc Wave, cannon
+  projectiles.js        # Shots, laser, threads, Arc Wave, lightning, clones
+  sandbox.js            # Training / Sandbox arena
   renderer.js / sprites.js / ui.js / audio.js
   leaderboard.js        # Local top 10 (Normal / Hard)
   utils.js
@@ -126,10 +144,10 @@ legacy/index-original.html   # Earlier single-file snapshot
 
 ## Status
 
-**Alpha Test 0.1.1** — a public early test. Systems are in and playable, but this is still a work in progress. Feedback welcome.
+**Alpha Test 0.1.2** — a public early test. Systems are in and playable, but this is still a work in progress. Feedback welcome.
 
 ## Credits
 
 Created by [Szarkk](https://github.com/Szarkk).
 
-Inspired by classic arcade formation shooters and the look of the Grid.
+Inspired by classic arcade formation shooters.
