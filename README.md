@@ -66,8 +66,8 @@ Capsules float mid-arena (20% chance each standard wave once unlocked) or drop o
 | **Cyan — Homing Missiles** | Sector 02, Wave 3+ | 30 conserved volleys of twin missiles. They track enemies, Enforcer Wings, and floating capsules. Shatter Null Threads in one hit and deal **1.3x** damage to Elite/Master Enforcers [Null]. |
 | **Red — Continuous Laser** | Sector 03+ | 11 seconds of nose-locked piercing laser (drains **only while firing**). **2x** DPS vs Normal-tier enemies and **1.3x** vs Flux Enforcers. Blocked by Null Threads; Flux Threads convert the beam into slowed, dissolving bolts. |
 | **Purple — Arc Wave** | Sector 04+ | 6 wide waves (0.5 dmg each) that void enemy shots. After the 6th wave, **double-tap Fire** for a massive AOE Cannon Shot (tap 1 charges, tap 2 fires — or it auto-fires after 3 seconds). |
-| **Yellow — Chain Lightning** | Sector 07+ (also 10% Pulsar drop) | Turns the AUREX gold and charges 10 short-range bolts at half fire rate. Each hit deals 1 damage and jumps to up to 4 nearby targets. |
-| **Fighter Clones** | Sector 07+ (also 20% Alpha Centoid drop) | Deploys 3 hologram clones (left, right, back). They break off after 0.8s with 1s of invincibility and 3 HP each, firing 2x-speed dark-purple bolts for 10 seconds. The timer pauses between sectors, waves, and Challenges. Clones vanish if you die. |
+| **Yellow — Chain Lightning** | Sector 07+ (also 10% Pulsar drop) | Turns the AUREX gold and charges 24 shots, fired as 3-bolt bursts (0.25s between bolts, 0.80s cooldown). Each hit deals 1 damage and jumps to up to 4 nearby targets. |
+| **Fighter Clones** | Sector 07+ (also 20% Alpha Centoid drop) | Deploys 3 hologram clones (left, right, back). They break off after 0.8s with 1s of invincibility and 4 HP each, firing 2x-speed dark-purple bolts for 20 seconds. The timer pauses between sectors, waves, and Challenges. Clones vanish if you die. |
 
 ## The Nexus
 
@@ -77,7 +77,7 @@ Start with **3 lives** (cap of 5). An extra fighter arrives at **20,000** points
 - A **Challenge** stage starts after every 2nd sector (`Sec 02 → CH.01`, `Sec 04 → CH.02`, and so on)
 - Perfect Challenge clear: **+10,000**. Otherwise: **+100** per hit
 - Each wave, a unit has a **5%** chance to swap one tier up or down
-- **Hard Mode** labels sectors `H01+` and Challenges `H-CH`. `H01` plays at Sector 06 intensity; `H-CH.01` starts at Challenge 3 rules (guarded Masters and extra rounds). Hard Mode has its own hi-score and leaderboard. When a surviving Master re-enters while you have two or more power-ups active, there is a 50% chance of a 4s CRT Field: Cyan Flux slows move and fire rate by 1.5x; Red Null halves your damage
+- **Hard Mode** labels sectors `H01+` and Challenges `H-CH`. `H01` plays at Sector 06 intensity; `H-CH.01` starts at Challenge 3 rules (guarded Masters and extra rounds). Hard Mode has its own hi-score and leaderboard. When a surviving Master or Elite Flux/Null Enforcer re-enters, there is a 50% chance of a 4s CRT Field (no power-up minimum): Cyan Flux slows move and fire rate by 1.5x; Red Null halves your damage
 
 ### Hostiles
 

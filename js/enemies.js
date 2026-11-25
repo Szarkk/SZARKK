@@ -19,6 +19,8 @@ import {
   FLOATING_CAPSULE_CHANCE,
   HARD_FIELD_DEBUFF_CHANCE,
   HARD_FIELD_DEBUFF_DUR,
+  HARD_FIELD_ELITES_TRIGGER,
+  HARD_FIELD_MIN_POWERUPS,
   LOGICAL_H,
   LOGICAL_W,
   MASTER_ENFORCER_HP,
@@ -2138,15 +2140,18 @@ export function updateEnemies(game, dt) {
           game.capturedFighter.y = e.y - 30;
         }
 
-        // Hard Mode CRT Field Debuff: Master Enforcer survived its dive and re-enters while player has 2+ power-ups!
+        // Hard Mode CRT Field Debuff: a Flux (cyan) / Null (red) Enforcer survived its dive and re-enters
+        const isFluxKind = e.type === 'MASTER_FLUX_ENFORCER' || e.type === 'FLUX_ENFORCER';
+        const isNullKind = e.type === 'MASTER_NULL_ENFORCER' || e.type === 'NULL_ENFORCER';
+        const canTriggerField = e.isMaster || (HARD_FIELD_ELITES_TRIGGER && (isFluxKind || isNullKind));
         if (
-          e.isMaster &&
+          canTriggerField &&
           game.hardMode &&
           !game.fieldDebuff &&
-          getActivePowerups(game).length > 1 &&
+          getActivePowerups(game).length >= HARD_FIELD_MIN_POWERUPS &&
           Math.random() < HARD_FIELD_DEBUFF_CHANCE
         ) {
-          const isFluxMaster = e.type === 'MASTER_FLUX_ENFORCER';
+          const isFluxMaster = isFluxKind;
           game.fieldDebuff = {
             type: isFluxMaster ? 'CYAN' : 'RED',
             timer: HARD_FIELD_DEBUFF_DUR,
