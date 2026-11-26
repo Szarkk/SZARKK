@@ -258,56 +258,68 @@ export function drawPixelHomingMissile(ctx, m, time = 0) {
 }
 
 export function drawPixelRedLaserBeam(ctx, beam, px, py, time = 0) {
-  const bx = Math.round(px + beam.offsetX);
-  const by1 = Math.round(py - 16);
+  const usePlayerCoords = typeof py === 'number';
+  const t = usePlayerCoords ? time : (typeof px === 'number' ? px : 0);
+  const bx = Math.round(usePlayerCoords ? (px + (beam.offsetX || 0)) : (beam.x || 0));
+  const by1 = Math.round(usePlayerCoords ? (py - 16) : (beam.y1 || 0));
   const by2 = Math.round(beam.y2);
   const h = Math.max(0, by1 - by2);
   if (h <= 0) return;
 
-  const pulse = Math.floor(time * 24) % 2;
+  const pulse = Math.floor(t * 22) % 2;
   const outerW = pulse ? 10 : 8;
   const midW = pulse ? 6 : 4;
 
   ctx.save();
-  // Outer crimson energy sleeve
-  ctx.fillStyle = 'rgba(255, 30, 66, 0.36)';
-  ctx.fillRect(bx - Math.floor((outerW + 4) / 2), by2, outerW + 4, h);
+  // Soft stepped outer crimson aura sleeve (Design A: Solid Plasma Lance — zero horizontal dashes!)
+  ctx.fillStyle = 'rgba(255, 30, 66, 0.24)';
+  ctx.fillRect(bx - Math.floor((outerW + 6) / 2), by2, outerW + 6, h);
+  ctx.fillStyle = 'rgba(255, 30, 66, 0.55)';
+  ctx.fillRect(bx - Math.floor((outerW + 2) / 2), by2, outerW + 2, h);
+
+  // Solid blazing crimson-scarlet plasma column
   ctx.fillStyle = COLORS.nullRed;
   ctx.fillRect(bx - Math.floor(outerW / 2), by2, outerW, h);
-
-  // Mid bright scarlet plasma column
-  ctx.fillStyle = '#ff607c';
+  ctx.fillStyle = '#ff6380';
   ctx.fillRect(bx - Math.floor(midW / 2), by2, midW, h);
 
-  // Razor-sharp pure white inner core
+  // Continuous razor-sharp pure white inner core
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(bx - 1, by2, 2, h);
 
-  // Scrolling upward 32-bit plasma energy nodes along the beam!
-  const scroll = Math.floor((time * 420) % 18);
-  ctx.fillStyle = '#ffd2dc';
-  for (let sy = by1 - scroll; sy > by2 + 4; sy -= 18) {
-    ctx.fillRect(bx - Math.floor(outerW / 2) - 1, sy, outerW + 2, 2);
+  // High-speed vertical white energy slivers racing upward inside the core
+  const scroll1 = Math.floor((t * 260) % 28);
+  ctx.fillStyle = '#ffffff';
+  for (let sy = by1 - scroll1; sy > by2 + 8; sy -= 28) {
+    ctx.fillRect(bx - 2, sy - 10, 4, 10);
+  }
+  const scroll2 = Math.floor((t * 190 + 14) % 34);
+  ctx.fillStyle = '#ffb5c4';
+  for (let sy = by1 - scroll2; sy > by2 + 6; sy -= 34) {
+    const side = ((Math.floor(sy / 34)) % 2 === 0) ? -3 : 2;
+    ctx.fillRect(bx + side, sy - 7, 1, 7);
   }
 
   // Crisp pixel star muzzle flare at fighter nose
   const mf = pulse ? 6 : 5;
   ctx.fillStyle = COLORS.nullRed;
-  ctx.fillRect(bx - mf, by1 - 2, mf * 2, 4);
-  ctx.fillRect(bx - 2, by1 - mf, 4, mf * 2);
+  ctx.fillRect(bx - mf, by1 - 1, mf * 2, 2);
+  ctx.fillRect(bx - 1, by1 - mf, 2, mf * 2);
+  drawPixelDisc(ctx, bx, by1, 4, '#ff607c');
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(bx - 3, by1 - 3, 6, 6);
+  ctx.fillRect(bx - 2, by1 - 2, 4, 4);
 
   // Pixelated Thread stop / refraction impact flare
   if (beam.hit) {
     const hCol = beam.hitColor || COLORS.nullRed;
-    const hr = pulse ? 9 : 7;
+    const hr = pulse ? 8 : 6;
+    drawPixelDisc(ctx, bx, by2, hr + 2, 'rgba(255, 30, 66, 0.34)');
     ctx.fillStyle = hCol;
-    ctx.fillRect(bx - hr, by2 - 2, hr * 2, 4);
-    ctx.fillRect(bx - 2, by2 - hr, 4, hr * 2);
-    drawPixelDisc(ctx, bx, by2, hr - 2, hCol);
+    ctx.fillRect(bx - hr, by2 - 1, hr * 2, 2);
+    ctx.fillRect(bx - 1, by2 - hr, 2, hr * 2);
+    drawPixelDisc(ctx, bx, by2, Math.max(3, hr - 2), hCol);
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(bx - 3, by2 - 3, 6, 6);
+    ctx.fillRect(bx - 2, by2 - 2, 4, 4);
   }
   ctx.restore();
 }
