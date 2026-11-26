@@ -1086,6 +1086,8 @@ export function updateFighterClonesAndBolts(game, dt) {
 
   for (let i = game.fighterClones.length - 1; i >= 0; i--) {
     const cl = game.fighterClones[i];
+    const prevX = cl.x;
+    const prevY = cl.y;
     if (cl.invulnTimer > 0) cl.invulnTimer = Math.max(0, cl.invulnTimer - dt);
     if (cl.hitFlash > 0) cl.hitFlash = Math.max(0, cl.hitFlash - dt);
 
@@ -1101,56 +1103,72 @@ export function updateFighterClonesAndBolts(game, dt) {
           game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 8, 95);
         }
       }
-      continue;
-    }
-
-    // Autonomous patrol & targeting AI
-    cl.patrolPhase += dt * 2.2 * moveMult;
-    const laneSpread = (cl.role === 'LEFT' ? -95 : (cl.role === 'RIGHT' ? 95 : 0));
-    let desiredX = clamp(LOGICAL_W * 0.5 + laneSpread + Math.sin(cl.patrolPhase) * 72, 28, LOGICAL_W - 28);
-    let desiredY = clamp(PLAYER_MIN_Y + 70 + (cl.role === 'BACK' ? 75 : 22) + Math.cos(cl.patrolPhase * 1.3) * 32, PLAYER_MIN_Y + 12, PLAYER_MAX_Y - 14);
-
-    if (game.enemies.length > 0) {
-      // Spread each clone onto its own target index so all 3 engage across the formation!
-      const tgt = game.enemies[(cl.id - 1) % game.enemies.length];
-      if (tgt) {
-        desiredX = clamp(tgt.x + Math.sin(cl.patrolPhase * 1.4) * 28, 28, LOGICAL_W - 28);
-      }
-    }
-
-    const dx = desiredX - cl.x;
-    const dy = desiredY - cl.y;
-    const dist = Math.hypot(dx, dy);
-    const maxStep = 235 * moveMult * dt;
-    if (dist > maxStep) {
-      cl.x += (dx / dist) * maxStep;
-      cl.y += (dy / dist) * maxStep;
     } else {
-      cl.x = desiredX;
-      cl.y = desiredY;
-    }
+      // Autonomous patrol & targeting AI
+      cl.patrolPhase += dt * 2.2 * moveMult;
+      const laneSpread = (cl.role === 'LEFT' ? -95 : (cl.role === 'RIGHT' ? 95 : 0));
+      let desiredX = clamp(LOGICAL_W * 0.5 + laneSpread + Math.sin(cl.patrolPhase) * 72, 28, LOGICAL_W - 28);
+      let desiredY = clamp(PLAYER_MIN_Y + 70 + (cl.role === 'BACK' ? 75 : 22) + Math.cos(cl.patrolPhase * 1.3) * 32, PLAYER_MIN_Y + 12, PLAYER_MAX_Y - 14);
 
-    // Autonomous rapid dark-purple bolts at 2x speed!
-    if (!inPauseWindow && (game.enemies.length > 0 || game.enforcerWings.length > 0 || game.capsules.length > 0)) {
-      cl.fireCooldown -= dt;
-      if (cl.fireCooldown <= 0) {
-        cl.fireCooldown = CLONE_FIRE_COOLDOWN * fireMult;
-        game.playerBullets.push({
-          x: cl.x,
-          y: cl.y - 14,
-          vy: -PLAYER_BULLET_SPEED * 2.0,
-          dmg: dmgMult,
-          weakened: dmgMult < 0.999,
-          purple: true,
-          cloneBolt: true,
-          redLaserBullet: false,
-          slowedByFlux: false,
-          dissolveTimer: 0,
-          dissolveMax: 0
-        });
-        game.shotsFired++;
+      if (game.enemies.length > 0) {
+        // Spread each clone onto its own target index so all 3 engage across the formation!
+        const tgt = game.enemies[(cl.id - 1) % game.enemies.length];
+        if (tgt) {
+          desiredX = clamp(tgt.x + Math.sin(cl.patrolPhase * 1.4) * 28, 28, LOGICAL_W - 28);
+        }
+      }
+
+      const dx = desiredX - cl.x;
+      const dy = desiredY - cl.y;
+      const dist = Math.hypot(dx, dy);
+      const maxStep = 235 * moveMult * dt;
+      if (dist > maxStep) {
+        cl.x += (dx / dist) * maxStep;
+        cl.y += (dy / dist) * maxStep;
+      } else {
+        cl.x = desiredX;
+        cl.y = desiredY;
+      }
+
+      // Autonomous rapid dark-purple bolts at 2x speed!
+      if (!inPauseWindow && (game.enemies.length > 0 || game.enforcerWings.length > 0 || game.capsules.length > 0)) {
+        cl.fireCooldown -= dt;
+        if (cl.fireCooldown <= 0) {
+          cl.fireCooldown = CLONE_FIRE_COOLDOWN * fireMult;
+          game.playerBullets.push({
+            x: cl.x,
+            y: cl.y - 14,
+            vy: -PLAYER_BULLET_SPEED * 2.0,
+            dmg: dmgMult,
+            weakened: dmgMult < 0.999,
+            purple: true,
+            cloneBolt: true,
+            redLaserBullet: false,
+            slowedByFlux: false,
+            dissolveTimer: 0,
+            dissolveMax: 0
+          });
+          game.shotsFired++;
+        }
       }
     }
+
+    // Smooth clone banking & thruster state so skin-matched clones bank naturally!
+    const safeDt = Math.max(0.001, dt);
+    const instVx = (cl.x - prevX) / safeDt;
+    const instVy = (cl.y - prevY) / safeDt;
+    const smooth = Math.min(1, dt * 14);
+    cl.vx = (cl.vx || 0) + (instVx - (cl.vx || 0)) * smooth;
+    cl.vy = (cl.vy || 0) + (instVy - (cl.vy || 0)) * smooth;
+    const targetBank = Math.abs(cl.vx) > 20 ? clamp(cl.vx / 200, -1, 1) : 0;
+    const targetThrust = Math.abs(cl.vy) > 20 ? clamp(-cl.vy / 200, -1, 1) : 0;
+    cl.bankAxis = (cl.bankAxis || 0) + (targetBank - (cl.bankAxis || 0)) * Math.min(1, dt * 12);
+    cl.thrustAxis = (cl.thrustAxis || 0) + (targetThrust - (cl.thrustAxis || 0)) * Math.min(1, dt * 12);
+    if (Math.abs(cl.bankAxis) < 0.02 && targetBank === 0) cl.bankAxis = 0;
+    cl.animClip = cl.bankAxis <= -0.22
+      ? 'bank_left'
+      : (cl.bankAxis >= 0.22 ? 'bank_right' : (cl.thrustAxis >= 0.25 ? 'thrust_up' : 'idle'));
+    cl.bankFrame = Math.min(3, Math.round(Math.abs(cl.bankAxis) * 3));
   }
 }
 

@@ -1,0 +1,44 @@
+GIMP Palette
+Name: SZARKK Saturn Neon-Alloy (40)
+Columns: 5
+# 8 Hue-Shifted 5-Shade Ramps (S1 Outline -> S2 Shadow -> S3 Midtone -> S4 Bright -> S5 Specular/Core)
+  4   5  14	Endframe S1 Outline
+ 10  15  36	Endframe S2 Shadow
+ 18  32  66	Endframe S3 Midtone
+ 29  60 110	Endframe S4 Bright
+ 57 110 166	Endframe S5 Core
+ 45  53  79	Aurex Alloy S1 Outline
+ 90 105 136	Aurex Alloy S2 Shadow
+155 173 183	Aurex Alloy S3 Midtone
+219 232 245	Aurex Alloy S4 Bright
+255 255 255	Aurex Alloy S5 Core
+  8  36  66	Flux Cyan S1 Outline
+ 13  86 128	Flux Cyan S2 Shadow
+ 18 156 214	Flux Cyan S3 Midtone
+ 43 232 255	Flux Cyan S4 Bright
+212 255 255	Flux Cyan S5 Core
+ 56   8  28	Null Crimson S1 Outline
+122  16  48	Null Crimson S2 Shadow
+204  27  66	Null Crimson S3 Midtone
+255  71 105	Null Crimson S4 Bright
+255 194 207	Null Crimson S5 Core
+ 61  20  20	V1 Solar Amber S1 Outline
+128  43  25	V1 Solar Amber S2 Shadow
+212  85  30	V1 Solar Amber S3 Midtone
+255 147  56	V1 Solar Amber S4 Bright
+255 226 153	V1 Solar Amber S5 Core
+ 69  34  12	Pulsar Volt S1 Outline
+143  81  16	Pulsar Volt S2 Shadow
+224 155  25	Pulsar Volt S3 Midtone
+255 228  77	Pulsar Volt S4 Bright
+255 255 209	Pulsar Volt S5 Core
+ 29  16  66	Arc Clone Violet S1 Outline
+ 72  33 138	Arc Clone Violet S2 Shadow
+136  56 219	Arc Clone Violet S3 Midtone
+212 107 255	Arc Clone Violet S4 Bright
+247 214 255	Arc Clone Violet S5 Core
+  9  46  36	Centoid Emerald S1 Outline
+ 18  99  61	Centoid Emerald S2 Shadow
+ 31 168  84	Centoid Emerald S3 Midtone
+ 92 242 122	Centoid Emerald S4 Bright
+212 255 191	Centoid Emerald S5 Core

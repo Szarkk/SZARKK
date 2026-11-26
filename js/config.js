@@ -165,6 +165,19 @@ export const COLORS = {
   white: '#ecffff'
 };
 
+// 32-BIT SATURN NEON-ALLOY MASTER PALETTE (40 Colors: 8 Hue-Shifted 5-Shade Ramps)
+// S1 Outline -> S2 Shadow -> S3 Midtone -> S4 Bright -> S5 Core/Specular
+export const SATURN_PALETTE = {
+  endframe: ['#04050E', '#0A0F24', '#122042', '#1D3C6E', '#396EA6'],
+  aurex:    ['#2D354F', '#5A6988', '#9BADB7', '#DBE8F5', '#FFFFFF'],
+  flux:     ['#082442', '#0D5680', '#129CD6', '#2BE8FF', '#D4FFFF'],
+  null:     ['#38081C', '#7A1030', '#CC1B42', '#FF4769', '#FFC2CF'],
+  v1:       ['#3D1414', '#802B19', '#D4551E', '#FF9338', '#FFE299'],
+  pulsar:   ['#45220C', '#8F5110', '#E09B19', '#FFE44D', '#FFFFD1'],
+  arc:      ['#1D1042', '#48218A', '#8838DB', '#D46BFF', '#F7D6FF'],
+  centoid:  ['#092E24', '#12633D', '#1FA854', '#5CF27A', '#D4FFBF']
+};
+
 export const STORAGE_KEYS = {
   hi: 'szarkk_hi',
   hiHard: 'szarkk_hi_hard',
@@ -172,7 +185,9 @@ export const STORAGE_KEYS = {
   crt: 'szarkk_crt',
   sfx: 'szarkk_sfx',
   leaderboard: 'szarkk_leaderboard',
-  callsign: 'szarkk_callsign'
+  callsign: 'szarkk_callsign',
+  aurexSkin: 'szarkk_aurex_skin',
+  renderMode: 'szarkk_render_mode'
 };
 
 export const ARCHIVE_ENTRIES = [

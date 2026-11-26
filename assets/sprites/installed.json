@@ -1,0 +1,4 @@
+{
+  "note": "List installed PixelLab PNG clip paths relative to assets/sprites/saturn_32bit/ (e.g. \"player/aurex_idle.png\"). Keeps network requests clean with zero 404s for clips not created yet.",
+  "clips": []
+}

@@ -14,7 +14,9 @@
   --null-red: #ff1e42;
   --purple: #c44dff;
   --white-core: #ecffff;
-  --font-arcade: 'Orbitron', 'Courier New', ui-monospace, 'Consolas', 'Menlo', monospace;
+  --font-display: 'Press Start 2P', 'Silkscreen', ui-monospace, monospace;
+  --font-arcade: 'Silkscreen', 'Pixelify Sans', ui-monospace, monospace;
+  --font-body: 'Pixelify Sans', 'Silkscreen', ui-monospace, monospace;
 }
 
 *, *::before, *::after {
@@ -143,17 +145,18 @@ button:active {
 }
 
 .hud-label {
-  font-size: 8px;
-  letter-spacing: 0.9px;
-  color: rgba(0, 246, 255, 0.74);
+  font-size: 7.5px;
+  letter-spacing: 0.45px;
+  color: rgba(0, 246, 255, 0.78);
   font-weight: 700;
 }
 
 .hud-value {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.25px;
   color: var(--white-core);
-  text-shadow: 0 0 8px rgba(0, 246, 255, 0.75);
+  text-shadow: 1px 1px 0 #02060d, 0 0 8px rgba(0, 246, 255, 0.75);
   white-space: nowrap;
 }
 
@@ -193,11 +196,11 @@ button:active {
 }
 
 .hud-pill {
-  padding: 5px 7px;
-  min-height: 28px;
-  font-size: 9.5px;
+  padding: 4px 6px;
+  min-height: 27px;
+  font-size: 8.5px;
   border-radius: 6px;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
   white-space: nowrap;
   background: rgba(4, 18, 36, 0.94);
   color: var(--cyan);
@@ -255,6 +258,12 @@ button:active {
   max-height: 100%;
   touch-action: none;
   cursor: default;
+}
+
+body.pixel-mode #game-canvas {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 /* Optional Toggleable CRT Scanline + Vignette Filter */
@@ -455,30 +464,39 @@ button:active {
 }
 
 .nexus-title {
-  font-size: 29px;
-  font-weight: 900;
-  letter-spacing: 3px;
-  line-height: 1.05;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  letter-spacing: 2px;
+  line-height: 1.25;
   color: #ffffff;
-  text-shadow: 0 0 12px var(--cyan), 0 0 26px rgba(0, 246, 255, 0.52);
+  text-shadow: 2px 2px 0 #020814, 0 0 12px var(--cyan), 0 0 26px rgba(0, 246, 255, 0.52);
+  -webkit-font-smoothing: none;
+}
+
+.nexus-title.modal-heading {
+  font-size: 14.5px;
+  letter-spacing: 1px;
+  line-height: 1.4;
 }
 
 .nexus-subtitle {
-  font-size: 12px;
+  font-size: 9.5px;
   font-weight: 700;
-  letter-spacing: 3px;
+  letter-spacing: 1.4px;
   color: var(--cyan);
-  text-shadow: 0 0 8px rgba(0, 246, 255, 0.72);
+  text-shadow: 1px 1px 0 #020814, 0 0 8px rgba(0, 246, 255, 0.72);
 }
 
 .nexus-title.szarkk-title {
-  letter-spacing: 11px;
-  padding-left: 11px;
+  font-size: 25px;
+  letter-spacing: 5px;
+  padding-left: 5px;
 }
 
 .nexus-subtitle.szarkk-acronym {
-  font-size: 8.5px;
-  letter-spacing: 1.35px;
+  font-size: 7.5px;
+  letter-spacing: 0.6px;
   line-height: 1.45;
   max-width: 100%;
   margin-top: 2px;
@@ -487,9 +505,9 @@ button:active {
 .version-badge {
   padding: 2px 10px;
   border-radius: 99px;
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 700;
-  letter-spacing: 1.4px;
+  letter-spacing: 0.9px;
   color: #c8faff;
   background: rgba(0, 52, 82, 0.78);
   border: 1px solid rgba(0, 246, 255, 0.6);
@@ -506,9 +524,9 @@ button:active {
   border-radius: 8px;
   background: rgba(2, 14, 30, 0.88);
   border: 1px solid rgba(0, 246, 255, 0.34);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.35px;
   flex-wrap: wrap;
 }
 
@@ -542,10 +560,10 @@ button:active {
 
 .mode-btn,
 .lb-tab-btn {
-  padding: 8px 10px;
-  font-size: 10.5px;
-  font-weight: 900;
-  letter-spacing: 1px;
+  padding: 8px 8px;
+  font-size: 9.2px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
   border-radius: 8px;
   background: rgba(4, 16, 30, 0.9);
   color: rgba(160, 224, 245, 0.72);
@@ -583,15 +601,16 @@ button:active {
 
 .nexus-cta {
   width: 100%;
-  padding: 12px 14px;
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 1.8px;
+  padding: 11px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(0, 118, 160, 0.92), rgba(0, 58, 92, 0.95));
   color: #ffffff;
   border: 1.5px solid #00f6ff;
   box-shadow: 0 0 16px rgba(0, 246, 255, 0.48), inset 0 0 12px rgba(0, 246, 255, 0.22);
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.85);
 }
 
 .nexus-cta.secondary {
@@ -599,8 +618,9 @@ button:active {
   color: #a8f8ff;
   border-color: rgba(0, 246, 255, 0.62);
   box-shadow: 0 0 10px rgba(0, 246, 255, 0.22);
-  font-size: 11.5px;
-  padding: 10px 12px;
+  font-size: 9.8px;
+  letter-spacing: 0.6px;
+  padding: 10px 10px;
 }
 
 .nexus-cta.amber {
@@ -608,8 +628,9 @@ button:active {
   color: #ffd68c;
   border-color: var(--amber);
   box-shadow: 0 0 12px rgba(255, 153, 0, 0.34);
-  font-size: 11.5px;
-  padding: 10px 12px;
+  font-size: 9.8px;
+  letter-spacing: 0.6px;
+  padding: 10px 10px;
 }
 
 .nexus-cta.danger {
@@ -617,8 +638,9 @@ button:active {
   color: #ff9eb0;
   border-color: var(--null-red);
   box-shadow: 0 0 12px rgba(255, 30, 66, 0.35);
-  font-size: 11.5px;
-  padding: 10px 12px;
+  font-size: 9.8px;
+  letter-spacing: 0.6px;
+  padding: 10px 10px;
 }
 
 .nexus-cta.gold-btn {
@@ -626,8 +648,9 @@ button:active {
   color: #ffe488;
   border-color: var(--gold);
   box-shadow: 0 0 12px rgba(255, 212, 71, 0.34);
-  font-size: 11.5px;
-  padding: 10px 12px;
+  font-size: 9.8px;
+  letter-spacing: 0.6px;
+  padding: 10px 10px;
 }
 
 /* =========================================================================
@@ -715,12 +738,12 @@ button:active {
 .lb-table-head {
   width: 100%;
   display: grid;
-  grid-template-columns: 44px 1fr 78px 40px 52px;
+  grid-template-columns: 44px 1fr 78px 42px 54px;
   gap: 6px;
   padding: 6px 10px;
-  font-size: 8.5px;
-  font-weight: 800;
-  letter-spacing: 1px;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   color: rgba(0, 246, 255, 0.78);
   border-bottom: 1px solid rgba(0, 246, 255, 0.34);
   background: rgba(2, 12, 26, 0.85);
@@ -745,16 +768,17 @@ button:active {
 .lb-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 44px 1fr 78px 40px 52px;
+  grid-template-columns: 44px 1fr 78px 42px 54px;
   gap: 6px;
   align-items: center;
   padding: 8px 10px;
   border-radius: 8px;
   background: rgba(4, 16, 32, 0.88);
   border: 1px solid rgba(0, 246, 255, 0.24);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.3px;
+  text-shadow: 1px 1px 0 #02060d;
 }
 
 .lb-row.rank-1 {
@@ -813,10 +837,11 @@ button:active {
 .lb-empty {
   padding: 26px 14px;
   text-align: center;
-  font-size: 10.5px;
-  line-height: 1.6;
-  letter-spacing: 0.9px;
-  color: rgba(170, 224, 245, 0.66);
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.5;
+  letter-spacing: 0.4px;
+  color: rgba(170, 224, 245, 0.72);
   border: 1px dashed rgba(0, 246, 255, 0.28);
   border-radius: 10px;
 }
@@ -936,8 +961,9 @@ button:active {
 }
 
 .ctrl-hint-line {
-  font-size: 9.5px;
-  line-height: 1.35;
+  font-family: var(--font-body);
+  font-size: 11.5px;
+  line-height: 1.38;
   color: #a8e4f5;
   text-align: left;
 }
@@ -952,7 +978,8 @@ button:active {
   flex-direction: column;
   gap: 5px;
   text-align: left;
-  font-size: 9.5px;
+  font-family: var(--font-body);
+  font-size: 11.5px;
   line-height: 1.38;
   color: #beeaff;
 }
@@ -994,25 +1021,28 @@ button:active {
 }
 
 .archive-kicker {
-  font-size: 8.5px;
+  font-size: 7.5px;
   color: rgba(0, 246, 255, 0.78);
-  letter-spacing: 1.5px;
+  letter-spacing: 0.9px;
   font-weight: 700;
 }
 
 .archive-heading {
-  font-size: 15px;
-  font-weight: 900;
-  letter-spacing: 1.8px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.8px;
+  line-height: 1.3;
   color: #ffffff;
-  text-shadow: 0 0 10px rgba(0, 246, 255, 0.8);
+  text-shadow: 2px 2px 0 #020814, 0 0 10px rgba(0, 246, 255, 0.8);
+  -webkit-font-smoothing: none;
 }
 
 .archive-back-btn {
-  padding: 7px 11px;
-  font-size: 10.5px;
+  padding: 6px 9px;
+  font-size: 9px;
   border-radius: 7px;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   background: rgba(0, 62, 92, 0.94);
   color: #ffffff;
   border-color: #00f6ff;
@@ -1149,8 +1179,9 @@ button:active {
 .stat-chip.emerald { border-color: rgba(0, 255, 170, 0.6); color: #9effdc; }
 
 .archive-desc {
-  font-size: 10.2px;
-  line-height: 1.4;
+  font-family: var(--font-body);
+  font-size: 12px;
+  line-height: 1.38;
   color: #c8f0ff;
 }
 
@@ -1260,11 +1291,11 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
-  font-size: 8.5px;
-  font-weight: 800;
-  letter-spacing: 0.8px;
-  line-height: 1;
+  gap: 3px;
+  font-size: 7.4px;
+  font-weight: 700;
+  letter-spacing: 0.25px;
+  line-height: 1.05;
 }
 
 .pwr-gauge-name {
@@ -1465,10 +1496,10 @@ body.desktop-mode .dock-inner {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
-  font-size: 9px;
-  letter-spacing: 0.6px;
-  color: rgba(160, 240, 255, 0.82);
+  gap: 4px;
+  font-size: 7.8px;
+  letter-spacing: 0.25px;
+  color: rgba(160, 240, 255, 0.84);
 }
 
 .desktop-keys strong {
@@ -1481,11 +1512,11 @@ body.desktop-mode .dock-inner {
 }
 
 .dock-mini-btn {
-  padding: 3px 8px;
+  padding: 3px 7px;
   min-height: 22px;
-  font-size: 8.5px;
+  font-size: 7.8px;
   border-radius: 5px;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.3px;
   white-space: nowrap;
   flex-shrink: 0;
   background: rgba(4, 22, 40, 0.9);
@@ -1514,9 +1545,9 @@ body.desktop-mode .dock-inner {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
-  letter-spacing: 0.9px;
+  letter-spacing: 0.4px;
   color: rgba(0, 246, 255, 0.88);
   pointer-events: none;
 }
@@ -1567,13 +1598,15 @@ body.desktop-mode .dock-inner {
   flex: 1 1 0;
   min-height: 58px;
   border-radius: 11px;
-  font-size: 13px;
-  font-weight: 900;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 400;
   letter-spacing: 1.4px;
   background: linear-gradient(180deg, rgba(0, 48, 78, 0.9), rgba(3, 14, 28, 0.96));
   color: #d6fcff;
   border: 1.5px solid rgba(0, 246, 255, 0.8);
   box-shadow: 0 0 12px rgba(0, 246, 255, 0.25), inset 0 0 10px rgba(0, 246, 255, 0.14);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
   touch-action: none;
 }
 
@@ -1718,21 +1751,22 @@ body.desktop-mode .dock-inner {
     gap: 4px;
   }
   .hud-left { gap: 5px; }
-  .hud-label { font-size: 7px; }
-  .hud-value { font-size: 11px; }
+  .hud-label { font-size: 6.5px; }
+  .hud-value { font-size: 10px; }
   .life-ship-svg { width: 10px; height: 12px; }
   .hud-right { gap: 3px; }
   .hud-pill {
-    padding: 4px 5px;
-    min-height: 25px;
-    font-size: 8.5px;
-    letter-spacing: 0.3px;
+    padding: 3px 4px;
+    min-height: 24px;
+    font-size: 7.2px;
+    letter-spacing: 0.15px;
   }
-  .nexus-title { font-size: 26px; }
+  .nexus-title.szarkk-title { font-size: 20px; letter-spacing: 3.5px; padding-left: 3.5px; }
+  .nexus-title.modal-heading { font-size: 12.5px; }
   .nexus-card { padding: 14px 13px; gap: 9px; }
-  .arcade-btn { min-height: 54px; font-size: 12px; }
-  .drag-label { font-size: 9.5px; letter-spacing: 0.8px; }
-  .drag-sub { font-size: 7.8px; }
+  .arcade-btn { min-height: 54px; font-size: 11px; }
+  .drag-label { font-size: 9px; letter-spacing: 0.6px; }
+  .drag-sub { font-size: 7.4px; }
 }
 
 /* =========================================================================
@@ -1782,11 +1816,11 @@ body.sandbox-active #status-bar {
 
 .sbx-pill {
   pointer-events: auto;
-  padding: 4px 7px;
-  min-height: 25px;
-  font-size: 8.5px;
-  font-weight: 900;
-  letter-spacing: 0.55px;
+  padding: 4px 6px;
+  min-height: 24px;
+  font-size: 7.6px;
+  font-weight: 700;
+  letter-spacing: 0.25px;
   border-radius: 6px;
   background: rgba(3, 18, 34, 0.92);
   color: #b8f6ff;
@@ -1923,11 +1957,11 @@ body.sandbox-active #status-bar {
 .sbx-corner-btn {
   pointer-events: auto;
   min-width: 68px;
-  padding: 5px 8px;
-  min-height: 26px;
-  font-size: 8.5px;
-  font-weight: 900;
-  letter-spacing: 0.65px;
+  padding: 5px 7px;
+  min-height: 25px;
+  font-size: 7.8px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
   border-radius: 6px;
   white-space: nowrap;
 }
@@ -1943,6 +1977,13 @@ body.sandbox-active #status-bar {
   background: linear-gradient(180deg, rgba(0, 128, 96, 0.95), rgba(0, 60, 46, 0.96));
   border-color: var(--emerald);
   box-shadow: 0 0 11px rgba(0, 255, 170, 0.5);
+}
+
+.sbx-corner-btn.is-skins {
+  background: linear-gradient(180deg, rgba(64, 24, 128, 0.94), rgba(28, 10, 66, 0.96));
+  color: #f0d8ff;
+  border: 1.3px solid rgba(196, 77, 255, 0.85);
+  box-shadow: 0 0 9px rgba(196, 77, 255, 0.36);
 }
 
 .sbx-corner-btn.is-ruler {
@@ -2259,10 +2300,10 @@ body.sandbox-active #status-bar {
 
 .sbx-action-btn {
   width: 100%;
-  padding: 8px 9px;
-  font-size: 9.8px;
-  font-weight: 900;
-  letter-spacing: 1px;
+  padding: 7px 8px;
+  font-size: 8.6px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
   border-radius: 7px;
   border: 1.4px solid rgba(0, 246, 255, 0.65);
   background: rgba(4, 22, 40, 0.94);
@@ -2305,10 +2346,10 @@ body.sandbox-active #status-bar {
 }
 
 .sbx-seg-btn {
-  padding: 3px 7px;
-  font-size: 8.2px;
-  font-weight: 900;
-  letter-spacing: 0.6px;
+  padding: 3px 6px;
+  font-size: 7.4px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
   border-radius: 5px;
   background: rgba(3, 14, 28, 0.92);
   color: rgba(160, 225, 245, 0.72);
@@ -2340,9 +2381,9 @@ body.sandbox-active #status-bar {
 
 .sbx-chip {
   padding: 6px 5px;
-  font-size: 8.8px;
-  font-weight: 900;
-  letter-spacing: 0.55px;
+  font-size: 7.8px;
+  font-weight: 700;
+  letter-spacing: 0.25px;
   border-radius: 6px;
   background: rgba(3, 14, 28, 0.94);
   color: #d6fbff;
@@ -2374,4 +2415,671 @@ body.sandbox-active #status-bar {
   grid-template-columns: 0.9fr 1.3fr;
   gap: 6px;
   align-items: stretch;
+}
+
+/* =========================================================================
+   AUREX FIGHTER SKINS HANGAR MODAL (32-BIT SATURN & ALPHA TEST LEGACY)
+   ========================================================================= */
+.nexus-cta.skin-btn {
+  background: linear-gradient(180deg, rgba(64, 24, 128, 0.92), rgba(28, 10, 66, 0.96));
+  color: #f0d8ff;
+  border-color: var(--purple);
+  box-shadow: 0 0 13px rgba(196, 77, 255, 0.4), inset 0 0 10px rgba(196, 77, 255, 0.2);
+  font-size: 9.8px;
+  letter-spacing: 0.6px;
+  padding: 10px 10px;
+}
+
+.archive-heading.skins-heading {
+  color: #ebbdff;
+  text-shadow: 2px 2px 0 #020814, 0 0 10px rgba(196, 77, 255, 0.72);
+}
+
+.skin-render-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  background: rgba(4, 16, 32, 0.92);
+  border: 1.2px solid rgba(0, 246, 255, 0.38);
+  flex-shrink: 0;
+}
+
+.skin-render-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.skin-render-label {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--cyan);
+}
+
+.skin-sprite-status {
+  font-size: 6.8px;
+  letter-spacing: 0.2px;
+  color: rgba(185, 232, 255, 0.76);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.skins-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.skin-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px;
+  text-align: left;
+  border-radius: 10px;
+  background: rgba(4, 15, 30, 0.92);
+  border: 1.5px solid rgba(0, 246, 255, 0.34);
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.skin-card:hover {
+  border-color: rgba(0, 246, 255, 0.78);
+  background: rgba(7, 22, 42, 0.95);
+}
+
+.skin-card.is-equipped {
+  border-color: var(--emerald);
+  background: rgba(4, 28, 34, 0.94);
+  box-shadow: 0 0 15px rgba(0, 255, 170, 0.3), inset 0 0 12px rgba(0, 255, 170, 0.1);
+}
+
+.skin-preview-box {
+  width: 68px;
+  height: 68px;
+  flex: 0 0 68px;
+  border-radius: 8px;
+  background: #040814;
+  border: 1.2px solid rgba(0, 246, 255, 0.34);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.skin-preview-canvas {
+  width: 64px;
+  height: 64px;
+  display: block;
+}
+
+.skin-preview-canvas.is-pixel {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.skin-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.skin-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.skin-name {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  text-shadow: 1px 1px 0 #020814;
+}
+
+.skin-badge {
+  padding: 2px 6px;
+  border-radius: 99px;
+  font-size: 6.8px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  white-space: nowrap;
+}
+
+.skin-badge.saturn {
+  background: rgba(18, 156, 214, 0.25);
+  color: #7efaff;
+  border: 1px solid rgba(43, 232, 255, 0.65);
+}
+
+.skin-badge.legacy {
+  background: rgba(212, 85, 30, 0.24);
+  color: #ffd088;
+  border: 1px solid rgba(255, 147, 56, 0.68);
+}
+
+.skin-desc {
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.36;
+  letter-spacing: 0.2px;
+  color: rgba(214, 236, 252, 0.86);
+  font-weight: 500;
+}
+
+.skin-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.skin-equip-pill {
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 7.4px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: rgba(180, 232, 250, 0.78);
+  border: 1px solid rgba(0, 246, 255, 0.35);
+  background: rgba(3, 14, 28, 0.85);
+}
+
+.skin-card.is-equipped .skin-equip-pill {
+  color: #031914;
+  background: var(--emerald);
+  border-color: var(--emerald);
+  box-shadow: 0 0 10px rgba(0, 255, 170, 0.55);
+}
+
+/* =========================================================================
+   32-BIT PIXEL-CURVED ARCADE CABINET CHROME (STEPPED PIXEL CORNERS & GEMS)
+   Gives every modal, card, button, badge & gauge genuine 16/32-bit pixelated
+   curved corners (2-step 4px pixel curves on modals & hero CTAs; 1-step 2px
+   pixel curves on pills, cards & meters) + crisp pixelated title diamonds!
+   ========================================================================= */
+
+:root {
+  --px-bdr: #00e6ff;
+  --px-bg-top: #041628;
+  --px-bg-mid: #041222;
+  --px-bg-bot: #030e1c;
+}
+
+/* Spacing polish so outward pixel-stepped borders never touch neighbors */
+.hud-right { gap: 7px; }
+.menu-actions { gap: 12px; }
+.btn-pair { gap: 11px; }
+.mode-toggle-row, .lb-tabs { gap: 9px; }
+.sbx-strip-group { gap: 6px; }
+.sandbox-pwr-corner { bottom: 10px; right: 10px; gap: 7px; }
+.sbx-pwr-tray { gap: 6px; padding: 8px; }
+.sbx-pwr-tray-list { gap: 6px; }
+.sbx-chip-grid { gap: 7px; }
+.sbx-mini-seg { gap: 6px; }
+.sbx-deploy-btns { gap: 7px; }
+.skins-scroll { gap: 11px; }
+.archive-scroll { gap: 11px; }
+.lb-scroll { gap: 7px; padding: 8px 6px; }
+#powerup-gauge-bar { padding: 6px 7px 8px 7px; gap: 6px; }
+#powerup-gauge-bar.pwr-multi .pwr-gauge-meta { font-size: 6.8px; letter-spacing: 0.1px; }
+
+/* 1) Universal 1-Step Pixel-Curved Corners (2px stepped pixel curve) for compact buttons, pills & chips */
+button,
+.hud-pill,
+.mode-btn,
+.lb-tab-btn,
+.seg-btn,
+.auto-toggle-btn,
+.archive-back-btn,
+.dock-mini-btn,
+.sbx-pill,
+.sbx-corner-btn,
+.sbx-pwr-item,
+.sbx-dep-btn,
+.sbx-action-btn,
+.sbx-seg-btn,
+.sbx-chip,
+.sbx-mini-exit,
+#lr-fire-pill {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow:
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.32),
+    0  4px 0 0 rgba(0, 0, 0, 0.55) !important;
+}
+
+button:active,
+.arcade-btn.active {
+  transform: translate(1px, 1px) !important;
+}
+
+/* Semantic --px-bdr color tokens for every button/pill state */
+.hud-pill { --px-bdr: rgba(0, 246, 255, 0.78); }
+.hud-pill.auto-on { --px-bdr: #00ffaa; }
+.hud-pill.auto-off { --px-bdr: #ff9900; }
+.hud-pill.is-off { --px-bdr: rgba(0, 246, 255, 0.34); }
+.mode-btn, .lb-tab-btn { --px-bdr: rgba(0, 246, 255, 0.42); }
+.mode-btn.selected, .lb-tab-btn.selected { --px-bdr: #00f6ff; }
+.mode-btn.hard-opt.selected, .lb-tab-btn.hard-tab.selected { --px-bdr: #ff1e42; }
+.auto-toggle-btn.on { --px-bdr: #00ffaa; }
+.auto-toggle-btn.off { --px-bdr: #ff9900; }
+.dock-mini-btn { --px-bdr: rgba(0, 246, 255, 0.55); }
+.dock-mini-btn:hover { --px-bdr: #00f6ff; }
+.archive-back-btn { --px-bdr: #00f6ff; }
+
+.sbx-pill { --px-bdr: rgba(0, 246, 255, 0.74); }
+.sbx-pill.is-exit { --px-bdr: #ff1e42; }
+.sbx-pill.sbx-tools-btn { --px-bdr: #00f6ff; }
+.sbx-pill.sbx-tools-btn.is-open, .sbx-pill.is-on { --px-bdr: #00ffaa; }
+.sbx-pill.is-idle { --px-bdr: #ff9900; }
+.sbx-pill.is-attack { --px-bdr: #ff1e42; }
+.sbx-pill.is-paused { --px-bdr: #c44dff; }
+.sbx-pill.is-clear { --px-bdr: #b482ff; }
+
+.sbx-corner-btn.is-tray { --px-bdr: #00f6ff; }
+.sbx-corner-btn.is-tray.is-open { --px-bdr: #00ffaa; }
+.sbx-corner-btn.is-skins { --px-bdr: #c44dff; }
+.sbx-corner-btn.is-ruler { --px-bdr: rgba(255, 212, 71, 0.72); }
+.sbx-corner-btn.is-ruler.is-on { --px-bdr: #ffd447; }
+.sbx-corner-btn.is-clr { --px-bdr: #ff3e62; }
+
+.sbx-pwr-item.is-all { --px-bdr: #ffd447; }
+.sbx-pwr-item.sbx-c-cyan, .sbx-chip.sbx-c-cyan { --px-bdr: #00f6ff; }
+.sbx-pwr-item.sbx-c-red, .sbx-chip.sbx-c-red { --px-bdr: #ff1e42; }
+.sbx-pwr-item.sbx-c-purple, .sbx-chip.sbx-c-purple { --px-bdr: #c44dff; }
+.sbx-pwr-item.sbx-c-yellow, .sbx-chip.sbx-c-yellow { --px-bdr: #ffe640; }
+.sbx-pwr-item.sbx-c-clone, .sbx-chip.sbx-c-clone { --px-bdr: #8a72ff; }
+.sbx-chip.sbx-c-gold { --px-bdr: #ffd447; }
+.sbx-chip.sbx-c-amber { --px-bdr: #ff762a; }
+.sbx-chip.sbx-c-green { --px-bdr: #2dff7a; }
+.sbx-chip.sbx-c-pink { --px-bdr: #ff52c8; }
+.sbx-pwr-item.is-active, .sbx-chip.selected, .sbx-field-chip.is-active { --px-bdr: #ffffff; }
+
+.sbx-action-btn { --px-bdr: rgba(0, 246, 255, 0.72); }
+.sbx-action-btn.primary { --px-bdr: #00f6ff; }
+.sbx-action-btn.emerald { --px-bdr: #00ffaa; }
+.sbx-action-btn.amber { --px-bdr: #ff9900; }
+.sbx-action-btn.danger, .sbx-action-btn.hard-on { --px-bdr: #ff1e42; }
+.sbx-action-btn.gold { --px-bdr: #ffd447; }
+.sbx-seg-btn { --px-bdr: rgba(0, 246, 255, 0.42); }
+.sbx-seg-btn.selected { --px-bdr: #00f6ff; }
+.sbx-seg-btn.hard-opt.selected { --px-bdr: #ff1e42; }
+.sbx-dep-btn { --px-bdr: rgba(0, 246, 255, 0.58); }
+.sbx-dep-btn.is-deploy.selected { --px-bdr: #ffd447; }
+.sbx-dep-btn.is-drag.selected { --px-bdr: #00ffaa; }
+.sbx-dep-btn.is-stop { --px-bdr: #ff1e42; }
+
+/* 2) True 2-Step Pixel-Curved Corners (4px pixel arc!) for Hero CTA Buttons & Mobile FIRE */
+.nexus-cta,
+.arcade-btn {
+  --px-bdr: #00f6ff;
+  --px-bg-top: #0076a0;
+  --px-bg-mid: #00587e;
+  --px-bg-bot: #003a5c;
+  border: 0 !important;
+  border-radius: 0 !important;
+  margin: 2px 0;
+  box-shadow:
+    0 -4px 0 -2px var(--px-bg-top),
+    0  4px 0 -2px var(--px-bg-bot),
+   -4px 0 0 -2px var(--px-bg-mid),
+    4px 0 0 -2px var(--px-bg-mid),
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    0 -6px 0 -2px var(--px-bdr),
+    0  6px 0 -2px var(--px-bdr),
+   -6px 0 0 -2px var(--px-bdr),
+    6px 0 0 -2px var(--px-bdr),
+    0  4px 0 0 rgba(0, 0, 0, 0.45),
+    0  8px 0 -2px rgba(0, 0, 0, 0.58),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.28) !important;
+}
+
+.nexus-cta.emerald-btn {
+  background: linear-gradient(180deg, #007254, #00382c);
+  --px-bdr: #00ffaa;
+  --px-bg-top: #007254;
+  --px-bg-mid: #005440;
+  --px-bg-bot: #00382c;
+}
+.nexus-cta.skin-btn {
+  background: linear-gradient(180deg, #401880, #1c0a42);
+  --px-bdr: #c44dff;
+  --px-bg-top: #401880;
+  --px-bg-mid: #2e1160;
+  --px-bg-bot: #1c0a42;
+}
+.nexus-cta.gold-btn {
+  background: linear-gradient(180deg, #543a08, #2c1c04);
+  --px-bdr: #ffd447;
+  --px-bg-top: #543a08;
+  --px-bg-mid: #402b06;
+  --px-bg-bot: #2c1c04;
+}
+.nexus-cta.secondary {
+  background: #041428;
+  --px-bdr: #00b8d4;
+  --px-bg-top: #041428;
+  --px-bg-mid: #041428;
+  --px-bg-bot: #041428;
+}
+.nexus-cta.amber {
+  background: #3d1d06;
+  --px-bdr: #ff9900;
+  --px-bg-top: #3d1d06;
+  --px-bg-mid: #3d1d06;
+  --px-bg-bot: #3d1d06;
+}
+.nexus-cta.danger {
+  background: #3c0814;
+  --px-bdr: #ff1e42;
+  --px-bg-top: #3c0814;
+  --px-bg-mid: #3c0814;
+  --px-bg-bot: #3c0814;
+}
+.arcade-btn.fire-btn {
+  background: linear-gradient(180deg, #6e1420, #2a060f);
+  --px-bdr: #ff5624;
+  --px-bg-top: #6e1420;
+  --px-bg-mid: #4c0d18;
+  --px-bg-bot: #2a060f;
+}
+.arcade-btn.fire-btn.active {
+  background: linear-gradient(180deg, #ff622c, #c8102c);
+  --px-bdr: #ffffff;
+  --px-bg-top: #ff622c;
+  --px-bg-mid: #e2382c;
+  --px-bg-bot: #c8102c;
+}
+
+/* 3) True 2-Step Pixel-Curved Sega Saturn Modal Windows (Main Menu, Skins, Archive, Sandbox Drawer) */
+.nexus-card,
+.archive-shell,
+.sbx-drawer-shell {
+  --px-bdr: #00e6ff;
+  --px-bg-top: #030d1c;
+  --px-bg-mid: #030c1a;
+  --px-bg-bot: #030c1a;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background-color: #030c1a !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.18) 0px,
+      rgba(0, 0, 0, 0.18) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  box-shadow:
+    0 -4px 0 -2px var(--px-bg-top),
+    0  4px 0 -2px var(--px-bg-bot),
+   -4px 0 0 -2px var(--px-bg-mid),
+    4px 0 0 -2px var(--px-bg-mid),
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    0 -6px 0 -2px var(--px-bdr),
+    0  6px 0 -2px var(--px-bdr),
+   -6px 0 0 -2px var(--px-bdr),
+    6px 0 0 -2px var(--px-bdr),
+    0  5px 0 0 rgba(0, 0, 0, 0.5),
+    0  9px 0 -2px rgba(0, 0, 0, 0.65) !important;
+}
+
+.archive-shell {
+  --px-bg-top: #021022;
+}
+
+.sbx-drawer-shell {
+  --px-bdr: #00ffaa;
+  --px-bg-top: #021220;
+  --px-bg-mid: #020b18;
+  --px-bg-bot: #020b18;
+  background-color: #020b18 !important;
+  box-shadow:
+    0 -4px 0 -2px var(--px-bg-top),
+    0  4px 0 -2px var(--px-bg-bot),
+   -4px 0 0 -2px var(--px-bg-mid),
+    4px 0 0 -2px var(--px-bg-mid),
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    0 -6px 0 -2px var(--px-bdr),
+    0  6px 0 -2px var(--px-bdr),
+   -6px 0 0 -2px var(--px-bdr),
+    6px 0 0 -2px var(--px-bdr),
+    0  5px 0 0 rgba(0, 0, 0, 0.5),
+    0  9px 0 -2px rgba(0, 0, 0, 0.65) !important;
+}
+
+.archive-header,
+.sbx-drawer-head {
+  background: #021022;
+  border-bottom: 2px solid rgba(0, 246, 255, 0.55);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.85);
+}
+
+.sbx-drawer-head {
+  background: #021220;
+  border-bottom-color: rgba(0, 255, 170, 0.55);
+}
+
+/* 4) Cabinet Shell Rails (Top HUD, Power-Up Bar & Bottom Dock) */
+#hud-bar {
+  border-bottom: 2px solid rgba(0, 246, 255, 0.72);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.9), 0 2px 0 rgba(0, 0, 0, 0.85);
+}
+
+#powerup-gauge-bar {
+  border-top: 2px solid rgba(0, 246, 255, 0.34);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+#touch-dock {
+  border-top: 2px solid rgba(0, 246, 255, 0.58);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* 5) 1-Step Pixel-Curved Cards, Preview Boxes, Badges, Inputs & Status Pills */
+.skin-card,
+.skin-preview-box,
+.skin-render-bar,
+.skin-badge,
+.skin-equip-pill,
+.archive-card,
+.archive-preview-box,
+.tier-badge,
+.stat-chip,
+.ctrl-box,
+.guide-list,
+.menu-meta-row,
+.version-badge,
+.go-mode-badge,
+.record-banner,
+.report-cell,
+.go-save-panel,
+.arcade-input,
+.go-save-status,
+.lb-row,
+.lb-empty,
+.lb-confirm-box,
+.status-pill,
+.sbx-section,
+.sbx-select,
+.sbx-inf-pill,
+.sbx-pwr-tray,
+.sandbox-deploy-bar,
+#drag-pad,
+#drag-thumb {
+  border: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow:
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    0  4px 0 0 rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Semantic borders for cards, badges & status pills */
+.skin-card { --px-bdr: rgba(0, 246, 255, 0.45); }
+.skin-card:hover { --px-bdr: rgba(0, 246, 255, 0.85); }
+.skin-card.is-equipped { --px-bdr: #00ffaa; }
+.skin-preview-box, .archive-preview-box {
+  --px-bdr: rgba(0, 246, 255, 0.55);
+  box-shadow:
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    inset 2px 2px 0 0 rgba(0, 0, 0, 0.8) !important;
+}
+.skin-render-bar, .menu-meta-row, .ctrl-box, .guide-list, .report-cell, .sbx-section, .sbx-select {
+  --px-bdr: rgba(0, 246, 255, 0.48);
+}
+.skin-badge.saturn, .tier-badge.player, .tier-badge.elite-cyan, .version-badge { --px-bdr: rgba(0, 246, 255, 0.72); }
+.skin-badge.legacy, .tier-badge.commander { --px-bdr: rgba(255, 147, 56, 0.78); }
+.skin-equip-pill { --px-bdr: rgba(0, 246, 255, 0.45); }
+.skin-card.is-equipped .skin-equip-pill, .sbx-inf-pill, .go-save-status { --px-bdr: #00ffaa; }
+.tier-badge.basic, .record-banner, .go-save-panel, .arcade-input, .sandbox-deploy-bar, .sbx-training-box { --px-bdr: rgba(255, 212, 71, 0.78); }
+.tier-badge.elite-red, .go-mode-badge, .lb-confirm-box.final { --px-bdr: #ff1e42; }
+.tier-badge.deploy, .sbx-field-box { --px-bdr: rgba(196, 77, 255, 0.72); }
+.stat-chip { --px-bdr: rgba(0, 246, 255, 0.42); }
+.stat-chip.warn { --px-bdr: rgba(255, 30, 66, 0.7); }
+.stat-chip.gold { --px-bdr: rgba(255, 212, 71, 0.65); }
+.stat-chip.emerald { --px-bdr: rgba(0, 255, 170, 0.68); }
+.archive-card.tier-player, .archive-card.tier-flux, .archive-card.tier-pwr-cyan { --px-bdr: rgba(0, 246, 255, 0.78); }
+.archive-card.tier-basic, .archive-card.tier-pulsar, .archive-card.tier-pwr-yellow { --px-bdr: rgba(255, 230, 64, 0.78); }
+.archive-card.tier-commander { --px-bdr: rgba(255, 90, 31, 0.78); }
+.archive-card.tier-null, .archive-card.tier-pwr-red { --px-bdr: rgba(255, 30, 66, 0.82); }
+.archive-card.tier-centoid { --px-bdr: rgba(45, 255, 122, 0.78); }
+.archive-card.tier-alpha, .archive-card.tier-deploy, .archive-card.tier-pwr-purple { --px-bdr: rgba(196, 77, 255, 0.82); }
+.archive-card.tier-pwr-clone { --px-bdr: rgba(114, 102, 255, 0.82); }
+.lb-row { --px-bdr: rgba(0, 246, 255, 0.32); }
+.lb-row.rank-1 { --px-bdr: rgba(255, 212, 71, 0.82); }
+.lb-row.rank-2 { --px-bdr: rgba(220, 245, 255, 0.68); }
+.lb-row.rank-3 { --px-bdr: rgba(255, 153, 0, 0.65); }
+.lb-confirm-box { --px-bdr: #ff9900; }
+.status-pill.slow, .status-pill.pwr-cyan { --px-bdr: #00f6ff; }
+.status-pill.dmg, .status-pill.pwr-red { --px-bdr: #ff1e42; }
+.status-pill.shock { --px-bdr: #ffe640; }
+.status-pill.pwr-purple { --px-bdr: #c44dff; }
+.sbx-pwr-tray { --px-bdr: #00e6ff; }
+
+.status-dot {
+  border-radius: 0 !important;
+  width: 6px;
+  height: 6px;
+}
+
+/* 6) Pixel-Curved Stepped 32-Bit Arcade Power-Up & Debuff Energy Meters */
+.pwr-gauge-track,
+.pwr-gauge-fill,
+.status-track,
+.status-fill {
+  border-radius: 0 !important;
+}
+
+.pwr-gauge-track {
+  --px-bdr: rgba(255, 255, 255, 0.28);
+  height: 9px;
+  margin: 2px 2px 0 2px;
+  width: calc(100% - 4px);
+  background: #020710;
+  border: 0 !important;
+  box-shadow:
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    inset 0 2px 0 rgba(0, 0, 0, 0.8);
+}
+
+.pwr-slot.pwr-cyan .pwr-gauge-track { --px-bdr: rgba(0, 246, 255, 0.62); }
+.pwr-slot.pwr-red .pwr-gauge-track { --px-bdr: rgba(255, 30, 66, 0.68); }
+.pwr-slot.pwr-purple .pwr-gauge-track { --px-bdr: rgba(196, 77, 255, 0.7); }
+.pwr-slot.pwr-yellow .pwr-gauge-track { --px-bdr: rgba(255, 230, 64, 0.72); }
+.pwr-slot.pwr-clone .pwr-gauge-track { --px-bdr: rgba(114, 92, 255, 0.72); }
+
+.pwr-gauge-fill {
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.36),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.42);
+}
+
+/* Subtle stepped LED cell grid on continuous bars (Laser / Clones) */
+.pwr-slot:not(.seg-6):not(.seg-10):not(.seg-15):not(.seg-24) .pwr-gauge-ticks {
+  opacity: 0.45;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 5px,
+    rgba(2, 6, 14, 0.72) 5px,
+    rgba(2, 6, 14, 0.72) 6px
+  );
+}
+
+.status-track {
+  height: 5px;
+  background: #020710;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+/* 7) Pixelated Shaded 32-Bit Title Diamonds & Stepped Arcade Rule Lines */
+.archive-scroll::-webkit-scrollbar-thumb,
+.sbx-scroll::-webkit-scrollbar-thumb {
+  border-radius: 0;
+  border: 1px solid rgba(0, 246, 255, 0.7);
+}
+
+.wire-line {
+  height: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(0, 246, 255, 0.88) 0px,
+    rgba(0, 246, 255, 0.88) 6px,
+    rgba(0, 246, 255, 0.18) 6px,
+    rgba(0, 246, 255, 0.18) 8px
+  );
+}
+
+.wire-diamond {
+  width: 14px !important;
+  height: 14px !important;
+  transform: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background-color: transparent !important;
+  background-repeat: no-repeat;
+  background-size: 14px 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='2' width='2' height='1' fill='%237efaff'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%237efaff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%237efaff'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%230088cc'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='4' width='2' height='1' fill='%237efaff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%230088cc'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%230088cc'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%2300f6ff'/%3E%3C/svg%3E");
+  filter: drop-shadow(0 0 4px rgba(0, 246, 255, 0.85));
 }

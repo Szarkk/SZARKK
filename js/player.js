@@ -38,6 +38,15 @@ export function createPlayerState() {
   return {
     x: LOGICAL_W * 0.5,
     y: PLAYER_DEFAULT_Y,
+    prevX: LOGICAL_W * 0.5,
+    prevY: PLAYER_DEFAULT_Y,
+    vx: 0,
+    vy: 0,
+    bankAxis: 0,
+    thrustAxis: 0,
+    animClip: 'idle',
+    bankFrame: 0,
+    animClock: 0,
     dual: false,
     alive: true,
     respawnTimer: 0,
@@ -248,6 +257,14 @@ export function updatePlayer(game, dt) {
       p.alive = true;
       p.x = LOGICAL_W * 0.5;
       p.y = PLAYER_DEFAULT_Y;
+      p.prevX = p.x;
+      p.prevY = p.y;
+      p.vx = 0;
+      p.vy = 0;
+      p.bankAxis = 0;
+      p.thrustAxis = 0;
+      p.animClip = 'idle';
+      p.bankFrame = 0;
       p.invulnTimer = 2.0;
     }
   }

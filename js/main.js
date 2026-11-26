@@ -45,16 +45,22 @@ import {
 } from './projectiles.js';
 import { renderFrame } from './renderer.js';
 import { bindSandboxEvents, startSandboxMode, syncSandboxUI } from './sandbox.js';
+import { loadAurexSkinId, loadRenderMode, saveAurexSkinId, saveRenderMode } from './skins.js';
+import { spriteLoader } from './sprite_loader.js';
+import { spawnSpriteEffect, updatePlayerAnimation, updateSpriteEffects } from './animator.js';
 import {
   bindEvents,
   buildArchiveCards,
+  buildSkinCards,
   cacheDomElements,
   hideAllOverlays,
   renderArchivePreviews,
+  renderSkinPreviews,
   resetInputs,
   resizeCanvas,
   showGameOverOverlay,
   syncControlsUI,
+  syncSkinsUI,
   updateHUD,
   updateStatusPills
 } from './ui.js';
@@ -69,9 +75,11 @@ export class SzarkkGame {
     this.isTouch = isCoarsePointer && hasNoHover;
     this.desktopMode = !this.isTouch;
 
-    // Persistent Settings & Per-Mode High Scores
+    // Persistent Settings, Skins & Per-Mode High Scores
     this.hardMode = false;
     this.lbViewMode = 'NORMAL';
+    this.aurexSkin = loadAurexSkinId();
+    this.renderMode = loadRenderMode();
     this.autoFire = readLS(STORAGE_KEYS.auto, '0') === '1';
     this.crtEnabled = readLS(STORAGE_KEYS.crt, '1') === '1';
     this.sfxEnabled = readLS(STORAGE_KEYS.sfx, '1') === '1';
@@ -103,6 +111,12 @@ export class SzarkkGame {
     this.clock = 0;
     this.nexusGridOffset = 0;
     this.archivePreviews = [];
+    this.skinPreviews = [];
+    spriteLoader.init();
+    if (document.fonts && typeof document.fonts.load === 'function') {
+      document.fonts.load('16px "Press Start 2P"').catch(() => {});
+      document.fonts.load('700 12px "Silkscreen"').catch(() => {});
+    }
 
     // Background stars & demo fleet
     this.stars = Array.from({ length: 48 }, () => ({
@@ -123,10 +137,12 @@ export class SzarkkGame {
     ];
 
     buildArchiveCards(this);
+    buildSkinCards(this);
     this.resetGameData();
     bindEvents(this);
     bindSandboxEvents(this);
     syncControlsUI(this);
+    syncSkinsUI(this);
     updateHUD(this);
     resizeCanvas(this);
 
@@ -227,6 +243,7 @@ export class SzarkkGame {
     this.enforcerWings = [];
     this.threadTrails = [];
     this.particles = [];
+    this.spriteEffects = [];
     this.popups = [];
   }
 
@@ -331,6 +348,20 @@ export class SzarkkGame {
     updateHUD(this);
   }
 
+  setAurexSkin(skinId) {
+    this.aurexSkin = saveAurexSkinId(skinId);
+    syncSkinsUI(this);
+    syncSandboxUI(this);
+  }
+
+  setRenderMode(mode) {
+    this.renderMode = saveRenderMode(mode);
+    syncControlsUI(this);
+    syncSkinsUI(this);
+    syncSandboxUI(this);
+    resizeCanvas(this);
+  }
+
   addScore(pts, x, y, color = COLORS.cyan) {
     if (this.sandboxMode) {
       if (x !== undefined && y !== undefined) {
@@ -367,6 +398,12 @@ export class SzarkkGame {
   }
 
   spawnDeleteBurst(x, y, color, count = 14, speed = 165) {
+    // Play PixelLab animated explosion/spark clip if installed!
+    const fxKey = count >= 20
+      ? 'FX_EXP_LARGE'
+      : (count >= 12 ? 'FX_EXP_MED' : (count >= 6 ? 'FX_EXP_SMALL' : 'FX_HIT_SPARK'));
+    spawnSpriteEffect(this, fxKey, x, y);
+
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 32 + Math.random() * speed;
@@ -455,6 +492,7 @@ export class SzarkkGame {
 
     updatePowerupTimers(this, dt);
     updatePlayer(this, dt);
+    updatePlayerAnimation(this, dt);
     updateSectorPhase(this, dt);
     updatePowerupCapsules(this, dt);
     updateEnemies(this, dt);
@@ -466,6 +504,7 @@ export class SzarkkGame {
     updateHomingMissiles(this, dt);
     updatePulsarHazards(this, dt);
     updateEnemyBullets(this, dt);
+    updateSpriteEffects(this, dt);
     this.updateParticlesAndPopups(dt);
     updateStatusPills(this);
   }
@@ -480,6 +519,7 @@ export class SzarkkGame {
     this.update(dt);
     this.render();
     renderArchivePreviews(this);
+    renderSkinPreviews(this);
     requestAnimationFrame((t) => this.loop(t));
   }
 }

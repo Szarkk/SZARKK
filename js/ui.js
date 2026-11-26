@@ -45,6 +45,8 @@ import {
   loadLeaderboard,
   saveLeaderboardEntry
 } from './leaderboard.js';
+import { AUREX_SKINS, RENDER_MODES, getAurexSkinMeta } from './skins.js';
+import { spriteLoader } from './sprite_loader.js';
 
 export function cacheDomElements(game) {
   game.canvas = document.getElementById('game-canvas');
@@ -90,6 +92,11 @@ export function cacheDomElements(game) {
   game.overlayControls = document.getElementById('overlay-controls');
   game.overlayArchive = document.getElementById('overlay-archive');
   game.overlayLeaderboard = document.getElementById('overlay-leaderboard');
+  game.overlaySkins = document.getElementById('overlay-skins');
+  game.skinsList = document.getElementById('skins-list');
+  game.btnRenderPixel = document.getElementById('btn-render-pixel');
+  game.btnRenderHd = document.getElementById('btn-render-hd');
+  game.skinsSpriteStatus = document.getElementById('skins-sprite-status');
   game.overlayPause = document.getElementById('overlay-pause');
   game.overlayGameOver = document.getElementById('overlay-gameover');
 
@@ -185,7 +192,13 @@ export function renderArchivePreviews(game) {
 
     const bob = Math.sin(t * 2.6) * 2.5;
     if (p.id === 'PLAYER') {
-      drawAurexFighter(c, 34, 31 + bob, false, false, false, t);
+      const bank = Math.sin(t * 1.9);
+      c.imageSmoothingEnabled = getAurexSkinMeta(game.aurexSkin).renderer === 'ALPHA_VECTOR';
+      drawAurexFighter(
+        c, 34, 31 + bob, false, false, false, t, null, false, false,
+        game.aurexSkin,
+        { bankAxis: bank, thrustAxis: 0.3, animClip: bank < -0.25 ? 'bank_left' : (bank > 0.25 ? 'bank_right' : 'idle'), bankFrame: Math.min(3, Math.round(Math.abs(bank) * 3)) }
+      );
     } else if (p.id === 'CAPSULE_CYAN') {
       drawPixelCapsule(c, 34, 29 + bob, 'CYAN', t, 1.35);
     } else if (p.id === 'CAPSULE_RED') {
@@ -236,6 +249,117 @@ export function renderArchivePreviews(game) {
         animPhase: 0
       }, t, isMaster ? 0.78 : (isPulsar ? 0.94 : (isElite ? 0.96 : 0.92)));
     }
+  }
+}
+
+export function buildSkinCards(game) {
+  if (!game.skinsList) return;
+  game.skinsList.innerHTML = '';
+  game.skinPreviews = [];
+
+  for (const skin of AUREX_SKINS) {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = `skin-card ${skin.cardClass}`;
+    card.dataset.skinId = skin.id;
+
+    const previewWrap = document.createElement('div');
+    previewWrap.className = 'skin-preview-box';
+    const cv = document.createElement('canvas');
+    cv.width = 64;
+    cv.height = 64;
+    cv.className = `skin-preview-canvas ${skin.renderer !== 'ALPHA_VECTOR' ? 'is-pixel' : ''}`;
+    previewWrap.appendChild(cv);
+
+    const info = document.createElement('div');
+    info.className = 'skin-info';
+
+    const head = document.createElement('div');
+    head.className = 'skin-card-head';
+    const title = document.createElement('span');
+    title.className = 'skin-name';
+    title.textContent = skin.name;
+    const badge = document.createElement('span');
+    badge.className = `skin-badge ${skin.badgeClass}`;
+    badge.textContent = skin.badge;
+    head.append(title, badge);
+
+    const desc = document.createElement('p');
+    desc.className = 'skin-desc';
+    desc.textContent = skin.desc;
+
+    const foot = document.createElement('div');
+    foot.className = 'skin-foot';
+    const pill = document.createElement('span');
+    pill.className = 'skin-equip-pill';
+    pill.textContent = 'SELECT SKIN';
+    foot.appendChild(pill);
+
+    info.append(head, desc, foot);
+    card.append(previewWrap, info);
+
+    card.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.synth.unlock();
+      game.setAurexSkin(skin.id);
+      game.synth.playRescue();
+    });
+
+    game.skinsList.appendChild(card);
+    game.skinPreviews.push({ id: skin.id, renderer: skin.renderer, ctx: cv.getContext('2d'), card, pill });
+  }
+}
+
+export function syncSkinsUI(game) {
+  if (game.skinPreviews) {
+    for (const sp of game.skinPreviews) {
+      const equipped = game.aurexSkin === sp.id;
+      sp.card.classList.toggle('is-equipped', equipped);
+      sp.pill.textContent = equipped ? 'EQUIPPED' : 'SELECT SKIN';
+    }
+  }
+  if (game.btnRenderPixel) {
+    game.btnRenderPixel.classList.toggle('selected', game.renderMode === RENDER_MODES.PIXEL);
+  }
+  if (game.btnRenderHd) {
+    game.btnRenderHd.classList.toggle('selected', game.renderMode === RENDER_MODES.HD);
+  }
+  if (game.skinsSpriteStatus) {
+    const installed = spriteLoader.getInstalledCount();
+    game.skinsSpriteStatus.textContent = installed > 0
+      ? `PIXELLAB PACK: ${installed} CLIP${installed === 1 ? '' : 'S'} ACTIVE`
+      : 'PIXELLAB READY • BUILT-IN 32-BIT BASE';
+  }
+}
+
+export function renderSkinPreviews(game) {
+  if (!game.overlaySkins || game.overlaySkins.classList.contains('hidden')) return;
+  const t = game.clock;
+  const bank = Math.sin(t * 2.1);
+  const thrust = Math.sin(t * 1.4) > 0.35 ? 0.5 : 0;
+  const animState = {
+    bankAxis: bank,
+    thrustAxis: thrust,
+    animClip: bank < -0.25 ? 'bank_left' : (bank > 0.25 ? 'bank_right' : (thrust > 0.25 ? 'thrust_up' : 'idle')),
+    bankFrame: Math.min(3, Math.round(Math.abs(bank) * 3))
+  };
+
+  for (const sp of game.skinPreviews) {
+    const c = sp.ctx;
+    c.clearRect(0, 0, 64, 64);
+    c.imageSmoothingEnabled = sp.renderer === 'ALPHA_VECTOR';
+    c.strokeStyle = 'rgba(0, 246, 255, 0.14)';
+    c.lineWidth = 1;
+    for (let g = 16; g < 64; g += 16) {
+      c.beginPath(); c.moveTo(g, 0); c.lineTo(g, 64); c.stroke();
+      c.beginPath(); c.moveTo(0, g); c.lineTo(64, g); c.stroke();
+    }
+    const bob = Math.round(Math.sin(t * 2.6) * 2);
+    c.save();
+    c.translate(32, 32 + bob);
+    c.scale(1.5, 1.5);
+    drawAurexFighter(c, 0, 0, false, false, false, t, null, false, false, sp.id, animState);
+    c.restore();
   }
 }
 
@@ -333,17 +457,27 @@ export function resizeCanvas(game) {
   cssW = Math.max(180, Math.floor(cssW));
   cssH = Math.max(240, Math.floor(cssH));
 
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
   game.canvas.style.width = `${cssW}px`;
   game.canvas.style.height = `${cssH}px`;
-  game.canvas.width = Math.floor(cssW * dpr);
-  game.canvas.height = Math.floor(cssH * dpr);
 
-  game.ctx.setTransform(game.canvas.width / LOGICAL_W, 0, 0, game.canvas.height / LOGICAL_H, 0, 0);
+  if (game.renderMode === RENDER_MODES.PIXEL) {
+    // 32-Bit Native 480x640 (1:1 PixelLab buffer, dpr=1, nearest-neighbor upscaled via CSS)
+    game.canvas.width = LOGICAL_W;
+    game.canvas.height = LOGICAL_H;
+    game.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    game.ctx.imageSmoothingEnabled = false;
+  } else {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    game.canvas.width = Math.floor(cssW * dpr);
+    game.canvas.height = Math.floor(cssH * dpr);
+    game.ctx.setTransform(game.canvas.width / LOGICAL_W, 0, 0, game.canvas.height / LOGICAL_H, 0, 0);
+    game.ctx.imageSmoothingEnabled = true;
+  }
 }
 
 export function syncControlsUI(game) {
   document.body.classList.toggle('desktop-mode', game.desktopMode);
+  document.body.classList.toggle('pixel-mode', game.renderMode === RENDER_MODES.PIXEL);
   if (game.desktopBar) game.desktopBar.classList.toggle('hidden', !game.desktopMode);
   if (game.btnHideTouch) game.btnHideTouch.classList.toggle('hidden', game.isTouch || game.desktopMode);
 
@@ -592,12 +726,23 @@ export function hideAllOverlays(game) {
   game.overlayControls.classList.add('hidden');
   game.overlayArchive.classList.add('hidden');
   if (game.overlayLeaderboard) game.overlayLeaderboard.classList.add('hidden');
+  if (game.overlaySkins) game.overlaySkins.classList.add('hidden');
   game.overlayPause.classList.add('hidden');
   game.overlayGameOver.classList.add('hidden');
 }
 
 export function openModal(game, which, returnTo) {
   game.modalReturnTo = returnTo;
+  if (returnTo === 'SANDBOX') {
+    game.state = 'PAUSED';
+    game.synth.stopTractorBeam();
+    resetInputs(game);
+    if (game.sandbox) {
+      game.sandbox.drawerOpen = false;
+      game.sandbox.pwrTrayOpen = false;
+    }
+    if (game.syncSandboxUI) game.syncSandboxUI();
+  }
   hideAllOverlays(game);
   if (which === 'ARCHIVE') {
     game.overlayArchive.classList.remove('hidden');
@@ -605,6 +750,9 @@ export function openModal(game, which, returnTo) {
     game.lbViewMode = game.hardMode ? 'HARD' : 'NORMAL';
     renderLeaderboard(game);
     game.overlayLeaderboard.classList.remove('hidden');
+  } else if (which === 'SKINS' && game.overlaySkins) {
+    syncSkinsUI(game);
+    game.overlaySkins.classList.remove('hidden');
   } else {
     game.overlayControls.classList.remove('hidden');
   }
@@ -613,7 +761,10 @@ export function openModal(game, which, returnTo) {
 export function closeModal(game) {
   setLeaderboardClearStep(game, 0);
   hideAllOverlays(game);
-  if (game.modalReturnTo === 'PAUSED') game.overlayPause.classList.remove('hidden');
+  if (game.modalReturnTo === 'SANDBOX') {
+    game.state = 'PLAYING';
+    if (game.syncSandboxUI) game.syncSandboxUI();
+  } else if (game.modalReturnTo === 'PAUSED') game.overlayPause.classList.remove('hidden');
   else if (game.modalReturnTo === 'GAMEOVER') game.overlayGameOver.classList.remove('hidden');
   else game.overlayStart.classList.remove('hidden');
 }
@@ -802,6 +953,23 @@ export function bindEvents(game) {
   document.getElementById('btn-pause-leaderboard').addEventListener('click', () => openModal(game, 'LEADERBOARD', 'PAUSED'));
   document.getElementById('btn-go-leaderboard').addEventListener('click', () => openModal(game, 'LEADERBOARD', 'GAMEOVER'));
   document.getElementById('btn-lb-back').addEventListener('click', () => closeModal(game));
+
+  // Aurex Fighter Skins & Render Mode Modal
+  document.getElementById('btn-open-skins')?.addEventListener('click', () => openModal(game, 'SKINS', 'MENU'));
+  document.getElementById('btn-pause-skins')?.addEventListener('click', () => openModal(game, 'SKINS', 'PAUSED'));
+  document.getElementById('btn-skins-back')?.addEventListener('click', () => closeModal(game));
+  if (game.btnRenderPixel) {
+    game.btnRenderPixel.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.setRenderMode(RENDER_MODES.PIXEL);
+    });
+  }
+  if (game.btnRenderHd) {
+    game.btnRenderHd.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.setRenderMode(RENDER_MODES.HD);
+    });
+  }
 
   // Game Over Save Score
   if (game.btnSaveScore) {
@@ -1011,6 +1179,7 @@ export function bindEvents(game) {
       const modalOpen =
         !game.overlayControls.classList.contains('hidden') ||
         !game.overlayArchive.classList.contains('hidden') ||
+        (game.overlaySkins && !game.overlaySkins.classList.contains('hidden')) ||
         (game.overlayLeaderboard && !game.overlayLeaderboard.classList.contains('hidden'));
       if (modalOpen) {
         closeModal(game);

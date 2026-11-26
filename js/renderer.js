@@ -15,6 +15,7 @@ import {
 } from './config.js';
 import { clamp } from './utils.js';
 import { getActivePowerups } from './powerups.js';
+import { renderSpriteEffects } from './animator.js';
 import {
   drawAurexFighter,
   drawBackground,
@@ -24,6 +25,9 @@ import {
   drawPixelCapsule,
   drawTractorBeam
 } from './sprites.js';
+
+const FONT_ARCADE_DISPLAY = '"Press Start 2P", "Silkscreen", ui-monospace, monospace';
+const FONT_ARCADE_UI = '"Silkscreen", ui-monospace, monospace';
 
 function drawMeasurementGridUnderlay(ctx) {
   ctx.save();
@@ -65,7 +69,7 @@ function drawMeasurementGridUnderlay(ctx) {
   ctx.setLineDash([]);
 
   // Pixel coordinate ruler labels
-  ctx.font = '700 8.5px ui-monospace, Consolas, monospace';
+  ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
   ctx.fillStyle = 'rgba(130, 255, 215, 0.72)';
   ctx.textAlign = 'left';
   for (let x = 100; x < LOGICAL_W; x += 100) {
@@ -130,7 +134,7 @@ function drawShipLightningRuler(ctx, game) {
 
     // Vertical 1F..4F scale labels (only once on rightmost fighter when dual)
     if (ox === offsets[offsets.length - 1]) {
-      ctx.font = '700 8px ui-monospace, Consolas, monospace';
+      ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
       ctx.fillStyle = COLORS.yellow;
       ctx.textAlign = 'center';
       for (let f = 1; f <= 4; f++) {
@@ -153,7 +157,7 @@ function drawMeasurementGridOverlay(ctx, game) {
 
   // Enemy Hitbox Radius circles (size comparison!) + Edge-to-Edge Chain Jump rings & pair distances
   const measured = game.enemies.filter(e => !e.isCentoid || e.isCentoidHead);
-  ctx.font = '700 8px ui-monospace, Consolas, monospace';
+  ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
   ctx.textAlign = 'center';
 
   for (const e of measured) {
@@ -230,6 +234,7 @@ function drawMeasurementGridOverlay(ctx, game) {
 export function renderFrame(game) {
   const ctx = game.ctx;
   ctx.save();
+  ctx.imageSmoothingEnabled = game.renderMode !== 'PIXEL';
 
   if (game.shake > 0) {
     const mag = game.shake * 14;
@@ -240,7 +245,7 @@ export function renderFrame(game) {
     ctx.fillStyle = '#02060d';
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
   } else {
-    drawBackground(ctx, game.stars, game.nexusGridOffset);
+    drawBackground(ctx, game.stars, game.nexusGridOffset, game.renderMode === 'PIXEL');
   }
 
   if (game.sandboxMode && game.sandboxShowGrid && game.state !== 'MENU') {
@@ -259,6 +264,7 @@ export function renderFrame(game) {
         angle: 0
       }, game.clock);
     }
+    const demoBank = Math.cos(game.clock * 1.25);
     drawAurexFighter(
       ctx,
       LOGICAL_W * 0.5 + Math.sin(game.clock * 1.25) * 82,
@@ -266,28 +272,32 @@ export function renderFrame(game) {
       false,
       false,
       false,
-      game.clock
+      game.clock,
+      null,
+      false,
+      false,
+      game.aurexSkin,
+      { bankAxis: demoBank, thrustAxis: 0, animClip: demoBank < -0.22 ? 'bank_left' : (demoBank > 0.22 ? 'bank_right' : 'idle'), bankFrame: Math.min(3, Math.round(Math.abs(demoBank) * 3)) }
     );
     ctx.restore();
     return;
   }
 
-  // 0) Subtle horizontal Touhou Dodge Zone ceiling line (bottom 2/5ths of arena)
+  // 0) Crisp pixel-snapped Touhou Dodge Zone ceiling line (bottom 2/5ths of arena)
   ctx.save();
-  ctx.strokeStyle = 'rgba(0, 246, 255, 0.2)';
-  ctx.setLineDash([6, 8]);
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.moveTo(10, PLAYER_MIN_Y);
-  ctx.lineTo(LOGICAL_W - 10, PLAYER_MIN_Y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(0, 246, 255, 0.45)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(6, PLAYER_MIN_Y - 5); ctx.lineTo(6, PLAYER_MIN_Y + 5);
-  ctx.moveTo(LOGICAL_W - 6, PLAYER_MIN_Y - 5); ctx.lineTo(LOGICAL_W - 6, PLAYER_MIN_Y + 5);
-  ctx.stroke();
+  const dzY = Math.round(PLAYER_MIN_Y);
+  ctx.fillStyle = 'rgba(0, 246, 255, 0.24)';
+  for (let dx = 12; dx < LOGICAL_W - 14; dx += 14) {
+    ctx.fillRect(dx, dzY, 6, 1);
+  }
+  // Sharp arcade edge bracket markers [ ]
+  ctx.fillStyle = 'rgba(0, 246, 255, 0.62)';
+  ctx.fillRect(5, dzY - 5, 2, 11);
+  ctx.fillRect(7, dzY - 5, 3, 1);
+  ctx.fillRect(7, dzY + 5, 3, 1);
+  ctx.fillRect(LOGICAL_W - 7, dzY - 5, 2, 11);
+  ctx.fillRect(LOGICAL_W - 10, dzY - 5, 3, 1);
+  ctx.fillRect(LOGICAL_W - 10, dzY + 5, 3, 1);
   ctx.restore();
 
   // 1) Thread Trails + Null Thread shield durability pips
@@ -395,12 +405,25 @@ export function renderFrame(game) {
     }
   }
 
-  // 4) Captured Fighter (spins while being tractor-lifted)
+  // 4) Captured Fighter (spins while being tractor-lifted; matches active Aurex skin!)
   if (game.capturedFighter) {
     ctx.save();
-    ctx.translate(game.capturedFighter.x, game.capturedFighter.y);
+    ctx.translate(Math.round(game.capturedFighter.x), Math.round(game.capturedFighter.y));
     if (game.capturedFighter.spin) ctx.rotate(game.capturedFighter.spin);
-    drawAurexFighter(ctx, 0, 0, false, false, true, game.clock);
+    drawAurexFighter(
+      ctx,
+      0,
+      0,
+      false,
+      false,
+      true,
+      game.clock,
+      null,
+      false,
+      false,
+      game.aurexSkin,
+      { bankAxis: 0, thrustAxis: 0, animClip: 'idle', bankFrame: 0 }
+    );
     ctx.restore();
   }
 
@@ -547,7 +570,7 @@ export function renderFrame(game) {
     ctx.globalAlpha = fade * (game.touchHintState === 'FADING' ? 0.95 : pulse);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '800 11.5px ui-monospace, Consolas, monospace';
+    ctx.font = `700 10px ${FONT_ARCADE_UI}`;
     ctx.fillStyle = '#ffffff';
     ctx.shadowColor = 'rgba(255, 255, 255, 0.72)';
     ctx.shadowBlur = 9;
@@ -569,7 +592,7 @@ export function renderFrame(game) {
         ctx.stroke();
         ctx.restore();
       }
-      drawFighterClone(ctx, cl, game.clock);
+      drawFighterClone(ctx, cl, game.clock, game.aurexSkin);
     }
   }
 
@@ -591,7 +614,9 @@ export function renderFrame(game) {
       game.clock,
       activePowerups,
       hasPurpleAura,
-      isCannonCharging
+      isCannonCharging,
+      game.aurexSkin,
+      game.player
     );
 
     // White Electric Shock Aura (Pulsar Electro Ball Fire Jam w/ mild vibration, OR Pulsar Death Spark 2x slow w/ NO vibration!)
@@ -631,28 +656,35 @@ export function renderFrame(game) {
     // Small compact on-field Cannon Shot auto-fire timer indicator during CANNON_CHARGING (or ready prompt)
     if (isCannonCharging) {
       const ratio = clamp(aw.cannonTimer / CANNON_AUTO_FIRE_DELAY, 0, 1);
-      const ix = game.player.x;
-      const iy = Math.min(LOGICAL_H - 12, game.player.y + 24);
-      const bw = 46;
+      const ix = Math.round(game.player.x);
+      const iy = Math.round(Math.min(LOGICAL_H - 12, game.player.y + 24));
+      const bw = 48;
+      const bx = Math.round(ix - bw * 0.5);
+      const fillW = Math.round(bw * ratio);
       ctx.save();
-      ctx.fillStyle = 'rgba(18, 4, 34, 0.88)';
-      ctx.fillRect(ix - bw * 0.5 - 1, iy - 1, bw + 2, 6);
-      ctx.fillStyle = '#f2ccff';
-      ctx.shadowColor = COLORS.purple;
-      ctx.shadowBlur = 10;
-      ctx.fillRect(ix - bw * 0.5, iy, bw * ratio, 4);
+      ctx.fillStyle = '#06020e';
+      ctx.fillRect(bx - 2, iy - 2, bw + 4, 8);
+      ctx.fillStyle = COLORS.purpleBright;
+      ctx.fillRect(bx - 1, iy - 1, bw + 2, 1);
+      ctx.fillRect(bx - 1, iy + 5, bw + 2, 1);
+      ctx.fillRect(bx - 1, iy, 1, 5);
+      ctx.fillRect(bx + bw, iy, 1, 5);
+      ctx.fillStyle = '#e89eff';
+      ctx.fillRect(bx, iy, fillW, 5);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(bx, iy, fillW, 2);
 
       ctx.textAlign = 'center';
-      ctx.font = '800 9px ui-monospace, Consolas, monospace';
+      ctx.font = `700 8px ${FONT_ARCADE_UI}`;
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(`TAP // ${aw.cannonTimer.toFixed(1)}s`, ix, iy + 15);
+      ctx.fillText(`TAP // ${aw.cannonTimer.toFixed(1)}s`, ix, iy + 16);
       ctx.restore();
     } else if (aw.phase === 'CANNON_READY') {
       const ix = game.player.x;
       const iy = Math.min(LOGICAL_H - 8, game.player.y + 28);
       ctx.save();
       ctx.textAlign = 'center';
-      ctx.font = '800 8.5px ui-monospace, Consolas, monospace';
+      ctx.font = `700 7.8px ${FONT_ARCADE_UI}`;
       ctx.fillStyle = COLORS.purpleBright;
       ctx.shadowColor = COLORS.purple;
       ctx.shadowBlur = 8;
@@ -979,7 +1011,8 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 12) Delete Burst Particles
+  // 12) Animated PixelLab One-Shot VFX & Delete Burst Particles
+  renderSpriteEffects(ctx, game);
   for (const pt of game.particles) {
     ctx.save();
     ctx.globalAlpha = clamp(pt.life / pt.maxLife, 0, 1);
@@ -991,16 +1024,23 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Floating Score & Combat Popups
+  // Floating Score & Combat Popups (authentic 32-bit arcade bitmap text with crisp black outline!)
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.font = '700 11px ui-monospace, Consolas, monospace';
+  ctx.font = `700 9.5px ${FONT_ARCADE_UI}`;
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 2.6;
   for (const pop of game.popups) {
     ctx.globalAlpha = clamp(pop.life / pop.maxLife, 0, 1);
+    const px = Math.round(pop.x);
+    const py = Math.round(pop.y);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(2, 6, 13, 0.94)';
+    ctx.strokeText(pop.text, px, py);
     ctx.fillStyle = pop.color;
     ctx.shadowColor = pop.color;
-    ctx.shadowBlur = 8;
-    ctx.fillText(pop.text, pop.x, pop.y);
+    ctx.shadowBlur = 6;
+    ctx.fillText(pop.text, px, py);
   }
   ctx.restore();
 
@@ -1069,7 +1109,7 @@ export function renderFrame(game) {
     drawShipLightningRuler(ctx, game);
   }
 
-  // Sandbox Active Mode Hint Banner (Deploy vs Drag)
+  // Sandbox Active Mode Hint Banner (crisp 32-bit double-bezel arcade box)
   if (game.sandboxMode && game.sandbox && game.sandbox.deployMode !== 'OFF' && !game.sandbox.drawerOpen) {
     ctx.save();
     const isDrag = game.sandbox.deployMode === 'DRAG';
@@ -1078,46 +1118,87 @@ export function renderFrame(game) {
     const msg = isDrag
       ? 'DRAG MODE: GRAB ANY ENEMY, CAPSULE OR SHIP'
       : `TAP / CLICK ARENA TO DEPLOY: ${game.sandbox.deployLabel}`;
-    ctx.fillStyle = 'rgba(2, 16, 28, 0.78)';
-    ctx.fillRect(36, 42, LOGICAL_W - 72, 22);
-    ctx.strokeStyle = col;
-    ctx.lineWidth = 1.1;
-    ctx.strokeRect(36, 42, LOGICAL_W - 72, 22);
+    const bx = 34;
+    const by = 42;
+    const bw = LOGICAL_W - 68;
+    const bh = 22;
+    // Pixel-curved arcade box: 2px stepped cutout corners + subtle under-shadow
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.58)';
+    ctx.fillRect(bx + 2, by + 3, bw - 4, bh);
+    ctx.fillStyle = 'rgba(2, 12, 24, 0.94)';
+    ctx.fillRect(bx + 2, by + 2, bw - 4, bh - 4);
+    ctx.fillStyle = col;
+    ctx.fillRect(bx + 2, by, bw - 4, 2);
+    ctx.fillRect(bx + 2, by + bh - 2, bw - 4, 2);
+    ctx.fillRect(bx, by + 2, 2, bh - 4);
+    ctx.fillRect(bx + bw - 2, by + 2, 2, bh - 4);
     ctx.textAlign = 'center';
-    ctx.font = '800 9.5px ui-monospace, Consolas, monospace';
+    ctx.font = `700 8.2px ${FONT_ARCADE_UI}`;
     ctx.fillStyle = col;
     ctx.shadowColor = col;
-    ctx.shadowBlur = 7;
-    ctx.fillText(msg, LOGICAL_W * 0.5, 56);
+    ctx.shadowBlur = 5;
+    ctx.fillText(msg, LOGICAL_W * 0.5, by + 14);
     ctx.restore();
   }
 
-  // Sector / Challenge / Extra Round Banner
+  // Sector / Challenge / Extra Round Banner (32-bit Sega Saturn double-rail arcade marquee!)
   if (game.sectorPhase === 'BANNER' || game.sectorPhase === 'CHALLENGE_BANNER' || game.sectorPhase === 'CLEARED') {
     ctx.save();
-    ctx.fillStyle = 'rgba(2, 10, 24, 0.82)';
-    ctx.fillRect(0, LOGICAL_H * 0.41, LOGICAL_W, 66);
-    ctx.strokeStyle = game.bannerColor;
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.moveTo(0, LOGICAL_H * 0.41);
-    ctx.lineTo(LOGICAL_W, LOGICAL_H * 0.41);
-    ctx.moveTo(0, LOGICAL_H * 0.41 + 66);
-    ctx.lineTo(LOGICAL_W, LOGICAL_H * 0.41 + 66);
-    ctx.stroke();
+    const topY = Math.round(LOGICAL_H * 0.41);
+    const banH = 68;
+    // Dark CRT backing + subtle horizontal arcade scanlines
+    ctx.fillStyle = 'rgba(2, 8, 20, 0.90)';
+    ctx.fillRect(0, topY, LOGICAL_W, banH);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
+    for (let sy = topY + 2; sy < topY + banH - 2; sy += 3) {
+      ctx.fillRect(0, sy, LOGICAL_W, 1);
+    }
+
+    // Crisp outer 2px neon rails + inner 1px specular highlight rails + pixel corner brackets
+    ctx.fillStyle = game.bannerColor;
+    ctx.fillRect(0, topY, LOGICAL_W, 2);
+    ctx.fillRect(0, topY + banH - 2, LOGICAL_W, 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.32)';
+    ctx.fillRect(0, topY + 4, LOGICAL_W, 1);
+    ctx.fillRect(0, topY + banH - 5, LOGICAL_W, 1);
+
+    // Left & right arcade bezel corner pips
+    ctx.fillStyle = game.bannerColor;
+    ctx.fillRect(6, topY + 7, 4, 4);
+    ctx.fillRect(LOGICAL_W - 10, topY + 7, 4, 4);
+    ctx.fillRect(6, topY + banH - 11, 4, 4);
+    ctx.fillRect(LOGICAL_W - 10, topY + banH - 11, 4, 4);
 
     ctx.textAlign = 'center';
-    ctx.font = '900 19px ui-monospace, Consolas, monospace';
-    ctx.fillStyle = '#ffffff';
+    ctx.lineJoin = 'round';
+    const titleY = topY + 32;
+    ctx.font = `400 14.5px ${FONT_ARCADE_DISPLAY}`;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#02060d';
+    ctx.shadowBlur = 0;
+    ctx.strokeText(game.bannerTitle, LOGICAL_W * 0.5, titleY);
+
+    // Classic 32-bit arcade vertical metallic highlight fill on Sector Banner title
+    const titleGrad = ctx.createLinearGradient(0, titleY - 14, 0, titleY + 2);
+    titleGrad.addColorStop(0, '#ffffff');
+    titleGrad.addColorStop(0.55, '#e8fbff');
+    titleGrad.addColorStop(1, game.bannerColor);
+    ctx.fillStyle = titleGrad;
     ctx.shadowColor = game.bannerColor;
-    ctx.shadowBlur = 12;
-    ctx.fillText(game.bannerTitle, LOGICAL_W * 0.5, LOGICAL_H * 0.41 + 29);
+    ctx.shadowBlur = 10;
+    ctx.fillText(game.bannerTitle, LOGICAL_W * 0.5, titleY);
 
     if (game.bannerSub) {
-      ctx.font = '700 11px ui-monospace, Consolas, monospace';
+      const subY = topY + 53;
+      ctx.font = `700 9px ${FONT_ARCADE_UI}`;
+      ctx.lineWidth = 2.6;
+      ctx.strokeStyle = '#02060d';
+      ctx.shadowBlur = 0;
+      ctx.strokeText(game.bannerSub, LOGICAL_W * 0.5, subY);
       ctx.fillStyle = game.bannerColor;
-      ctx.shadowBlur = 6;
-      ctx.fillText(game.bannerSub, LOGICAL_W * 0.5, LOGICAL_H * 0.41 + 51);
+      ctx.shadowColor = game.bannerColor;
+      ctx.shadowBlur = 5;
+      ctx.fillText(game.bannerSub, LOGICAL_W * 0.5, subY);
     }
     ctx.restore();
   }

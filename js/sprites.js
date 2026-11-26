@@ -4,9 +4,166 @@
 
 import { COLORS, LOGICAL_W, LOGICAL_H } from './config.js';
 import { clamp } from './utils.js';
+import { getAurexSkinMeta } from './skins.js';
+import { spriteLoader } from './sprite_loader.js';
+import {
+  drawPixelLabAurexFighter,
+  drawSaturnAurexFighter,
+  drawSkinMatchedFighterClone
+} from './renderers/saturn_pixel_sprites.js';
 
-export function drawBackground(ctx, stars, nexusGridOffset) {
+let _saturnBgCache = null;
+
+function drawPixelLine(ctx, x0, y0, x1, y1, color) {
+  let ix0 = Math.round(x0);
+  let iy0 = Math.round(y0);
+  const ix1 = Math.round(x1);
+  const iy1 = Math.round(y1);
+  const dx = Math.abs(ix1 - ix0);
+  const dy = Math.abs(iy1 - iy0);
+  const sx = ix0 < ix1 ? 1 : -1;
+  const sy = iy0 < iy1 ? 1 : -1;
+  let err = dx - dy;
+  ctx.fillStyle = color;
+  while (true) {
+    ctx.fillRect(ix0, iy0, 1, 1);
+    if (ix0 === ix1 && iy0 === iy1) break;
+    const e2 = err * 2;
+    if (e2 > -dy) { err -= dy; ix0 += sx; }
+    if (e2 < dx) { err += dx; iy0 += sy; }
+  }
+}
+
+/**
+ * Pre-bakes the static 32-bit Sega Saturn Endframe backdrop (480x640):
+ * stepped Saturn Navy sky bands + 2x2 Bayer dither seams + pixel-stepped
+ * Endframe mountain skyline + stepped horizon glow + Bresenham perspective rails.
+ * Drawn as a single GPU blit per frame!
+ */
+function ensureSaturnBgCache() {
+  if (_saturnBgCache) return _saturnBgCache;
+  if (typeof document === 'undefined') return null;
+
+  const c = document.createElement('canvas');
+  c.width = LOGICAL_W;
+  c.height = LOGICAL_H;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+
+  const horizon = Math.round(LOGICAL_H * 0.24); // 154px
+
+  // 1) Stepped Saturn Endframe Navy sky & deep void bands
+  const bands = [
+    { y0: 0, y1: 58, col: '#02040b' },
+    { y0: 58, y1: 102, col: '#040a1a' },
+    { y0: 102, y1: 132, col: '#07142e' },
+    { y0: 132, y1: horizon, col: '#0b1f44' },
+    { y0: horizon, y1: 184, col: '#081734' },
+    { y0: 184, y1: 236, col: '#050f24' },
+    { y0: 236, y1: 350, col: '#030a18' },
+    { y0: 350, y1: LOGICAL_H, col: '#01050e' }
+  ];
+  for (const b of bands) {
+    g.fillStyle = b.col;
+    g.fillRect(0, b.y0, LOGICAL_W, b.y1 - b.y0);
+  }
+
+  // Subtle 2x2 Bayer pixel dither transitions at every sky band boundary
+  for (let bi = 1; bi < bands.length; bi++) {
+    const seamY = bands[bi].y0;
+    const prevCol = bands[bi - 1].col;
+    const nextCol = bands[bi].col;
+    // 4px dither band above seam (25% nextCol) & 4px below seam (25% prevCol)
+    g.fillStyle = nextCol;
+    for (let y = seamY - 4; y < seamY; y += 2) {
+      const off = (y % 4 === 0) ? 0 : 2;
+      for (let x = off; x < LOGICAL_W; x += 4) g.fillRect(x, y, 2, 2);
+    }
+    g.fillStyle = prevCol;
+    for (let y = seamY; y < seamY + 4; y += 2) {
+      const off = (y % 4 === 0) ? 2 : 0;
+      for (let x = off; x < LOGICAL_W; x += 4) g.fillRect(x, y, 2, 2);
+    }
+  }
+
+  // 2) Stepped 32-bit horizon glow bloom (crisp horizontal bands + pixel dither)
+  g.fillStyle = 'rgba(0, 212, 255, 0.10)';
+  g.fillRect(0, horizon - 14, LOGICAL_W, 28);
+  g.fillStyle = 'rgba(0, 232, 255, 0.16)';
+  g.fillRect(0, horizon - 6, LOGICAL_W, 12);
+  g.fillStyle = 'rgba(0, 246, 255, 0.42)';
+  g.fillRect(0, horizon, LOGICAL_W, 2);
+
+  // 3) Pixel-stepped Endframe mountain silhouette (solid dark fill + crisp 1px stepped cyan ridge)
+  const xs = [0, 58, 120, 184, 240, 304, 368, 424, LOGICAL_W];
+  const ys = [0, -28, -12, -40, -18, -34, -14, -26, 0];
+  g.fillStyle = '#040b1c';
+  for (let seg = 0; seg < xs.length - 1; seg++) {
+    const x0 = xs[seg];
+    const x1 = xs[seg + 1];
+    const y0 = horizon + ys[seg];
+    const y1 = horizon + ys[seg + 1];
+    for (let x = x0; x < x1; x++) {
+      const t = (x - x0) / Math.max(1, x1 - x0);
+      const ridgeY = Math.round(y0 + (y1 - y0) * t);
+      if (ridgeY < horizon) {
+        g.fillRect(x, ridgeY, 1, horizon - ridgeY);
+      }
+    }
+  }
+  for (let seg = 0; seg < xs.length - 1; seg++) {
+    drawPixelLine(g, xs[seg], horizon + ys[seg], xs[seg + 1], horizon + ys[seg + 1], 'rgba(0, 246, 255, 0.44)');
+  }
+
+  // 4) Crisp Bresenham pixel-stepped perspective grid rails
+  const vx = LOGICAL_W * 0.5;
+  for (let i = -8; i <= 8; i++) {
+    drawPixelLine(
+      g,
+      vx + i * 24,
+      horizon + 2,
+      vx + i * 122,
+      LOGICAL_H,
+      i === 0 ? 'rgba(0, 246, 255, 0.24)' : 'rgba(0, 246, 255, 0.16)'
+    );
+  }
+
+  _saturnBgCache = c;
+  return c;
+}
+
+export function drawBackground(ctx, stars, nexusGridOffset, isPixelMode = false) {
   const horizon = LOGICAL_H * 0.24;
+
+  if (isPixelMode) {
+    const bgCache = ensureSaturnBgCache();
+    if (bgCache) {
+      ctx.drawImage(bgCache, 0, 0);
+    } else {
+      ctx.fillStyle = '#02040b';
+      ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
+    }
+
+    // Crisp integer-snapped pixel stars (2x2 & 1x1)
+    for (const s of stars) {
+      const sx = Math.round(s.x);
+      const sy = Math.round(s.y);
+      const sz = s.size >= 1.6 ? 2 : 1;
+      ctx.fillStyle = s.cyan ? 'rgba(62, 242, 255, 0.65)' : 'rgba(235, 246, 255, 0.54)';
+      ctx.fillRect(sx, sy, sz, sz);
+    }
+
+    // Crisp integer-snapped scrolling horizontal 32-bit depth lines
+    const hInt = Math.round(horizon);
+    for (let i = 0; i < 12; i++) {
+      const f = (i + nexusGridOffset) / 12;
+      const y = Math.round(hInt + Math.pow(f, 2.2) * (LOGICAL_H - hInt));
+      ctx.fillStyle = `rgba(0, 246, 255, ${(0.08 + f * 0.24).toFixed(3)})`;
+      ctx.fillRect(0, y, LOGICAL_W, f > 0.78 ? 2 : 1);
+    }
+    return;
+  }
+
   const bg = ctx.createLinearGradient(0, 0, 0, LOGICAL_H);
   bg.addColorStop(0, '#01030b');
   bg.addColorStop(0.24, '#03132b');
@@ -88,7 +245,48 @@ function sampleRgbWave(types, phase, channel, alpha = 1) {
   return alpha >= 1 ? `rgb(${r}, ${g}, ${b})` : `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+/**
+ * Main Aurex Fighter dispatcher:
+ * - 'SATURN_PIXEL'    -> Permanent built-in 32-Bit Saturn Neon-Alloy banking pixel fighter
+ * - 'PIXELLAB_SPRITE' -> Separate custom PixelLab PNG ship skin (by manifestId)
+ * - 'ALPHA_VECTOR'    -> Permanent Alpha Test 0.1.2 neon wireframe Legacy skin
+ */
 export function drawAurexFighter(
+  ctx,
+  x,
+  y,
+  dual = false,
+  invuln = false,
+  slow = false,
+  time = 0,
+  activePowerups = null,
+  purpleAura = false,
+  purpleOvercharge = false,
+  skinId = 'alpha_test',
+  animState = null
+) {
+  const skin = getAurexSkinMeta(skinId);
+  if (skin.renderer === 'PIXELLAB_SPRITE') {
+    drawPixelLabAurexFighter(
+      ctx, skin.manifestId, x, y, dual, invuln, slow, time, activePowerups, purpleAura, purpleOvercharge, animState
+    );
+    return;
+  }
+  if (skin.renderer === 'SATURN_PIXEL') {
+    drawSaturnAurexFighter(
+      ctx, x, y, dual, invuln, slow, time, activePowerups, purpleAura, purpleOvercharge, animState
+    );
+    return;
+  }
+  drawAlphaTestAurexFighter(
+    ctx, x, y, dual, invuln, slow, time, activePowerups, purpleAura, purpleOvercharge
+  );
+}
+
+/**
+ * ALPHA TEST (LEGACY 0.1.2) — Original neon wireframe Aurex Fighter skin.
+ */
+export function drawAlphaTestAurexFighter(
   ctx,
   x,
   y,
@@ -271,9 +469,18 @@ export function drawAurexFighter(
 }
 
 /**
- * Renders an autonomous Hologram Fighter Clone (Dark Blue & Purple wireframe + scan shimmer + 3-HP pips).
+ * Renders an autonomous Hologram Fighter Clone:
+ * - For 32-BIT SATURN & ANY future PixelLab ship skin: automatically projects the
+ *   equipped ship skin with live banking & blue-violet hologram scanlines!
+ * - For ALPHA TEST Legacy skin: preserves the classic 0.1.2 wireframe hologram.
  */
-export function drawFighterClone(ctx, cl, time = 0) {
+export function drawFighterClone(ctx, cl, time = 0, skinId = 'alpha_test') {
+  const skin = getAurexSkinMeta(skinId);
+  if (skin.renderer !== 'ALPHA_VECTOR') {
+    drawSkinMatchedFighterClone(ctx, cl, time, skin);
+    return;
+  }
+
   const flicker = cl.invulnTimer > 0 && Math.floor(time * 22) % 2 === 0;
   const flash = (cl.hitFlash || 0) > 0;
 
@@ -360,6 +567,39 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     : (isMaster ? 1.45 : (isPulsar ? 1.25 : (isElite ? 1.3 : 1.0)));
   const flash = (e.hitFlash || 0) > 0;
   const damaged = e.hp < e.maxHp;
+
+  // Drop-in PixelLab PNG sprite hook (automatically activates whenever a clip PNG is installed!)
+  let desiredClip = 'idle';
+  if (e.isCentoid) {
+    desiredClip = e.isCentoidHead ? 'head' : 'body';
+  } else if (e.type === 'V1_ENFORCER') {
+    if (e.v1Synergy === 'FLUX') desiredClip = 'synergy_flux';
+    else if (e.v1Synergy === 'NULL') desiredClip = 'synergy_null';
+    else if (e.hp === 1) desiredClip = 'cracked';
+  } else if (damaged && e.hp <= e.maxHp * 0.5) {
+    desiredClip = 'damaged';
+  }
+  const loadedEnemyClip = spriteLoader.getClip(e.type, desiredClip);
+  if (loadedEnemyClip) {
+    const frameIdx = Math.floor((time + (e.animPhase || 0)) * loadedEnemyClip.fps);
+    spriteLoader.drawFrame(ctx, loadedEnemyClip, frameIdx, e.x, e.y, {
+      angle: e.angle || 0,
+      scale: overrideScale !== null ? overrideScale : 1,
+      flash
+    });
+    // Still render upright mini HP bar above damaged / Master / Challenge Elite enemies
+    if (overrideScale === null && (damaged || e.isChallengeElite || isMaster || e.hpBuffed) && e.hp > 0) {
+      const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
+      const bx = Math.round(e.x - bw / 2);
+      const by = Math.round(e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18))));
+      const ratio = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = 'rgba(2, 10, 20, 0.85)';
+      ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
+      ctx.fillStyle = e.type.includes('NULL') ? COLORS.nullRed : (e.type === 'PULSAR' ? COLORS.yellow : COLORS.cyan);
+      ctx.fillRect(bx, by, Math.round(bw * ratio), 3);
+    }
+    return;
+  }
 
   ctx.save();
   ctx.translate(e.x, e.y);
@@ -852,14 +1092,14 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     ctx.restore();
   }
 
-  // Upright Mini HP Bar above damaged enemies (or always visible on Masters & 2x HP Challenge Elites)
+  // Upright Mini HP Bar above damaged enemies (crisp integer-snapped arcade bar)
   if (overrideScale === null && (damaged || e.isChallengeElite || isMaster || e.hpBuffed) && e.hp > 0) {
     const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
-    const bx = e.x - bw / 2;
-    const by = e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18)));
+    const bx = Math.round(e.x - bw / 2);
+    const by = Math.round(e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18))));
     const ratio = clamp(e.hp / e.maxHp, 0, 1);
     ctx.save();
-    ctx.fillStyle = 'rgba(2, 8, 18, 0.88)';
+    ctx.fillStyle = 'rgba(2, 8, 18, 0.92)';
     ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
     ctx.fillStyle = (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER')
       ? COLORS.nullRed
@@ -870,7 +1110,7 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
           : (e.type === 'ALPHA_CENTOID'
             ? COLORS.alphaPink
             : (e.type === 'CENTOID' ? COLORS.centoidGreen : COLORS.gold))));
-    ctx.fillRect(bx, by, bw * ratio, 3);
+    ctx.fillRect(bx, by, Math.round(bw * ratio), 3);
     ctx.restore();
   }
 }
