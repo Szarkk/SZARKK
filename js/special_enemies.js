@@ -17,6 +17,7 @@ import {
   CENTOPHAGE_SPEED_MULT,
   COLORS,
   COST_SWAP_CHANCE,
+  HARD_MODE_MAX_UNLOCK_SECTOR,
   LOGICAL_H,
   LOGICAL_W,
   PULSAR_FIRE_INTERVAL,
@@ -761,17 +762,22 @@ export function spawnPulsarDeathSparks(game, x, y) {
 }
 
 /**
- * Cost-Based Enemy Swap System (5% chance per mob per wave, strictly +-1 tier apart!).
+ * Cost-Based Enemy Swap System (5% chance per mob per wave, strictly +-1 tier + sideways!).
  * Costs: Normal=1, Advanced=2, Elite=3, Master=6.
- * Respects sector unlock rules so late-game enemies never appear early.
+ * - Normal   (1): Up (2 Normal -> 1 Adv)
+ * - Advanced (2): Up (3 Adv -> 2 Elite) | Down (1 Adv -> 2 Normal) | Sideways (Adv <-> Adv)
+ * - Elite    (3): Up (2 Elite -> 1 Master) | Down (2 Elite -> 3 Adv) | Sideways (Elite <-> Elite)
+ * - Master   (6): Down (1 Master -> 2 Elite) | Sideways (Master <-> Master)
+ * Respects sector unlock rules (Hard Mode automatically unlocks up to HARD_MODE_MAX_UNLOCK_SECTOR).
  */
 export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
-  const sec = hardMode ? Math.max(effSec, 7) : effSec;
+  const sec = hardMode ? Math.max(effSec, HARD_MODE_MAX_UNLOCK_SECTOR) : effSec;
   const unlockedByTier = (tier) =>
     Object.entries(UNIT_META)
       .filter(([, meta]) => meta.tier === tier && sec >= meta.minSec)
       .map(([type]) => type);
 
+  const normalPool = unlockedByTier(1);
   const advPool = unlockedByTier(2);
   const elitePool = unlockedByTier(3);
   const masterPool = unlockedByTier(4);
@@ -793,7 +799,7 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
       continue;
     }
 
-    // 1) Normal (Tier 1, Cost 1): 2x Normal -> 1x Advanced (Cost 2, +1 tier!)
+    // 1) Normal (Tier 1, Cost 1): Up (+1 tier) — 2x Normal -> 1x Advanced (Cost 2)
     if (meta.tier === 1 && advPool.length > 0) {
       let partnerIdx = -1;
       for (let j = i + 1; j < slots.length; j++) {
@@ -812,9 +818,10 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
       }
     }
 
-    // 2) Advanced (Tier 2, Cost 2): Same-tier swap (V1 <-> Centoid) OR 3x Advanced (Cost 6) -> 2x Elite (Cost 6, +1 tier)
+    // 2) Advanced (Tier 2, Cost 2): Up (3x Adv -> 2x Elite) | Down (1x Adv -> 2x Normal) | Sideways (Adv <-> Adv)
     if (meta.tier === 2) {
-      if (elitePool.length > 0 && Math.random() < 0.45) {
+      const roll = Math.random();
+      if (elitePool.length > 0 && roll < 0.35) {
         const partners = [];
         for (let j = i + 1; j < slots.length && partners.length < 2; j++) {
           if (!consumed.has(j) && UNIT_META[slots[j].type]?.tier === 2) partners.push(j);
@@ -826,6 +833,11 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
           result.push({ ...slots[partners[0]], type: pick(elitePool) });
           continue;
         }
+      } else if (normalPool.length > 0 && roll < 0.65) {
+        // Swap down -1 tier: 1x Advanced (Cost 2) -> 2x Normal (Cost 1 + 1 = 2)
+        result.push({ ...slot, type: pick(normalPool), homeX: clamp(slot.homeX - 20, 42, LOGICAL_W - 42) });
+        result.push({ ...slot, type: pick(normalPool), homeX: clamp(slot.homeX + 20, 42, LOGICAL_W - 42) });
+        continue;
       }
       const altAdv = pick(advPool, slot.type);
       if (altAdv && altAdv !== slot.type) {
@@ -834,9 +846,10 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
       }
     }
 
-    // 3) Elite (Tier 3, Cost 3): Same-tier swap (e.g. Elite Enforcer <-> Pulsar / Alpha Centoid) OR 2x Elite (Cost 6) -> 1x Master (Cost 6, +1 tier)
+    // 3) Elite (Tier 3, Cost 3): Up (2x Elite -> 1x Master) | Down (2x Elite -> 3x Adv) | Sideways (Elite <-> Elite)
     if (meta.tier === 3) {
-      if (masterPool.length > 0 && Math.random() < 0.35) {
+      const roll = Math.random();
+      if (masterPool.length > 0 && roll < 0.30) {
         let partnerIdx = -1;
         for (let j = i + 1; j < slots.length; j++) {
           if (!consumed.has(j) && UNIT_META[slots[j].type]?.tier === 3) {
@@ -849,6 +862,25 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
           result.push({ ...slot, type: pick(masterPool) });
           continue;
         }
+      } else if (advPool.length > 0 && roll < 0.60) {
+        // Swap down -1 tier: 2x Elite (Cost 6) -> 3x Advanced (Cost 2 + 2 + 2 = 6)
+        let partnerIdx = -1;
+        for (let j = i + 1; j < slots.length; j++) {
+          if (!consumed.has(j) && UNIT_META[slots[j].type]?.tier === 3) {
+            partnerIdx = j;
+            break;
+          }
+        }
+        if (partnerIdx >= 0) {
+          consumed.add(partnerIdx);
+          const pSlot = slots[partnerIdx];
+          const midX = clamp((slot.homeX + pSlot.homeX) * 0.5, 42, LOGICAL_W - 42);
+          const midY = (slot.homeY + pSlot.homeY) * 0.5;
+          result.push({ ...slot, type: pick(advPool) });
+          result.push({ ...pSlot, type: pick(advPool) });
+          result.push({ ...slot, type: pick(advPool), homeX: midX, homeY: midY });
+          continue;
+        }
       }
       const altElite = pick(elitePool, slot.type);
       if (altElite && altElite !== slot.type) {
@@ -857,13 +889,20 @@ export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
       }
     }
 
-    // 4) Master (Tier 4, Cost 6): Swap strictly -1 tier -> 2x Elite (Cost 3 + 3 = 6; NEVER Normal or Advanced!)
-    if (meta.tier === 4 && elitePool.length > 0) {
-      const e1 = pick(elitePool);
-      const e2 = pick(elitePool);
-      result.push({ ...slot, type: e1, homeX: clamp(slot.homeX - 24, 42, LOGICAL_W - 42) });
-      result.push({ ...slot, type: e2, homeX: clamp(slot.homeX + 24, 42, LOGICAL_W - 42) });
-      continue;
+    // 4) Master (Tier 4, Cost 6): Down (1x Master -> 2x Elite) | Sideways (Master Flux / Null / Centophage)
+    if (meta.tier === 4) {
+      const altMaster = masterPool.length > 1 ? pick(masterPool, slot.type) : null;
+      if (altMaster && altMaster !== slot.type && Math.random() < 0.50) {
+        result.push({ ...slot, type: altMaster });
+        continue;
+      }
+      if (elitePool.length > 0) {
+        const e1 = pick(elitePool);
+        const e2 = pick(elitePool);
+        result.push({ ...slot, type: e1, homeX: clamp(slot.homeX - 24, 42, LOGICAL_W - 42) });
+        result.push({ ...slot, type: e2, homeX: clamp(slot.homeX + 24, 42, LOGICAL_W - 42) });
+        continue;
+      }
     }
 
     result.push(slot);

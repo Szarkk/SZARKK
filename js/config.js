@@ -2,7 +2,7 @@
    SZARKK — CONSTANTS, LOGICAL PLAYFIELD, COMBAT TUNING & NEXUS ARCHIVE
    ========================================================================= */
 
-export const GAME_VERSION = 'Alpha Test 0.1.2';
+export const GAME_VERSION = 'Alpha Test 0.1.3';
 export const LOGICAL_W = 480;
 export const LOGICAL_H = 640;
 
@@ -90,6 +90,20 @@ export const PURPLE_POWERUP_START_SECTOR = 4;   // Purple Capsule (Arc Wave) sta
 export const YELLOW_POWERUP_START_SECTOR = 7;   // Yellow Capsule (Chain Lightning) starts Sector 07+
 export const CLONE_POWERUP_START_SECTOR = 7;    // Dark Blue/Purple Capsule (Fighter Clones) starts Sector 07+
 export const PLASMA_POWERUP_START_SECTOR = 8;   // Plasma Capsule (Plasma Rings) unlocks Sector 08+ & 25% Centophage drop
+
+// Dynamic Hard Mode unlock floor: automatically tracks the highest unlock sector across ALL mobs & capsules!
+export const CAPSULE_UNLOCK_SECTORS = {
+  CYAN: CYAN_POWERUP_START_SECTOR,
+  RED: RED_POWERUP_START_SECTOR,
+  PURPLE: PURPLE_POWERUP_START_SECTOR,
+  YELLOW: YELLOW_POWERUP_START_SECTOR,
+  CLONE: CLONE_POWERUP_START_SECTOR,
+  PLASMA: PLASMA_POWERUP_START_SECTOR
+};
+export const HARD_MODE_MAX_UNLOCK_SECTOR = Math.max(
+  ...Object.values(UNIT_META).map(m => m.minSec || 1),
+  ...Object.values(CAPSULE_UNLOCK_SECTORS)
+);
 export const PLASMA_RING_COUNT = 3;             // Fires 3 piercing plasma rings in quick succession
 export const PLASMA_RING_SHOT_INTERVAL = 0.25;  // 0.25s between each aimed ring
 export const PLASMA_RING_SPEED = 460;           // Slightly faster than enemy bullets (~300-430)

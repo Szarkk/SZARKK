@@ -202,6 +202,7 @@ export class SzarkkGame {
     this.masterNullStreak = 0;
     this.masterFluxRewardSpawned = false;
     this.masterNullRewardSpawned = false;
+    this.hardFirstMasterBonusUsed = false;
     this.fieldDebuff = null; // Hard Mode: { type: 'CYAN' | 'RED', timer, maxTimer }
     this.tractorTimer = TRACTOR_INITIAL_DELAY;
     this.wingLaunchTimer = 2.2;

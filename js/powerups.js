@@ -8,6 +8,7 @@ import {
   ALPHA_CENTOID_DROP_CHANCE,
   CAPSULE_BOUNDS,
   CAPSULE_DROP_DELAY,
+  CAPSULE_UNLOCK_SECTORS,
   CENTOPHAGE_DROP_CLONE,
   CENTOPHAGE_DROP_LIGHTNING,
   CENTOPHAGE_DROP_PLASMA,
@@ -18,6 +19,7 @@ import {
   COLORS,
   CYAN_POWERUP_START_SECTOR,
   CYAN_POWERUP_START_WAVE,
+  HARD_MODE_MAX_UNLOCK_SECTOR,
   LOGICAL_H,
   LOGICAL_W,
   MASTER_STREAK_REWARD_COUNT,
@@ -209,25 +211,18 @@ export function consumePowerupEnergy(game, type, amount) {
 }
 
 export function getUnlockedCapsuleTypes(effSec, waveNum = 1, hardMode = false, inChallenge = false) {
-  if (effSec >= PLASMA_POWERUP_START_SECTOR) {
-    return ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE', 'PLASMA'];
+  const sec = hardMode ? Math.max(effSec, HARD_MODE_MAX_UNLOCK_SECTOR) : effSec;
+  const unlocked = [];
+  for (const [type, minSec] of Object.entries(CAPSULE_UNLOCK_SECTORS)) {
+    if (type === 'CYAN') {
+      if (sec >= minSec && (inChallenge || hardMode || sec > minSec || waveNum >= CYAN_POWERUP_START_WAVE)) {
+        unlocked.push(type);
+      }
+    } else if (sec >= minSec) {
+      unlocked.push(type);
+    }
   }
-  if (hardMode || (effSec >= YELLOW_POWERUP_START_SECTOR && effSec >= CLONE_POWERUP_START_SECTOR)) {
-    return ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE'];
-  }
-  if (effSec >= PURPLE_POWERUP_START_SECTOR) {
-    return ['CYAN', 'RED', 'PURPLE'];
-  }
-  if (effSec >= RED_POWERUP_START_SECTOR) {
-    return ['CYAN', 'RED'];
-  }
-  if (
-    effSec >= CYAN_POWERUP_START_SECTOR &&
-    (inChallenge || effSec > CYAN_POWERUP_START_SECTOR || waveNum >= CYAN_POWERUP_START_WAVE)
-  ) {
-    return ['CYAN'];
-  }
-  return [];
+  return unlocked;
 }
 
 export function pickRandomCapsuleType(effSec, waveNum = 4, hardMode = false, inChallenge = false) {
@@ -237,6 +232,31 @@ export function pickRandomCapsuleType(effSec, waveNum = 4, hardMode = false, inC
 }
 
 export function rollEnemyCapsuleDrop(game, enemy) {
+  const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+
+  // Hard Mode Round 1 (H01) opener ONLY: after the very first Master kill in Sector 1,
+  // guarantee 1 random unlocked capsule floats in (never repeats in H02+ or later waves!)
+  const isMasterEnemy = !!(
+    enemy.isMaster ||
+    enemy.type === 'MASTER_FLUX_ENFORCER' ||
+    enemy.type === 'MASTER_NULL_ENFORCER' ||
+    enemy.type === 'CENTOPHAGE'
+  );
+  if (
+    game.hardMode &&
+    game.sector === 1 &&
+    !game.isChallengeStage &&
+    !game.hardFirstMasterBonusUsed &&
+    (!game.sandboxMode || game.sandboxTrainingRound) &&
+    isMasterEnemy
+  ) {
+    game.hardFirstMasterBonusUsed = true;
+    const bonusType = pickRandomCapsuleType(effSec, game.sectorWave || 1, true, game.isChallengeStage);
+    if (bonusType) {
+      spawnCapsule(game, 0, 0, bonusType, 'FLOAT');
+    }
+  }
+
   // Track Master 10-kill no-death streak pity reward (works across any unlocked sector/Hard Mode!)
   if (enemy.type === 'MASTER_FLUX_ENFORCER') {
     game.masterFluxStreak = (game.masterFluxStreak || 0) + 1;
@@ -266,7 +286,6 @@ export function rollEnemyCapsuleDrop(game, enemy) {
     }
   }
 
-  const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
   const unlocked = getUnlockedCapsuleTypes(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
   if (unlocked.length === 0 && enemy.type !== 'CENTOPHAGE') return;
 

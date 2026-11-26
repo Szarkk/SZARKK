@@ -189,8 +189,8 @@ button:active {
 }
 
 .life-ship-svg.is-pixel {
-  width: 18px;
-  height: 20px;
+  width: 17px;
+  height: 19px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.9));

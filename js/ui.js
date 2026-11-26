@@ -623,60 +623,54 @@ function renderLifeIconHtml(skinId, isSandbox = false) {
       : `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(235,245,255,0.85)" stroke="#ffffff" stroke-width="1.8"/></svg>`;
   }
 
-  // 32-Bit Pixel-Art Mini-Valkyrie Aurex Fighter life icon (Design B: 20x22 outlined 1:1 miniature!)
+  // 32-Bit Pixel-Art Valkyrie Emblem Aurex Fighter life icon (Design C: 18x20 wide-wing HUD emblem!)
   const p = isSandbox
     ? {
         s0: '#032018', s1: '#0A4735', s2: '#1C8565', s3: '#4CD6A8',
-        s4: '#9CFCE0', s5: '#E2FFF5', thr: '#E2FFF5', thrDim: '#5EEAC0'
+        s4: '#9CFCE0', s5: '#E2FFF5', thr: '#E2FFF5'
       }
     : {
         s0: '#0C0E12', s1: '#242934', s2: '#5A6270', s3: '#9EA5B2',
-        s4: '#E4E7EE', s5: '#FFFFFF', thr: '#FFFFFF', thrDim: '#B8C4D4'
+        s4: '#E4E7EE', s5: '#FFFFFF', thr: '#FFFFFF'
       };
   const rects = [];
   const add = (x, y, w, h, c) => rects.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/>`);
-  const sym = (dx, y, h, c) => { add(9 - dx, y, 1, h, c); add(10 + dx, y, 1, h, c); };
+  const sym = (dx, y, h, c) => { add(8 - dx, y, 1, h, c); add(9 + dx, y, 1, h, c); };
 
-  // 1) Crisp 1px obsidian outer silhouette
-  add(8, 0, 4, 3, p.s0);
-  add(7, 2, 6, 17, p.s0);
-  sym(3, 4, 4, p.s0); sym(4, 5, 3, p.s0); sym(5, 6, 2, p.s0);
-  sym(3, 8, 7, p.s0); sym(4, 9, 7, p.s0); sym(5, 10, 7, p.s0);
-  sym(6, 11, 7, p.s0); sym(7, 12, 6, p.s0); sym(8, 9, 9, p.s0); sym(9, 10, 7, p.s0);
-  sym(3, 15, 5, p.s0); sym(4, 16, 4, p.s0); sym(5, 17, 3, p.s0);
+  // Tall razor needle nose + 2px pure-white dorsal spine
+  add(7, 3, 4, 14, p.s4);
+  add(8, 0, 2, 17, p.s5);
+  sym(1, 3, 2, p.s3);
 
-  // 2) Forward mini-canards
-  sym(3, 5, 2, p.s4); sym(3, 5, 1, p.s5); sym(4, 6, 1, p.s3);
+  // Forward mini-canards flanking canopy
+  sym(2, 5, 3, p.s4); sym(2, 5, 1, p.s5);
+  sym(3, 6, 2, p.s3); sym(3, 6, 1, p.s4);
 
-  // 3) Swept-back Valkyrie main delta wings & pointy wingtip laser rods
-  sym(3, 9, 5, p.s4); sym(3, 9, 1, p.s5); sym(3, 13, 1, p.s2);
-  sym(4, 10, 5, p.s4); sym(4, 10, 1, p.s5); sym(4, 13, 1, p.s3); sym(4, 14, 1, p.s2);
-  sym(5, 11, 5, p.s4); sym(5, 11, 1, p.s5); sym(5, 14, 1, p.s3); sym(5, 15, 1, p.s2);
+  // Dark air-intake scoops separating canards from main wings
+  sym(2, 9, 4, p.s1);
+
+  // Wide aggressive swept Valkyrie delta wings + vertical wingtip laser cannons
+  sym(3, 9, 6, p.s4); sym(3, 9, 2, p.s5); sym(3, 14, 1, p.s2);
+  sym(4, 10, 6, p.s4); sym(4, 10, 2, p.s5); sym(4, 14, 1, p.s3); sym(4, 15, 1, p.s2);
+  sym(5, 11, 6, p.s4); sym(5, 11, 1, p.s5); sym(5, 15, 1, p.s3); sym(5, 16, 1, p.s2);
   sym(6, 12, 5, p.s4); sym(6, 12, 1, p.s5); sym(6, 15, 1, p.s3); sym(6, 16, 1, p.s2);
   sym(7, 13, 4, p.s3); sym(7, 13, 1, p.s5); sym(7, 16, 1, p.s2);
   sym(8, 10, 1, p.s5); sym(8, 11, 1, p.s3); sym(8, 12, 5, p.s2); sym(8, 13, 2, p.s5);
 
-  // 4) Angled rear horizontal tail stabilizers
+  // Bold smoked armored bubble canopy + top-left pure-white glint + twin dorsal ridges
+  add(7, 5, 4, 5, p.s0);
+  add(8, 6, 2, 3, p.s1);
+  add(8, 6, 1, 2, p.s5);
+  sym(1, 13, 4, p.s3);
+
+  // Swept rear tail stabilizers + twin silver engine bells + compact white glow pips
   sym(3, 16, 3, p.s3); sym(3, 16, 1, p.s4); sym(3, 18, 1, p.s2);
-  sym(4, 17, 2, p.s3); sym(4, 18, 1, p.s2);
-
-  // 5) Central supersonic fuselage, intakes, dorsal fin stripes & smoked canopy glint
-  add(8, 3, 4, 15, p.s4);
-  add(9, 1, 2, 17, p.s5);
-  sym(1, 3, 2, p.s3);
-  sym(2, 9, 5, p.s1);
-  sym(1, 14, 4, p.s3);
-  add(8, 5, 4, 5, p.s0);
-  add(9, 6, 2, 3, p.s1);
-  add(9, 6, 1, 2, p.s5);
-
-  // 6) Twin silver engine bells, dark center sting & white thruster plumes
+  sym(4, 17, 2, p.s2);
   sym(2, 17, 2, p.s2); sym(2, 17, 1, p.s3);
-  add(9, 17, 2, 2, p.s1);
-  sym(2, 19, 3, p.thrDim);
-  sym(2, 19, 2, p.thr);
+  add(8, 17, 2, 2, p.s1);
+  sym(2, 19, 1, p.thr);
 
-  return `<svg class="life-ship-svg is-pixel" viewBox="0 0 20 22" shape-rendering="crispEdges">${rects.join('')}</svg>`;
+  return `<svg class="life-ship-svg is-pixel" viewBox="0 0 18 20" shape-rendering="crispEdges">${rects.join('')}</svg>`;
 }
 
 export function updateHUD(game) {

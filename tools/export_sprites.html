@@ -290,29 +290,23 @@
       ship32('bank_right_mild', 'Aurex 32-Bit (Bank R1)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0.35, thrustAxis: 0 }));
       ship32('bank_right_hard', 'Aurex 32-Bit (Bank R2)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0.85, thrustAxis: 0 }));
       ship32('dual_fighter', 'Aurex 32-Bit (Dual)', 80, 56, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0, thrustAxis: 0 }, { dual: true }));
-      ship32('life_counter_icon', 'HUD Life Counter (Mini-Valkyrie)', 20, 22, 1, 1, (c) => {
+      ship32('life_counter_icon', 'HUD Life Counter (Valkyrie Emblem)', 18, 20, 1, 1, (c) => {
         const add = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
-        const sym = (dx, y, h, col) => { add(9 - dx, y, 1, h, col); add(10 + dx, y, 1, h, col); };
-        const s0 = '#0C0E12', s1 = '#242934', s2 = '#5A6270', s3 = '#9EA5B2', s4 = '#E4E7EE', s5 = '#FFFFFF', thr = '#FFFFFF', thrDim = '#B8C4D4';
-        add(8, 0, 4, 3, s0); add(7, 2, 6, 17, s0);
-        sym(3, 4, 4, s0); sym(4, 5, 3, s0); sym(5, 6, 2, s0);
-        sym(3, 8, 7, s0); sym(4, 9, 7, s0); sym(5, 10, 7, s0);
-        sym(6, 11, 7, s0); sym(7, 12, 6, s0); sym(8, 9, 9, s0); sym(9, 10, 7, s0);
-        sym(3, 15, 5, s0); sym(4, 16, 4, s0); sym(5, 17, 3, s0);
-        sym(3, 5, 2, s4); sym(3, 5, 1, s5); sym(4, 6, 1, s3);
-        sym(3, 9, 5, s4); sym(3, 9, 1, s5); sym(3, 13, 1, s2);
-        sym(4, 10, 5, s4); sym(4, 10, 1, s5); sym(4, 13, 1, s3); sym(4, 14, 1, s2);
-        sym(5, 11, 5, s4); sym(5, 11, 1, s5); sym(5, 14, 1, s3); sym(5, 15, 1, s2);
+        const sym = (dx, y, h, col) => { add(8 - dx, y, 1, h, col); add(9 + dx, y, 1, h, col); };
+        const s0 = '#0C0E12', s1 = '#242934', s2 = '#5A6270', s3 = '#9EA5B2', s4 = '#E4E7EE', s5 = '#FFFFFF', thr = '#FFFFFF';
+        add(7, 3, 4, 14, s4); add(8, 0, 2, 17, s5); sym(1, 3, 2, s3);
+        sym(2, 5, 3, s4); sym(2, 5, 1, s5); sym(3, 6, 2, s3); sym(3, 6, 1, s4);
+        sym(2, 9, 4, s1);
+        sym(3, 9, 6, s4); sym(3, 9, 2, s5); sym(3, 14, 1, s2);
+        sym(4, 10, 6, s4); sym(4, 10, 2, s5); sym(4, 14, 1, s3); sym(4, 15, 1, s2);
+        sym(5, 11, 6, s4); sym(5, 11, 1, s5); sym(5, 15, 1, s3); sym(5, 16, 1, s2);
         sym(6, 12, 5, s4); sym(6, 12, 1, s5); sym(6, 15, 1, s3); sym(6, 16, 1, s2);
         sym(7, 13, 4, s3); sym(7, 13, 1, s5); sym(7, 16, 1, s2);
         sym(8, 10, 1, s5); sym(8, 11, 1, s3); sym(8, 12, 5, s2); sym(8, 13, 2, s5);
-        sym(3, 16, 3, s3); sym(3, 16, 1, s4); sym(3, 18, 1, s2);
-        sym(4, 17, 2, s3); sym(4, 18, 1, s2);
-        add(8, 3, 4, 15, s4); add(9, 1, 2, 17, s5);
-        sym(1, 3, 2, s3); sym(2, 9, 5, s1); sym(1, 14, 4, s3);
-        add(8, 5, 4, 5, s0); add(9, 6, 2, 3, s1); add(9, 6, 1, 2, s5);
-        sym(2, 17, 2, s2); sym(2, 17, 1, s3); add(9, 17, 2, 2, s1);
-        sym(2, 19, 3, thrDim); sym(2, 19, 2, thr);
+        add(7, 5, 4, 5, s0); add(8, 6, 2, 3, s1); add(8, 6, 1, 2, s5);
+        sym(1, 13, 4, s3);
+        sym(3, 16, 3, s3); sym(3, 16, 1, s4); sym(3, 18, 1, s2); sym(4, 17, 2, s2);
+        sym(2, 17, 2, s2); sym(2, 17, 1, s3); add(8, 17, 2, 2, s1); sym(2, 19, 1, thr);
       });
 
       ship32('hologram_clone', 'Hologram Clone (32-Bit)', 56, 56, 6, 12, (c, w, h, f, n) => {

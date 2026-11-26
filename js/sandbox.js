@@ -198,6 +198,7 @@ export function startSandboxTrainingRound(game) {
   game.sandboxPauseAnim = false;
   game.sandboxTrainingRound = true;
   game.hardMode = !!sb.trainingHard;
+  game.hardFirstMasterBonusUsed = false;
   sb.deployMode = 'OFF';
   sb.deployKind = null;
   sb.deployValue = null;

@@ -24,6 +24,7 @@ import {
   HARD_FIELD_DEBUFF_DUR,
   HARD_FIELD_ELITES_TRIGGER,
   HARD_FIELD_MIN_POWERUPS,
+  HARD_MODE_MAX_UNLOCK_SECTOR,
   LOGICAL_H,
   LOGICAL_W,
   MASTER_ENFORCER_HP,
@@ -163,7 +164,7 @@ function scheduleMidWaveSpawns(game, effSec, style) {
   game.midWaveSpawns = [];
   if (game.sandboxMode && !game.sandboxTrainingRound) return;
 
-  const secForUnlocks = game.hardMode ? Math.max(effSec, 7) : effSec;
+  const secForUnlocks = game.hardMode ? Math.max(effSec, HARD_MODE_MAX_UNLOCK_SECTOR) : effSec;
   const isCentoidForm = CENTOID_FORMATIONS.includes(style);
   const isPulsarForm = PULSAR_FORMATIONS.includes(style);
 
@@ -198,9 +199,9 @@ function scheduleMidWaveSpawns(game, effSec, style) {
     }
   }
 
-  // 2b) Master Centophage (STRICTLY Sector 08+ / Hard H03+): rare predatory Master reinforcement mid-wave
+  // 2b) Master Centophage (Sec 08+ in Normal; unlocked immediately in Hard Mode via HARD_MODE_MAX_UNLOCK_SECTOR!)
   const isCentophageForm = CENTOPHAGE_FORMATIONS.includes(style);
-  if (!isCentophageForm && effSec >= CENTOPHAGE_START_SECTOR && Math.random() < (isCentoidForm ? 0.20 : 0.12)) {
+  if (!isCentophageForm && secForUnlocks >= CENTOPHAGE_START_SECTOR && Math.random() < (isCentoidForm ? 0.20 : 0.12)) {
     game.midWaveSpawns.push({
       timer: 4.0 + Math.random() * 2.0,
       type: 'CENTOPHAGE'
@@ -226,17 +227,17 @@ function scheduleMidWaveSpawns(game, effSec, style) {
 
 export function prepareStandardWave(game, waveNum) {
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
-  const secForUnlocks = game.hardMode ? Math.max(effSec, 7) : effSec;
+  const secForUnlocks = game.hardMode ? Math.max(effSec, HARD_MODE_MAX_UNLOCK_SECTOR) : effSec;
   game.sectorWave = waveNum;
   game.waveQueue = [];
   game.waveSpawnTimer = 0;
   game.formationClock = 0;
 
-  // Build eligible formation pool by sector unlocks (Base 5 + Centoid 4 Sec 04+ + Pulsar 4 Sec 07+ + Centophage 4 Sec 08+)
+  // Build eligible formation pool by sector unlocks (Hard Mode unlocks all up to HARD_MODE_MAX_UNLOCK_SECTOR!)
   const pool = [...BASE_FORMATION_STYLES];
   if (secForUnlocks >= CENTOID_START_SECTOR) pool.push(...CENTOID_FORMATIONS);
   if (secForUnlocks >= PULSAR_START_SECTOR) pool.push(...PULSAR_FORMATIONS);
-  if (effSec >= CENTOPHAGE_START_SECTOR) pool.push(...CENTOPHAGE_FORMATIONS);
+  if (secForUnlocks >= CENTOPHAGE_START_SECTOR) pool.push(...CENTOPHAGE_FORMATIONS);
 
   // Fresh formation geometry and sway mode every wave!
   game.formationStyle = pickDifferent(pool, game.lastFormationStyle);
@@ -304,7 +305,7 @@ export function beginSector(game, num) {
       : `SECTOR ${String(num).padStart(2, '0')}`);
   game.bannerSub = game.hardMode
     ? (num === 1
-      ? 'SEC 06+ INTENSITY // FULL WAVES & MASTERS LIVE'
+      ? 'ALL MOBS & CAPSULES LIVE // FULL MASTERS'
       : `MASTER FLEET // ${fmtLabel}`)
     : (effSec === 1
       ? 'V1 ENFORCER PATROL INBOUND'
@@ -538,73 +539,98 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
   game.lastEntryPattern = entryPattern;
   const fullFormation = !!game.hardMode || waveNum >= STANDARD_WAVES_PER_SECTOR || !!opts.fullFormation;
   const top = buildTopRowConfig(sec, waveNum, !!game.hardMode);
-  const secForUnlocks = game.hardMode ? Math.max(sec, 7) : sec;
+  const secForUnlocks = game.hardMode ? Math.max(sec, HARD_MODE_MAX_UNLOCK_SECTOR) : sec;
   const canAlpha = secForUnlocks >= ALPHA_CENTOID_START_SECTOR;
 
   if (CENTOID_FORMATIONS.includes(style)) {
-    // 4 Dedicated Centoid Formations (Sec 04+)
-    const topTypes = style === 'CENTOID_GAUNTLET' ? top.types.slice(0, 4) : top.types;
-    const topXs = TOP_ROW_XS[topTypes.length] || top.xs;
-    topTypes.forEach((type, idx) => {
-      slots.push({ type, homeX: topXs[idx], homeY: 88, rowIdx: 0, squad: idx % 2 });
-    });
-
+    // 4 Radically Distinct Centoid Formations (Sec 04+)
     if (style === 'CENTOID_SERPENT_NEST') {
-      centoidSpawns.push(
-        { type: 'CENTOID', startX: opts.instant ? 185 : 34, startY: 146, dirX: 1, delay: 0.55 },
-        { type: canAlpha && fullFormation ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 295 : LOGICAL_W - 34, startY: 204, dirX: -1, delay: 1.15 }
-      );
-      [76, 134, 346, 404].forEach((x, idx) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 162, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
-        if (fullFormation || waveNum >= 2) {
-          slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 208, rowIdx: 2, squad: 2 + (idx >= 2 ? 1 : 0) });
-        }
+      // TWIN CASTLE TOWERS: Two fortified vertical left/right bastions framing a wide hollow serpent pit!
+      const top4 = top.types.slice(0, 4);
+      [[76, 84], [142, 114], [338, 114], [404, 84]].forEach(([x, y], idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: y, rowIdx: idx % 2, squad: idx < 2 ? 0 : 1 });
       });
-      for (let c = 0; c < 6; c++) {
-        slots.push({ type: 'DRONE', homeX: 88 + c * 61, homeY: 262, rowIdx: 3, squad: 4 + (c % 2) });
-      }
+      centoidSpawns.push(
+        { type: 'CENTOID', startX: opts.instant ? 196 : 34, startY: 146, dirX: 1, delay: 0.50 },
+        { type: canAlpha && fullFormation ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 284 : LOGICAL_W - 34, startY: 222, dirX: -1, delay: 1.10 }
+      );
+      // Inner tower Interceptor columns
+      [164, 212, 260].forEach((y, r) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: 136, homeY: y, rowIdx: 1 + r, squad: 2 });
+        slots.push({ type: 'INTERCEPTOR', homeX: 344, homeY: y, rowIdx: 1 + r, squad: 3 });
+      });
+      // Outer bastion Drone walls
+      [142, 188, 234, 280].forEach((y, r) => {
+        slots.push({ type: 'DRONE', homeX: 72, homeY: y, rowIdx: 2 + (r % 2), squad: 4 });
+        slots.push({ type: 'DRONE', homeX: 408, homeY: y, rowIdx: 2 + (r % 2), squad: 5 });
+      });
     } else if (style === 'CENTOID_COIL_WALL') {
-      centoidSpawns.push(
-        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 200 : 34, startY: 160, dirX: 1, delay: 0.45 },
-        { type: 'CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 222, dirX: -1, delay: 1.05 }
-      );
-      // Central Interceptor spearhead
-      [172, 218, 262, 308].forEach((x, c) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 148 + (c === 1 || c === 2 ? -10 : 10), rowIdx: 1, squad: 2 });
+      // GIANT INVERTED-V SPEARHEAD: Dramatic downward-pointing arrowhead plunging to (240, 290)!
+      const top4 = top.types.slice(0, 4);
+      [[74, 86], [142, 128], [338, 128], [406, 86]].forEach(([x, y], idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: y, rowIdx: 0, squad: idx < 2 ? 0 : 1 });
       });
-      // Outer Drone flank walls
-      for (let r = 0; r < 2; r++) {
-        [58, 104, 376, 422].forEach((x, c) => {
-          slots.push({ type: 'DRONE', homeX: x, homeY: 192 + r * 44, rowIdx: 2 + r, squad: 4 + (c >= 2 ? 1 : 0) });
+      centoidSpawns.push(
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 200 : 34, startY: 162, dirX: 1, delay: 0.45 },
+        { type: 'CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 228, dirX: -1, delay: 1.05 }
+      );
+      // Mid V-chevron Interceptor blade arms meeting at (240, 224)
+      [[182, 174], [298, 174], [212, 206], [268, 206], [240, 236]].forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + Math.floor(idx / 2), squad: 2 + (idx % 2) });
+      });
+      // Outer & lower Drone spearhead outline plunging down to the tip at (240, 290)
+      [[72, 152], [116, 194], [158, 234], [200, 266], [240, 292], [280, 266], [322, 234], [364, 194], [408, 152]].forEach(([x, y], idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 2 + (idx % 2), squad: 4 + (idx >= 5 ? 1 : 0) });
+      });
+    } else if (style === 'CENTOID_GAUNTLET') {
+      // PARALLEL DIAGONAL SLASH CANYON: Asymmetric twin diagonal ridges cutting across the arena!
+      const top4 = top.types.slice(0, 4);
+      [[86, 84], [184, 122], [286, 160], [388, 198]].forEach(([x, y], idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: y, rowIdx: idx % 2, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 122, dirX: 1, delay: 0.35 },
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 300 : LOGICAL_W - 34, startY: 186, dirX: -1, delay: 0.90 },
+        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 252, dirX: 1, delay: 1.45 }
+      );
+      // Lower parallel Interceptor diagonal + upper-right wing pod
+      [[74, 158], [148, 194], [222, 230], [296, 266], [332, 88], [394, 118]].forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + (idx % 2), squad: 2 + (idx >= 4 ? 1 : 0) });
+      });
+      // Bottom-left & bottom-right staggered Drone flank echoes
+      [[66, 214], [122, 246], [178, 276], [234, 296], [372, 264], [418, 290]].forEach(([x, y], idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 3, squad: 4 + (idx % 2) });
+      });
+    } else {
+      // CENTOID_SWARM_NEXUS — TRUE CIRCULAR HALO RING + CENTRAL EYE!
+      const cx = LOGICAL_W * 0.5;
+      const cy = 186;
+      // Lead Enforcer anchored right in the dead center eye; 3 more occupy exact ring nodes i=0, i=2, i=10 (zero overlap!)
+      const top4 = top.types.slice(0, 4);
+      if (top4[0]) slots.push({ type: top4[0], homeX: cx, homeY: cy, rowIdx: 0, squad: 0 });
+      [[cx, 82], [374, 132], [106, 132]].forEach(([x, y], idx) => {
+        if (top4[idx + 1]) slots.push({ type: top4[idx + 1], homeX: x, homeY: y, rowIdx: 0, squad: 1 });
+      });
+      centoidSpawns.push(
+        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 190 : 34, startY: 146, dirX: 1, delay: 0.50 },
+        { type: 'CENTOID', startX: opts.instant ? 290 : LOGICAL_W - 34, startY: 226, dirX: -1, delay: 1.10 }
+      );
+      // 12-point circular orbital halo around (240, 186) alternating Interceptors & Drones!
+      const ringN = 12;
+      for (let i = 0; i < ringN; i++) {
+        // Skip the 3 exact ring nodes occupied by outer Enforcers (i = 0 top, i = 2 upper-right, i = 10 upper-left)
+        if (i === 0 || i === 2 || i === 10) continue;
+        const a = (i / ringN) * Math.PI * 2 - Math.PI * 0.5;
+        const rx = Math.round(cx + Math.cos(a) * 150);
+        const ry = Math.round(cy + Math.sin(a) * 102);
+        slots.push({
+          type: i % 2 === 1 ? 'INTERCEPTOR' : 'DRONE',
+          homeX: clamp(rx, 54, LOGICAL_W - 54),
+          homeY: clamp(ry, 80, 294),
+          rowIdx: 1 + (i % 3),
+          squad: 2 + (i % 4)
         });
       }
-    } else if (style === 'CENTOID_GAUNTLET') {
-      centoidSpawns.push(
-        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 126, dirX: 1, delay: 0.35 },
-        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 300 : LOGICAL_W - 34, startY: 184, dirX: -1, delay: 0.90 },
-        { type: 'CENTOID', startX: opts.instant ? 180 : 34, startY: 242, dirX: 1, delay: 1.45 }
-      );
-      [96, 152, 328, 384].forEach((x, idx) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 154, rowIdx: 1, squad: 2 + (idx >= 2 ? 1 : 0) });
-      });
-      for (let c = 0; c < 6; c++) {
-        slots.push({ type: 'DRONE', homeX: 84 + c * 62, homeY: 278, rowIdx: 3, squad: 4 + (c % 2) });
-      }
-    } else {
-      // CENTOID_SWARM_NEXUS
-      centoidSpawns.push(
-        { type: canAlpha ? 'ALPHA_CENTOID' : 'CENTOID', startX: opts.instant ? 190 : 34, startY: 144, dirX: 1, delay: 0.50 },
-        { type: 'CENTOID', startX: opts.instant ? 290 : LOGICAL_W - 34, startY: 248, dirX: -1, delay: 1.10 }
-      );
-      const diamInterceptors = [
-        [240, 146], [186, 178], [294, 178], [146, 212], [334, 212], [240, 214]
-      ];
-      diamInterceptors.forEach(([x, y], idx) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + (idx % 2), squad: 2 + (idx % 2) });
-      });
-      [92, 152, 210, 270, 328, 388].forEach((x, idx) => {
-        slots.push({ type: 'DRONE', homeX: x, homeY: 274 - Math.abs(idx - 2.5) * 8, rowIdx: 3, squad: 4 + (idx % 2) });
-      });
     }
   } else if (PULSAR_FORMATIONS.includes(style)) {
     // 4 Dedicated Pulsar Formations (Sec 07+ / Hard Mode)
@@ -679,74 +705,113 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
       }
     }
   } else if (CENTOPHAGE_FORMATIONS.includes(style)) {
-    // 4 Dedicated Master Centophage Formations (Sec 08+ ONLY!)
+    // 4 Radically Distinct Master Centophage Formations (Sec 08+ Normal / H01+ Hard)
     if (style === 'CENTOPHAGE_FEEDING_GROUNDS') {
-      // 1 prowling Centophage surrounded by an appetizing ring of Drones, Interceptors & V1s!
-      top.types.slice(0, 4).forEach((type, idx) => {
-        slots.push({ type, homeX: TOP_ROW_XS[4][idx], homeY: 84, rowIdx: 0, squad: idx % 2 });
+      // HORSESHOE PREY BASIN: Wide open U-bowl of prey curving down to y=292 with a tight 3-boss crown up top!
+      const top3 = top.types.slice(0, 3);
+      [[154, 88], [240, 78], [326, 88]].forEach(([x, y], idx) => {
+        if (top3[idx]) slots.push({ type: top3[idx], homeX: x, homeY: y, rowIdx: 0, squad: idx % 2 });
       });
       centoidSpawns.push(
-        { type: 'CENTOPHAGE', startX: opts.instant ? 210 : 34, startY: 186, dirX: 1, delay: 0.50 }
+        { type: 'CENTOPHAGE', startX: opts.instant ? 210 : 34, startY: 184, dirX: 1, delay: 0.50 }
       );
-      [112, 368].forEach((x, idx) => {
-        slots.push({ type: 'V1_ENFORCER', homeX: x, homeY: 148, rowIdx: 1, squad: 2 + idx });
+      // U-shaped Horseshoe Basin curving smoothly around the open center feeding pit!
+      const basinPts = [
+        { x: 70,  y: 112, t: 'V1_ENFORCER' },
+        { x: 64,  y: 168, t: 'INTERCEPTOR' },
+        { x: 78,  y: 222, t: 'DRONE' },
+        { x: 118, y: 266, t: 'INTERCEPTOR' },
+        { x: 176, y: 290, t: 'DRONE' },
+        { x: 240, y: 296, t: 'V1_ENFORCER' },
+        { x: 304, y: 290, t: 'DRONE' },
+        { x: 362, y: 266, t: 'INTERCEPTOR' },
+        { x: 402, y: 222, t: 'DRONE' },
+        { x: 416, y: 168, t: 'INTERCEPTOR' },
+        { x: 410, y: 112, t: 'V1_ENFORCER' }
+      ];
+      basinPts.forEach((pt, idx) => {
+        slots.push({ type: pt.t, homeX: pt.x, homeY: pt.y, rowIdx: 1 + (idx % 3), squad: 2 + (idx % 4) });
       });
-      [[174, 144], [240, 134], [306, 144], [150, 224], [240, 232], [330, 224]].forEach(([x, y], idx) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
+      // Inner lip pair of Drones right above the basin floor
+      [[154, 232], [326, 232]].forEach(([x, y], idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 3, squad: 4 + idx });
       });
-      for (let c = 0; c < 8; c++) {
-        slots.push({ type: 'DRONE', homeX: 60 + c * 51, homeY: 274 - Math.abs(c - 3.5) * 6, rowIdx: 3, squad: 4 + (c % 2) });
-      }
     } else if (style === 'CENTOPHAGE_HIVE_AMBUSH') {
-      // Twin flanking Master Centophages entering from opposite edges + armored Enforcer diamond!
-      const top4 = top.types.slice(0, 4);
-      [112, 196, 284, 368].forEach((x, idx) => {
-        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: 86, rowIdx: 0, squad: idx % 2 });
-      });
+      // CENTRAL HEX CITADEL + 4 CORNER OUTPOSTS: Dense core fortress + 4 distant corner pods + wide open moat!
+      const top2 = top.types.slice(0, 2);
+      if (top2[0]) slots.push({ type: top2[0], homeX: 196, homeY: 182, rowIdx: 0, squad: 0 });
+      if (top2[1]) slots.push({ type: top2[1], homeX: 284, homeY: 182, rowIdx: 0, squad: 1 });
       centoidSpawns.push(
-        { type: 'CENTOPHAGE', startX: opts.instant ? 164 : 34, startY: 162, dirX: 1, delay: 0.45 },
-        { type: 'CENTOPHAGE', startX: opts.instant ? 316 : LOGICAL_W - 34, startY: 236, dirX: -1, delay: 1.05 }
+        { type: 'CENTOPHAGE', startX: opts.instant ? 164 : 34, startY: 126, dirX: 1, delay: 0.45 },
+        { type: 'CENTOPHAGE', startX: opts.instant ? 316 : LOGICAL_W - 34, startY: 246, dirX: -1, delay: 1.05 }
       );
-      [[240, 142], [186, 184], [294, 184], [240, 226]].forEach(([x, y], idx) => {
-        slots.push({ type: idx % 2 === 0 ? 'FLUX_ENFORCER' : 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + (idx > 0 ? 1 : 0), squad: 2 + (idx % 2) });
+      // Hexagonal inner citadel ring around the twin central bosses
+      [[240, 128], [240, 236], [156, 146], [324, 146], [156, 218], [324, 218]].forEach(([x, y], idx) => {
+        slots.push({
+          type: idx < 2 ? 'V1_ENFORCER' : 'INTERCEPTOR',
+          homeX: x,
+          homeY: y,
+          rowIdx: 1 + (idx % 2),
+          squad: 2 + (idx % 2)
+        });
       });
-      [68, 122, 358, 412, 168, 312].forEach((x, idx) => {
-        slots.push({ type: 'DRONE', homeX: x, homeY: idx < 4 ? 276 : 262, rowIdx: 3, squad: 4 + (idx % 2) });
+      // 4 isolated Corner Outpost pods (NW, NE, SW, SE) separated by wide open Centophage hunting lanes!
+      const cornerPods = [
+        [68, 86, 'FLUX_ENFORCER'], [114, 86, 'DRONE'], [68, 126, 'DRONE'],
+        [412, 86, 'NULL_ENFORCER'], [366, 86, 'DRONE'], [412, 126, 'DRONE'],
+        [68, 282, 'INTERCEPTOR'], [114, 282, 'DRONE'],
+        [412, 282, 'INTERCEPTOR'], [366, 282, 'DRONE']
+      ];
+      cornerPods.forEach(([x, y, type], idx) => {
+        slots.push({ type, homeX: x, homeY: y, rowIdx: 2 + (idx % 2), squad: 4 + (idx % 2) });
       });
     } else if (style === 'CENTOPHAGE_APEX_GAUNTLET') {
-      // Centophage + Super Centoid dual serpent corridor + twin Pulsar flank batteries!
-      top.types.forEach((type, idx) => {
-        slots.push({ type, homeX: top.xs[idx], homeY: 84, rowIdx: 0, squad: idx % 2 });
-      });
-      centoidSpawns.push(
-        { type: 'CENTOPHAGE', startX: opts.instant ? 200 : 34, startY: 152, dirX: 1, delay: 0.45 },
-        { type: 'ALPHA_CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 220, dirX: -1, delay: 1.15 }
-      );
-      [[74, 178], [406, 178]].forEach(([x, y], idx) => {
-        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + idx });
-      });
-      [148, 210, 270, 332].forEach((x, idx) => {
-        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 184 + (idx % 2) * 14, rowIdx: 2, squad: 2 + (idx >= 2 ? 1 : 0) });
-      });
-      for (let c = 0; c < 6; c++) {
-        slots.push({ type: 'DRONE', homeX: 88 + c * 60, homeY: 278, rowIdx: 3, squad: 4 + (c % 2) });
-      }
-    } else {
-      // CENTOPHAGE_PARASITE_NEXUS: Central Centophage inside an X-cross of Elites, Pulsars & V1s!
+      // GIANT X-CROSS / HOURGLASS: Four crisp diagonal corner-to-corner arms radiating from twin center Pulsars!
       const top4 = top.types.slice(0, 4);
-      [88, 188, 292, 392].forEach((x, idx) => {
-        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: 86, rowIdx: 0, squad: idx % 2 });
+      // Outer upper diagonal corners + mid-upper diagonal arms
+      [[78, 84], [402, 84], [148, 134], [332, 134]].forEach(([x, y], idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: y, rowIdx: idx < 2 ? 0 : 1, squad: idx % 2 });
       });
       centoidSpawns.push(
-        { type: 'CENTOPHAGE', startX: opts.instant ? 240 : 34, startY: 196, dirX: 1, delay: 0.55 }
+        { type: 'CENTOPHAGE', startX: opts.instant ? 200 : 34, startY: 112, dirX: 1, delay: 0.45 },
+        { type: 'ALPHA_CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 254, dirX: -1, delay: 1.15 }
       );
-      [[116, 146], [364, 146]].forEach(([x, y], idx) => {
+      // Center Pulsar X-junction!
+      [[202, 184], [278, 184]].forEach(([x, y], idx) => {
         slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + idx });
       });
-      [[174, 168], [306, 168], [174, 232], [306, 232]].forEach(([x, y], idx) => {
-        slots.push({ type: idx < 2 ? 'V1_ENFORCER' : 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
+      // Lower diagonal X-arms stretching to bottom-left & bottom-right corners
+      [[148, 232], [332, 232], [108, 266], [372, 266]].forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
       });
-      [[84, 248], [136, 276], [240, 266], [344, 276], [396, 248], [240, 140]].forEach(([x, y], idx) => {
+      // Outer X-tip Drones + top/bottom hourglass anchor pairs
+      [[66, 294], [414, 294], [198, 84], [282, 84], [198, 290], [282, 290]].forEach(([x, y], idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 3, squad: 4 + (idx % 2) });
+      });
+    } else {
+      // CENTOPHAGE_PARASITE_NEXUS — TRIPLE VERTICAL RIBCAGE COLUMNS + TWIN OPEN ALLEYS!
+      const top3 = top.types.slice(0, 3);
+      [[84, 86], [240, 86], [396, 86]].forEach(([x, y], idx) => {
+        if (top3[idx]) slots.push({ type: top3[idx], homeX: x, homeY: y, rowIdx: 0, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOPHAGE', startX: opts.instant ? 240 : 34, startY: 192, dirX: 1, delay: 0.55 }
+      );
+      // Left, Center & Right vertical spinal ribs (x = 84, 240, 396) leaving twin clean open alleys!
+      const leftCol = [
+        [84, 146, 'PULSAR'], [84, 198, 'V1_ENFORCER'], [84, 244, 'INTERCEPTOR'], [84, 286, 'DRONE']
+      ];
+      const midCol = [
+        [240, 146, 'V1_ENFORCER'], [240, 194, 'INTERCEPTOR'], [240, 240, 'INTERCEPTOR'], [240, 286, 'DRONE']
+      ];
+      const rightCol = [
+        [396, 146, 'PULSAR'], [396, 198, 'V1_ENFORCER'], [396, 244, 'INTERCEPTOR'], [396, 286, 'DRONE']
+      ];
+      [...leftCol, ...midCol, ...rightCol].forEach(([x, y, type], idx) => {
+        slots.push({ type, homeX: x, homeY: y, rowIdx: 1 + (idx % 3), squad: 2 + (idx % 4) });
+      });
+      // Ribcage side-hooks protruding slightly off the center spine
+      [[192, 168], [288, 168], [192, 262], [288, 262]].forEach(([x, y], idx) => {
         slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 3, squad: 4 + (idx % 2) });
       });
     }
