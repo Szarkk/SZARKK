@@ -229,7 +229,8 @@ const POWERUP_RGB = {
   RED: { stroke: [255, 58, 92], fill: [215, 22, 56], glow: [255, 30, 66] },
   PURPLE: { stroke: [224, 146, 255], fill: [148, 42, 225], glow: [196, 77, 255] },
   YELLOW: { stroke: [255, 232, 68], fill: [232, 166, 18], glow: [255, 224, 52] },
-  CLONE: { stroke: [162, 128, 255], fill: [56, 78, 230], glow: [138, 61, 255] }
+  CLONE: { stroke: [162, 128, 255], fill: [56, 78, 230], glow: [138, 61, 255] },
+  PLASMA: { stroke: [204, 255, 0], fill: [78, 48, 184], glow: [45, 255, 122] }
 };
 
 function sampleRgbWave(types, phase, channel, alpha = 1) {
@@ -604,7 +605,8 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null, enemySki
     }
 
     if (overrideScale === null && (damaged || e.isChallengeElite || e.hpBuffed) && e.hp > 0) {
-      const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
+      const isCentophageHead = e.type === 'CENTOPHAGE' && e.isCentoidHead;
+      const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (isCentophageHead ? 32 : (e.maxHp >= 2 ? 26 : 18))));
       const bx = Math.round(e.x - bw / 2);
       const by = Math.round(e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18))));
       const ratio = clamp(e.hp / e.maxHp, 0, 1);
@@ -617,9 +619,11 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null, enemySki
           ? COLORS.cyan
           : (e.type === 'PULSAR'
             ? COLORS.yellow
-            : (e.type === 'ALPHA_CENTOID'
-              ? COLORS.alphaPink
-              : (e.type === 'CENTOID' ? COLORS.centoidGreen : COLORS.gold))));
+            : (e.type === 'CENTOPHAGE'
+              ? COLORS.centophageAcid
+              : (e.type === 'ALPHA_CENTOID'
+                ? COLORS.alphaPink
+                : (e.type === 'CENTOID' ? COLORS.centoidGreen : COLORS.gold)))));
       ctx.fillRect(bx, by, Math.round(bw * ratio), 3);
       ctx.restore();
     }
@@ -1041,6 +1045,125 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null, enemySki
       ctx.closePath();
       ctx.fill();
     }
+  } else if (e.type === 'CENTOPHAGE') {
+    // MASTER CENTOPHAGE (Alpha Test Legacy Vector): Obsidian + Acid Chartreuse + Super Centoid Dark Purple!
+    const acidCol = flash ? '#ffffff' : COLORS.centophageAcid;
+    const purpleCol = flash ? '#ffffff' : COLORS.centophagePurple;
+    const violetCol = flash ? '#ffffff' : COLORS.centophageViolet;
+    const legWiggle = Math.sin(time * 22 + (e.centoidOrder || 0) * 1.15) * 2.8;
+
+    ctx.shadowColor = acidCol;
+    ctx.shadowBlur = e.isCentoidHead ? 18 : 11;
+
+    if (!e.isCentoidTail || e.isCentoidHead) {
+      // Scythe legs (acid rear + dark-purple front)
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-4, -9); ctx.lineTo(-7 + legWiggle, -15);
+      ctx.moveTo(-4, 9); ctx.lineTo(-7 - legWiggle, 15);
+      ctx.stroke();
+
+      ctx.strokeStyle = violetCol;
+      ctx.beginPath();
+      ctx.moveTo(4, -9); ctx.lineTo(8 - legWiggle, -15);
+      ctx.moveTo(4, 9); ctx.lineTo(8 + legWiggle, 15);
+      ctx.stroke();
+    }
+
+    if (e.isCentoidHead) {
+      // Horned Obsidian Overlord Battle-Helm
+      ctx.fillStyle = '#12161e';
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(15, 0);
+      ctx.lineTo(7, -11);
+      ctx.lineTo(-10, -11);
+      ctx.lineTo(-13, 0);
+      ctx.lineTo(-10, 11);
+      ctx.lineTo(7, 11);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Swept-back chartreuse crown horns
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(-8, -10); ctx.lineTo(-15, -13);
+      ctx.moveTo(-8, 10); ctx.lineTo(-15, 13);
+      ctx.stroke();
+
+      // Interlocking dark-purple tipped serrated fangs
+      ctx.strokeStyle = violetCol;
+      ctx.lineWidth = 2.1;
+      ctx.beginPath();
+      ctx.moveTo(10, -7); ctx.lineTo(20, -10); ctx.lineTo(16, -3);
+      ctx.moveTo(10, 7); ctx.lineTo(20, 10); ctx.lineTo(16, 3);
+      ctx.stroke();
+
+      // Central crest & fierce dark-purple eyes
+      ctx.fillStyle = purpleCol;
+      ctx.strokeStyle = violetCol;
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(1, 0); ctx.lineTo(-3, -4); ctx.lineTo(-7, 0); ctx.lineTo(-3, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = violetCol;
+      ctx.beginPath();
+      ctx.arc(6, -5, 2.7, 0, Math.PI * 2);
+      ctx.arc(6, 5, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (e.isCentoidTail) {
+      // Harvester blade tail
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(-8, 0); ctx.lineTo(-17, 0);
+      ctx.stroke();
+
+      ctx.fillStyle = '#12161e';
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.moveTo(9, 0); ctx.lineTo(3, -8); ctx.lineTo(-7, -7); ctx.lineTo(-10, 0); ctx.lineTo(-7, 7); ctx.lineTo(3, 8);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = violetCol;
+      ctx.beginPath();
+      ctx.arc(-1, 0, 2.8, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Chevron-plated body with acid gill slits & dark-purple (or absorbed!) core
+      ctx.fillStyle = '#141822';
+      ctx.strokeStyle = '#506075';
+      ctx.lineWidth = 1.9;
+      ctx.beginPath();
+      ctx.moveTo(11, 0); ctx.lineTo(5, -10); ctx.lineTo(-6, -10); ctx.lineTo(-11, 0); ctx.lineTo(-6, 10); ctx.lineTo(5, 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Acid lateral gill vents
+      ctx.strokeStyle = acidCol;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(-7, -7); ctx.lineTo(-2, -7);
+      ctx.moveTo(-7, 7); ctx.lineTo(-2, 7);
+      ctx.stroke();
+
+      ctx.fillStyle = (e.absorbedTint && e.absorbedTint.mid) ? e.absorbedTint.mid : violetCol;
+      ctx.beginPath();
+      ctx.moveTo(4, 0); ctx.lineTo(-1, -4); ctx.lineTo(-5, 0); ctx.lineTo(-1, 4);
+      ctx.closePath();
+      ctx.fill();
+    }
   } else if (e.type === 'PULSAR') {
     // PULSAR: Yellow Elite-sized fighter with 2 twin lightning rods!
     const col = flash ? '#ffffff' : COLORS.yellow;
@@ -1215,27 +1338,34 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
   const isPurple = type === 'PURPLE';
   const isYellow = type === 'YELLOW';
   const isClone = type === 'CLONE';
+  const isPlasma = type === 'PLASMA';
   const mainCol = isCyan
     ? COLORS.cyan
     : (isPurple
       ? COLORS.purple
       : (isYellow
         ? COLORS.yellow
-        : (isClone ? COLORS.cloneBlue : COLORS.nullRed)));
+        : (isPlasma
+          ? COLORS.centophageAcid
+          : (isClone ? COLORS.cloneBlue : COLORS.nullRed))));
   const glowCol = isCyan
     ? '#9efcff'
     : (isPurple
       ? COLORS.purpleBright
       : (isYellow
         ? COLORS.yellowOrange
-        : (isClone ? COLORS.clonePurple : '#ff8ca0')));
+        : (isPlasma
+          ? COLORS.centophageViolet
+          : (isClone ? COLORS.clonePurple : '#ff8ca0'))));
   const fillCol = isCyan
     ? '#041d2e'
     : (isPurple
       ? '#1e0532'
       : (isYellow
         ? '#291b02'
-        : (isClone ? '#0b0c2e' : '#26040b')));
+        : (isPlasma
+          ? '#160b34'
+          : (isClone ? '#0b0c2e' : '#26040b'))));
   const px = 2.6 * scale;
   const half = 4.5 * px;
   const pulse = 0.8 + Math.sin(time * 7) * 0.2;
@@ -1305,6 +1435,21 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
     ctx.fillRect(-px * 0.5, -px * 2.5, px, px * 2);
     ctx.fillRect(-px * 1.5, -px * 0.5, px, px);
     ctx.fillRect(px * 0.5, -px * 0.5, px, px);
+  } else if (isPlasma) {
+    // Glowing Hollow Plasma Ring Emblem (acid green ring + dark purple accents + yellow spark glints!)
+    ctx.fillStyle = '#2dff7a';
+    ctx.fillRect(-px * 1.5, -px * 2.5, px * 3, px);
+    ctx.fillRect(-px * 1.5, px * 1.5, px * 3, px);
+    ctx.fillRect(-px * 2.5, -px * 1.5, px, px * 3);
+    ctx.fillRect(px * 1.5, -px * 1.5, px, px * 3);
+    ctx.fillStyle = '#f2ffaa';
+    ctx.fillRect(-px * 0.5, -px * 2.5, px, px);
+    ctx.fillRect(-px * 0.5, px * 1.5, px, px);
+    ctx.fillStyle = COLORS.yellow;
+    ctx.fillRect(-px * 2.5, -px * 2.5, px, px);
+    ctx.fillRect(px * 1.5, px * 1.5, px, px);
+    ctx.fillStyle = COLORS.centophagePurple;
+    ctx.fillRect(-px * 0.5, -px * 0.5, px, px);
   } else {
     // Continuous Vertical Laser Beam Pixel Icon
     ctx.fillRect(-px * 0.5, -px * 3, px, px * 6);

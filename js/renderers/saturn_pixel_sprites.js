@@ -23,7 +23,8 @@ const POWERUP_GLOW_RGB = {
   RED:    { rim: [255, 76, 108],  sheen: [255, 36, 74],   glow: [255, 30, 66] },
   PURPLE: { rim: [228, 148, 255], sheen: [192, 74, 255],  glow: [196, 77, 255] },
   YELLOW: { rim: [255, 236, 86],  sheen: [255, 206, 38],  glow: [255, 224, 52] },
-  CLONE:  { rim: [176, 136, 255], sheen: [108, 92, 255],  glow: [138, 61, 255] }
+  CLONE:  { rim: [176, 136, 255], sheen: [108, 92, 255],  glow: [138, 61, 255] },
+  PLASMA: { rim: [204, 255, 0],   sheen: [45, 255, 122],  glow: [120, 74, 255] }
 };
 
 // Reusable 96x96 offscreen scratch buffers (handles 32px, 48px & 64px future fighters with zero GC!)

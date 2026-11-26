@@ -189,8 +189,8 @@ button:active {
 }
 
 .life-ship-svg.is-pixel {
-  width: 15px;
-  height: 15px;
+  width: 18px;
+  height: 20px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.9));
@@ -1095,6 +1095,7 @@ body.pixel-mode #game-canvas {
 .archive-card.tier-pulsar { border-color: rgba(255, 230, 64, 0.82); background: rgba(36, 28, 4, 0.86); box-shadow: inset 0 0 14px rgba(255, 230, 64, 0.15); }
 .archive-card.tier-pwr-yellow { border-color: rgba(255, 230, 64, 0.82); background: rgba(38, 28, 4, 0.86); box-shadow: inset 0 0 14px rgba(255, 230, 64, 0.16); }
 .archive-card.tier-pwr-clone { border-color: rgba(96, 118, 255, 0.84); background: rgba(14, 12, 46, 0.88); box-shadow: inset 0 0 14px rgba(138, 61, 255, 0.18); }
+.archive-card.tier-pwr-plasma { border-color: rgba(204, 255, 0, 0.88); background: linear-gradient(180deg, rgba(22, 14, 48, 0.94), rgba(8, 24, 16, 0.94)); box-shadow: inset 0 0 14px rgba(45, 255, 122, 0.2); }
 .archive-card.tier-deploy { border-color: rgba(180, 110, 255, 0.62); background: rgba(16, 10, 34, 0.84); }
 .archive-card.tier-pwr-cyan { border-color: rgba(0, 246, 255, 0.9); background: rgba(0, 28, 46, 0.9); box-shadow: inset 0 0 14px rgba(0, 246, 255, 0.18); }
 .archive-card.tier-pwr-red { border-color: rgba(255, 30, 66, 0.9); background: rgba(42, 6, 16, 0.9); box-shadow: inset 0 0 14px rgba(255, 30, 66, 0.18); }
@@ -1472,6 +1473,23 @@ body.pixel-mode #game-canvas {
 .pwr-slot.pwr-clone .pwr-gauge-fill {
   background: linear-gradient(90deg, #2846e8, #783bff, #d4a8ff);
   box-shadow: 0 0 12px rgba(120, 59, 255, 0.92);
+}
+
+#powerup-gauge-bar.pwr-plasma {
+  border-top-color: rgba(45, 255, 122, 0.88);
+  box-shadow: inset 0 2px 12px rgba(78, 48, 184, 0.32);
+}
+.pwr-slot.pwr-plasma .pwr-gauge-name,
+.pwr-slot.pwr-plasma .pwr-gauge-val {
+  color: #e2ff66;
+  text-shadow: 0 0 8px rgba(45, 255, 122, 0.85);
+}
+.pwr-slot.pwr-plasma .pwr-gauge-track {
+  border-color: rgba(45, 255, 122, 0.65);
+}
+.pwr-slot.pwr-plasma .pwr-gauge-fill {
+  background: linear-gradient(90deg, #4e30b8, #2dff7a, #ffe640);
+  box-shadow: 0 0 12px rgba(204, 255, 0, 0.92);
 }
 
 .dock-inner {
@@ -1964,14 +1982,17 @@ body.sandbox-active #status-bar {
 
 .sbx-corner-btn {
   pointer-events: auto;
-  min-width: 68px;
-  padding: 5px 7px;
-  min-height: 25px;
+  width: 88px;
+  min-width: 88px;
+  padding: 5px 6px;
+  min-height: 26px;
   font-size: 7.8px;
   font-weight: 700;
   letter-spacing: 0.35px;
   border-radius: 6px;
   white-space: nowrap;
+  text-align: center;
+  justify-content: center;
 }
 
 .sbx-corner-btn.is-tray {
@@ -2008,6 +2029,13 @@ body.sandbox-active #status-bar {
   box-shadow: 0 0 12px rgba(255, 230, 64, 0.65);
 }
 
+.sbx-corner-btn.is-reset {
+  background: rgba(4, 48, 38, 0.94);
+  color: #b8ffe8;
+  border: 1.3px solid rgba(0, 255, 170, 0.78);
+  box-shadow: 0 0 8px rgba(0, 255, 170, 0.28);
+}
+
 .sbx-corner-btn.is-clr {
   background: rgba(68, 12, 26, 0.94);
   color: #ffd0da;
@@ -2020,7 +2048,7 @@ body.sandbox-active #status-bar {
   position: absolute;
   bottom: 8px;
   left: 8px;
-  right: 86px;
+  right: 106px;
   z-index: 12;
   display: flex;
   align-items: center;
@@ -2182,6 +2210,15 @@ body.sandbox-active #status-bar {
 .sbx-training-box {
   border-color: rgba(255, 212, 71, 0.56);
   background: rgba(26, 20, 4, 0.78);
+}
+
+.sbx-challenge-box {
+  border-color: rgba(45, 255, 122, 0.62);
+  background: linear-gradient(180deg, rgba(16, 12, 38, 0.9), rgba(6, 24, 18, 0.88));
+}
+
+.sbx-challenge-box .sbx-sec-title {
+  color: #b4ff7a;
 }
 
 .sbx-field-box {
@@ -2408,8 +2445,14 @@ body.sandbox-active #status-bar {
 .sbx-chip.sbx-c-red { border-color: rgba(255, 30, 66, 0.72); color: #ff9cb0; }
 .sbx-chip.sbx-c-pink { border-color: rgba(255, 82, 200, 0.78); color: #ffb2e8; }
 .sbx-chip.sbx-c-yellow { border-color: rgba(255, 230, 64, 0.78); color: #fff096; }
+.sbx-chip.sbx-c-acid { border-color: rgba(204, 255, 0, 0.82); color: #e2ff66; background: linear-gradient(180deg, rgba(24, 18, 48, 0.96), rgba(12, 16, 22, 0.98)); }
 .sbx-chip.sbx-c-purple { border-color: rgba(196, 77, 255, 0.78); color: #eabfff; }
 .sbx-chip.sbx-c-clone { border-color: rgba(124, 114, 255, 0.8); color: #cabfff; }
+.sbx-chip.sbx-c-plasma, .sbx-pwr-item.sbx-c-plasma {
+  border-color: rgba(204, 255, 0, 0.85);
+  color: #e2ff66;
+  background: linear-gradient(180deg, rgba(37, 23, 102, 0.95), rgba(10, 28, 18, 0.96));
+}
 
 .sbx-chip.selected {
   background: rgba(255, 212, 71, 0.24);
@@ -2833,6 +2876,7 @@ button:active,
 .sbx-corner-btn.is-skins { --px-bdr: #c44dff; }
 .sbx-corner-btn.is-ruler { --px-bdr: rgba(255, 212, 71, 0.72); }
 .sbx-corner-btn.is-ruler.is-on { --px-bdr: #ffd447; }
+.sbx-corner-btn.is-reset { --px-bdr: #00ffaa; }
 .sbx-corner-btn.is-clr { --px-bdr: #ff3e62; }
 
 .sbx-pwr-item.is-all { --px-bdr: #ffd447; }
@@ -2841,10 +2885,12 @@ button:active,
 .sbx-pwr-item.sbx-c-purple, .sbx-chip.sbx-c-purple { --px-bdr: #c44dff; }
 .sbx-pwr-item.sbx-c-yellow, .sbx-chip.sbx-c-yellow { --px-bdr: #ffe640; }
 .sbx-pwr-item.sbx-c-clone, .sbx-chip.sbx-c-clone { --px-bdr: #8a72ff; }
+.sbx-pwr-item.sbx-c-plasma, .sbx-chip.sbx-c-plasma { --px-bdr: #2dff7a; }
 .sbx-chip.sbx-c-gold { --px-bdr: #ffd447; }
 .sbx-chip.sbx-c-amber { --px-bdr: #ff762a; }
 .sbx-chip.sbx-c-green { --px-bdr: #2dff7a; }
 .sbx-chip.sbx-c-pink { --px-bdr: #ff52c8; }
+.sbx-chip.sbx-c-acid { --px-bdr: #ccff00; }
 .sbx-pwr-item.is-active, .sbx-chip.selected, .sbx-field-chip.is-active { --px-bdr: #ffffff; }
 
 .sbx-action-btn { --px-bdr: rgba(0, 246, 255, 0.72); }
@@ -3105,6 +3151,8 @@ button:active,
 .tier-badge.basic, .record-banner, .go-save-panel, .arcade-input, .sandbox-deploy-bar, .sbx-training-box { --px-bdr: rgba(255, 212, 71, 0.78); }
 .tier-badge.elite-red, .go-mode-badge, .lb-confirm-box.final { --px-bdr: #ff1e42; }
 .tier-badge.deploy, .sbx-field-box { --px-bdr: rgba(196, 77, 255, 0.72); }
+.sbx-challenge-box { --px-bdr: rgba(45, 255, 122, 0.78); }
+.tier-badge.centophage { --px-bdr: #ccff00; background: rgba(37, 23, 102, 0.85); color: #e2ff66; }
 .stat-chip { --px-bdr: rgba(0, 246, 255, 0.42); }
 .stat-chip.warn { --px-bdr: rgba(255, 30, 66, 0.7); }
 .stat-chip.gold { --px-bdr: rgba(255, 212, 71, 0.65); }
@@ -3115,7 +3163,9 @@ button:active,
 .archive-card.tier-null, .archive-card.tier-pwr-red { --px-bdr: rgba(255, 30, 66, 0.82); }
 .archive-card.tier-centoid { --px-bdr: rgba(45, 255, 122, 0.78); }
 .archive-card.tier-alpha, .archive-card.tier-deploy, .archive-card.tier-pwr-purple { --px-bdr: rgba(196, 77, 255, 0.82); }
+.archive-card.tier-centophage { --px-bdr: rgba(204, 255, 0, 0.86); background: linear-gradient(180deg, rgba(22, 16, 44, 0.94), rgba(10, 14, 22, 0.96)); }
 .archive-card.tier-pwr-clone { --px-bdr: rgba(114, 102, 255, 0.82); }
+.archive-card.tier-pwr-plasma { --px-bdr: rgba(204, 255, 0, 0.88); }
 .lb-row { --px-bdr: rgba(0, 246, 255, 0.32); }
 .lb-row.rank-1 { --px-bdr: rgba(255, 212, 71, 0.82); }
 .lb-row.rank-2 { --px-bdr: rgba(220, 245, 255, 0.68); }
@@ -3161,6 +3211,7 @@ button:active,
 .pwr-slot.pwr-purple .pwr-gauge-track { --px-bdr: rgba(196, 77, 255, 0.7); }
 .pwr-slot.pwr-yellow .pwr-gauge-track { --px-bdr: rgba(255, 230, 64, 0.72); }
 .pwr-slot.pwr-clone .pwr-gauge-track { --px-bdr: rgba(114, 92, 255, 0.72); }
+.pwr-slot.pwr-plasma .pwr-gauge-track { --px-bdr: rgba(45, 255, 122, 0.78); }
 
 .pwr-gauge-fill {
   box-shadow:

@@ -9,17 +9,22 @@ import {
   collectCapsule,
   hasPowerup,
   removePowerupSlot,
+  resetPlasmaRingState,
   spawnCapsule
 } from './powerups.js';
 import {
   BASE_FORMATION_STYLES,
   CENTOID_FORMATIONS,
+  CENTOPHAGE_FORMATIONS,
   ENTRY_PATTERNS,
+  EXTRA_ROUND_MODES,
   PULSAR_FORMATIONS,
   SWAY_MODES,
+  beginChallengeStage,
   beginSector,
   buildStandardWaveQueue,
-  spawnDirectEnemy
+  spawnDirectEnemy,
+  startChallengeExtraRound
 } from './enemies.js';
 import { hideAllOverlays, openModal, resetInputs, updateHUD, updateStatusPills } from './ui.js';
 import { getAurexSkinMeta, getEnemySkinMeta } from './skins.js';
@@ -31,10 +36,11 @@ export const SANDBOX_ENEMIES = [
   { id: 'CENTOID', label: 'CENTOID', cls: 'sbx-c-green' },
   { id: 'FLUX_ENFORCER', label: 'ELITE FLUX', cls: 'sbx-c-cyan' },
   { id: 'NULL_ENFORCER', label: 'ELITE NULL', cls: 'sbx-c-red' },
-  { id: 'ALPHA_CENTOID', label: 'ALPHA CENTOID', cls: 'sbx-c-pink' },
+  { id: 'ALPHA_CENTOID', label: 'SUPER CENTOID', cls: 'sbx-c-pink' },
   { id: 'PULSAR', label: 'PULSAR', cls: 'sbx-c-yellow' },
   { id: 'MASTER_FLUX_ENFORCER', label: 'MASTER FLUX', cls: 'sbx-c-cyan' },
-  { id: 'MASTER_NULL_ENFORCER', label: 'MASTER NULL', cls: 'sbx-c-red' }
+  { id: 'MASTER_NULL_ENFORCER', label: 'MASTER NULL', cls: 'sbx-c-red' },
+  { id: 'CENTOPHAGE', label: 'CENTOPHAGE', cls: 'sbx-c-acid' }
 ];
 
 export const SANDBOX_CAPSULES = [
@@ -42,13 +48,14 @@ export const SANDBOX_CAPSULES = [
   { id: 'RED', label: 'LASER', cls: 'sbx-c-red' },
   { id: 'PURPLE', label: 'ARC WAVE', cls: 'sbx-c-purple' },
   { id: 'YELLOW', label: 'LIGHTNING', cls: 'sbx-c-yellow' },
-  { id: 'CLONE', label: 'CLONES', cls: 'sbx-c-clone' }
+  { id: 'CLONE', label: 'CLONES', cls: 'sbx-c-clone' },
+  { id: 'PLASMA', label: 'PLASMA', cls: 'sbx-c-plasma' }
 ];
 
 // Extensible registry of Field Buffs / Debuffs for Sandbox toggling
 export const SANDBOX_FIELD_EFFECTS = [
-  { id: 'CYAN', label: 'CYAN FIELD', sub: '1.5x SLOW', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-cyan' },
-  { id: 'RED', label: 'RED FIELD', sub: '0.5x DMG', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-red' }
+  { id: 'CYAN', label: 'FLUX FIELD', sub: '1.5x SLOW', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-cyan' },
+  { id: 'RED', label: 'NULL FIELD', sub: '0.33x DMG', kind: 'DEBUFF', dur: HARD_FIELD_DEBUFF_DUR, cls: 'sbx-c-red' }
 ];
 
 function createDefaultSandboxConfig() {
@@ -66,6 +73,7 @@ function createDefaultSandboxConfig() {
     fieldIndefinite: true, // Default: Field Buffs / Debuffs stay active indefinitely until toggled off
     trainingSec: 7,
     trainingHard: false,
+    challengeKey: 'EXTRA:TESLA_SURGE_TRIAL',
     drawerOpen: false,
     pwrTrayOpen: false
   };
@@ -88,6 +96,7 @@ export function startSandboxMode(game) {
   game.sandboxShowRuler = false;
   game.sandboxDrag = null;
   game.sandboxTrainingRound = false;
+  game.sandboxChallengeTest = false;
   game.sandbox = createDefaultSandboxConfig();
   game.hardMode = false;
   game.sector = 1;
@@ -112,6 +121,10 @@ export function clearSandboxArena(game, keepCapsules = false) {
   game.pulsarSparks = [];
   game.enemyBuffWaves = [];
   game.lightningBolts = [];
+  game.deathCrossLightnings = [];
+  game.plasmaRings = [];
+  resetPlasmaRingState(game);
+  if (hasPowerup(game, 'PLASMA')) removePowerupSlot(game, 'PLASMA', true);
   game.waveQueue = [];
   game.midWaveSpawns = [];
   game.waveSpawnTimer = 0;
@@ -127,6 +140,8 @@ export function clearSandboxArena(game, keepCapsules = false) {
   game.player.capturedById = null;
   game.fieldDebuff = null;
   game.sandboxTrainingRound = false;
+  game.sandboxChallengeTest = false;
+  game.isChallengeStage = false;
   game.sectorPhase = 'COMBAT';
   game.synth.stopTractorBeam();
   syncSandboxUI(game);
@@ -190,6 +205,41 @@ export function startSandboxTrainingRound(game) {
   sb.drawerOpen = false;
 
   beginSector(game, sb.trainingSec);
+  syncSandboxUI(game);
+  updateHUD(game);
+}
+
+export function startSandboxChallengeTest(game) {
+  if (!game.sandboxMode || !game.sandbox) return;
+  const sb = game.sandbox;
+  const key = sb.challengeKey || 'EXTRA:TESLA_SURGE_TRIAL';
+  clearSandboxArena(game, false);
+
+  game.sandboxIdle = false;
+  game.sandboxPauseAnim = false;
+  game.sandboxTrainingRound = false;
+  game.sandboxChallengeTest = true;
+  sb.deployMode = 'OFF';
+  sb.deployKind = null;
+  sb.deployValue = null;
+  sb.deployLabel = '';
+  sb.drawerOpen = false;
+
+  if (key.startsWith('STD:')) {
+    const chNum = clamp(parseInt(key.slice(4), 10) || 1, 1, 6);
+    game.hardMode = false;
+    beginChallengeStage(game, chNum);
+  } else {
+    const modeId = key.startsWith('EXTRA:') ? key.slice(6) : key;
+    game.isChallengeStage = true;
+    game.challengeNum = 4;
+    game.challengeHits = 0;
+    game.challengeTotal = 0;
+    game.challengeSubRound = 1;
+    game.challengeExtraRounds = 1;
+    startChallengeExtraRound(game, 4, 1, modeId);
+  }
+
   syncSandboxUI(game);
   updateHUD(game);
 }
@@ -529,6 +579,19 @@ export function syncSandboxUI(game) {
     btnTrainStop.classList.toggle('hidden', !game.sandboxTrainingRound);
   }
 
+  const btnChStart = document.getElementById('sbx-btn-start-challenge');
+  const btnChStop = document.getElementById('sbx-btn-stop-challenge');
+  if (btnChStart) {
+    btnChStart.textContent = game.sandboxChallengeTest ? 'RESTART CHALLENGE' : 'START CHALLENGE';
+  }
+  if (btnChStop) {
+    btnChStop.classList.toggle('hidden', !game.sandboxChallengeTest);
+  }
+  const selChallenge = document.getElementById('sbx-sel-challenge');
+  if (selChallenge && selChallenge.value !== sb.challengeKey) {
+    selChallenge.value = sb.challengeKey;
+  }
+
   // Sync selects
   const selFmt = document.getElementById('sbx-sel-formation');
   if (selFmt && selFmt.value !== sb.formation) selFmt.value = sb.formation;
@@ -570,6 +633,7 @@ function populateSandboxDom(game) {
     addGroup('BASE FORMATIONS (5)', BASE_FORMATION_STYLES);
     addGroup('CENTOID FORMATIONS (4)', CENTOID_FORMATIONS);
     addGroup('PULSAR FORMATIONS (4)', PULSAR_FORMATIONS);
+    addGroup('CENTOPHAGE FORMATIONS (4)', CENTOPHAGE_FORMATIONS);
   }
 
   const selEntry = document.getElementById('sbx-sel-entry');
@@ -614,6 +678,37 @@ function populateSandboxDom(game) {
       opt.textContent = `SECTOR ${String(s).padStart(2, '0')}`;
       selTrainSec.appendChild(opt);
     }
+  }
+
+  const selChallenge = document.getElementById('sbx-sel-challenge');
+  if (selChallenge && selChallenge.options.length === 0) {
+    const newModes = EXTRA_ROUND_MODES.slice(4);
+    const classicModes = EXTRA_ROUND_MODES.slice(0, 4);
+    const addChallengeGroup = (label, entries) => {
+      const og = document.createElement('optgroup');
+      og.label = label;
+      for (const item of entries) {
+        const opt = document.createElement('option');
+        opt.value = item.value;
+        opt.textContent = item.label;
+        og.appendChild(opt);
+      }
+      selChallenge.appendChild(og);
+    };
+    addChallengeGroup(
+      'NEW SPECIALIST CHALLENGES (4)',
+      newModes.map(m => ({ value: `EXTRA:${m.id}`, label: m.title }))
+    );
+    addChallengeGroup(
+      'CLASSIC EXTRA CHALLENGES (4)',
+      classicModes.map(m => ({ value: `EXTRA:${m.id}`, label: m.title }))
+    );
+    addChallengeGroup('STANDARD CHALLENGE STAGES (4)', [
+      { value: 'STD:1', label: 'CH.01 // CLASSIC DATA STREAM' },
+      { value: 'STD:2', label: 'CH.02 // ELITE RAIDERS + EXTRAS' },
+      { value: 'STD:3', label: 'CH.03 // MASTER ESCORTS + EXTRAS' },
+      { value: 'STD:4', label: 'CH.04 // TRIPLE MASTERS OVERDRIVE' }
+    ]);
   }
 
   const enemyGrid = document.getElementById('sbx-enemy-grid');
@@ -922,6 +1017,34 @@ export function bindSandboxEvents(game) {
     syncSandboxPowerupTray(game);
   });
 
+  document.getElementById('sbx-btn-reset-pos')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    const p = game.player;
+    if (!p) return;
+    p.x = LOGICAL_W * 0.5;
+    p.y = PLAYER_DEFAULT_Y;
+    p.prevX = p.x;
+    p.prevY = p.y;
+    p.vx = 0;
+    p.vy = 0;
+    p.bankAxis = 0;
+    p.thrustAxis = 0;
+    p.animClip = 'idle';
+    p.bankFrame = 0;
+    p.alive = true;
+    p.respawnTimer = 0;
+    p.capturedById = null;
+    if (game.fighterClones && game.fighterClones.length > 0) {
+      for (const cl of game.fighterClones) {
+        if (!cl.detached) {
+          cl.x = clamp(p.x + (cl.ox || 0), 20, LOGICAL_W - 20);
+          cl.y = clamp(p.y + (cl.oy || 0), PLAYER_MIN_Y, LOGICAL_H - 18);
+        }
+      }
+    }
+    game.spawnPopup(p.x, p.y - 28, 'POS RESET (0,0)', COLORS.emerald, 0.95);
+  });
+
   document.getElementById('sbx-pwr-all')?.addEventListener('click', (e) => {
     e.currentTarget.blur();
     game.synth.unlock();
@@ -996,5 +1119,16 @@ export function bindSandboxEvents(game) {
   document.getElementById('sbx-btn-stop-training')?.addEventListener('click', () => {
     clearSandboxArena(game, false);
     game.spawnPopup(LOGICAL_W * 0.5, 200, 'TRAINING STOPPED', COLORS.amber, 1.1);
+  });
+
+  document.getElementById('sbx-sel-challenge')?.addEventListener('change', (e) => {
+    if (game.sandbox) game.sandbox.challengeKey = e.target.value;
+  });
+  document.getElementById('sbx-btn-start-challenge')?.addEventListener('click', () => {
+    startSandboxChallengeTest(game);
+  });
+  document.getElementById('sbx-btn-stop-challenge')?.addEventListener('click', () => {
+    clearSandboxArena(game, false);
+    game.spawnPopup(LOGICAL_W * 0.5, 200, 'CHALLENGE STOPPED', COLORS.amber, 1.1);
   });
 }

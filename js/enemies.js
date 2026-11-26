@@ -5,6 +5,9 @@
 import {
   ALPHA_CENTOID_START_SECTOR,
   CENTOID_START_SECTOR,
+  CENTOPHAGE_START_SECTOR,
+  CHAIN_LIGHTNING_DISABLE_DUR,
+  CHAIN_LIGHTNING_REPEL_DIST,
   CHALLENGE_ELITE_START,
   CHALLENGE_EXTRA_ROUND_START,
   CHALLENGE_INTERVAL,
@@ -39,6 +42,7 @@ import {
 } from './config.js';
 import { clamp, evalCubic, lerp } from './utils.js';
 import { getActivePowerups, getUnlockedCapsuleTypes, rollEnemyCapsuleDrop } from './powerups.js';
+import { isPlasmaShieldActive, isPlayerShootingLightning } from './player.js';
 import {
   handleEnforcerDestroyed,
   spawnEnforcerWing,
@@ -70,19 +74,30 @@ export const PULSAR_FORMATIONS = [
   'PULSAR_DIAMOND_COIL',
   'PULSAR_TWIN_CONDUIT'
 ];
+export const CENTOPHAGE_FORMATIONS = [
+  'CENTOPHAGE_FEEDING_GROUNDS',
+  'CENTOPHAGE_HIVE_AMBUSH',
+  'CENTOPHAGE_APEX_GAUNTLET',
+  'CENTOPHAGE_PARASITE_NEXUS'
+];
 export const FORMATION_STYLES = [
   ...BASE_FORMATION_STYLES,
   ...CENTOID_FORMATIONS,
-  ...PULSAR_FORMATIONS
+  ...PULSAR_FORMATIONS,
+  ...CENTOPHAGE_FORMATIONS
 ];
 export const ENTRY_PATTERNS = ['CROSS', 'SPIRAL', 'TOP_DROP', 'PINCER'];
 export const SWAY_MODES = ['SWAY', 'FIGURE8', 'COUNTER_ROW', 'ACCORDION'];
 
-const EXTRA_ROUND_MODES = [
-  { id: 'DIAMOND_VORTEX', title: 'ORBITAL DIAMOND VORTEX', color: COLORS.cyan },
-  { id: 'TWIN_PINCER', title: 'TWIN PINCER SPEARHEAD', color: COLORS.amber },
-  { id: 'HELIX_BARRAGE', title: 'DOUBLE HELIX BARRAGE', color: COLORS.purpleBright },
-  { id: 'PHALANX_ASSAULT', title: 'IRON PHALANX ASSAULT', color: COLORS.nullRed }
+export const EXTRA_ROUND_MODES = [
+  { id: 'DIAMOND_VORTEX', title: 'ORBITAL DIAMOND VORTEX', color: COLORS.cyan, minEffChallenge: 2 },
+  { id: 'TWIN_PINCER', title: 'TWIN PINCER SPEARHEAD', color: COLORS.amber, minEffChallenge: 2 },
+  { id: 'HELIX_BARRAGE', title: 'DOUBLE HELIX BARRAGE', color: COLORS.purpleBright, minEffChallenge: 2 },
+  { id: 'PHALANX_ASSAULT', title: 'IRON PHALANX ASSAULT', color: COLORS.nullRed, minEffChallenge: 2 },
+  { id: 'TESLA_SURGE_TRIAL', title: 'TESLA SURGE TRIAL [PULSARS]', color: COLORS.yellow, minEffChallenge: 3 },
+  { id: 'SERPENT_STAMPEDE', title: 'SERPENT STAMPEDE [CENTOIDS]', color: COLORS.centoidGreen, minEffChallenge: 3 },
+  { id: 'PREDATOR_FEEDING_FRENZY', title: 'PREDATOR FRENZY [CENTOPHAGE]', color: COLORS.centophageAcid, minEffChallenge: 4 },
+  { id: 'APEX_NEXUS_GAUNTLET', title: 'APEX NEXUS GAUNTLET [ALL]', color: COLORS.centophageViolet, minEffChallenge: 4 }
 ];
 
 function pickDifferent(pool, avoid) {
@@ -166,7 +181,7 @@ function scheduleMidWaveSpawns(game, effSec, style) {
     }
   }
 
-  // 2) Alpha Centoid (Sec 07+):
+  // 2) Super Centoid (Sec 07+):
   //    - 10% chance (roll 3x -> 0-3) mid-wave in Centoid waves
   //    - 10% chance (roll 4x -> 0-4) mid-fight in formations NOT featuring any Centoids
   if (secForUnlocks >= ALPHA_CENTOID_START_SECTOR) {
@@ -181,6 +196,15 @@ function scheduleMidWaveSpawns(game, effSec, style) {
         spawned++;
       }
     }
+  }
+
+  // 2b) Master Centophage (STRICTLY Sector 08+ / Hard H03+): rare predatory Master reinforcement mid-wave
+  const isCentophageForm = CENTOPHAGE_FORMATIONS.includes(style);
+  if (!isCentophageForm && effSec >= CENTOPHAGE_START_SECTOR && Math.random() < (isCentoidForm ? 0.20 : 0.12)) {
+    game.midWaveSpawns.push({
+      timer: 4.0 + Math.random() * 2.0,
+      type: 'CENTOPHAGE'
+    });
   }
 
   // 3) Pulsar (Sec 07+): 20% chance (roll 5x -> 0-5) mid-fight in formations NOT featuring Pulsars
@@ -208,10 +232,11 @@ export function prepareStandardWave(game, waveNum) {
   game.waveSpawnTimer = 0;
   game.formationClock = 0;
 
-  // Build eligible formation pool by sector unlocks (Base 5 + 4 Centoid Sec 04+ + 4 Pulsar Sec 07+)
+  // Build eligible formation pool by sector unlocks (Base 5 + Centoid 4 Sec 04+ + Pulsar 4 Sec 07+ + Centophage 4 Sec 08+)
   const pool = [...BASE_FORMATION_STYLES];
   if (secForUnlocks >= CENTOID_START_SECTOR) pool.push(...CENTOID_FORMATIONS);
   if (secForUnlocks >= PULSAR_START_SECTOR) pool.push(...PULSAR_FORMATIONS);
+  if (effSec >= CENTOPHAGE_START_SECTOR) pool.push(...CENTOPHAGE_FORMATIONS);
 
   // Fresh formation geometry and sway mode every wave!
   game.formationStyle = pickDifferent(pool, game.lastFormationStyle);
@@ -292,10 +317,12 @@ export function beginSector(game, num) {
             : (effSec === MASTER_START_SECTOR
               ? 'WARNING: MASTER ENFORCERS ONLINE'
               : (effSec === PULSAR_START_SECTOR
-                ? 'PULSARS, ALPHA CENTOIDS & NEW CAPSULES ONLINE'
-                : (effSec > MASTER_START_SECTOR
-                  ? `MASTER FLEET // ${fmtLabel}`
-                  : `FLEET FORMATION: ${fmtLabel}`)))))));
+                ? 'PULSARS, SUPER CENTOIDS & NEW CAPSULES ONLINE'
+                : (effSec === CENTOPHAGE_START_SECTOR
+                  ? 'WARNING: CENTOPHAGES & PLASMA RINGS ONLINE'
+                  : (effSec > MASTER_START_SECTOR
+                    ? `MASTER FLEET // ${fmtLabel}`
+                    : `FLEET FORMATION: ${fmtLabel}`))))))));
   game.bannerColor = (game.hardMode || effSec >= MASTER_START_SECTOR)
     ? COLORS.nullRed
     : (effSec === ELITE_NULL_START_SECTOR ? COLORS.nullRed : (effSec === 4 ? COLORS.purple : COLORS.cyan));
@@ -651,6 +678,78 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
         slots.push({ type: 'DRONE', homeX: 140 + c * 40, homeY: 244 + (c % 2) * 26, rowIdx: 3, squad: 4 + (c % 2) });
       }
     }
+  } else if (CENTOPHAGE_FORMATIONS.includes(style)) {
+    // 4 Dedicated Master Centophage Formations (Sec 08+ ONLY!)
+    if (style === 'CENTOPHAGE_FEEDING_GROUNDS') {
+      // 1 prowling Centophage surrounded by an appetizing ring of Drones, Interceptors & V1s!
+      top.types.slice(0, 4).forEach((type, idx) => {
+        slots.push({ type, homeX: TOP_ROW_XS[4][idx], homeY: 84, rowIdx: 0, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOPHAGE', startX: opts.instant ? 210 : 34, startY: 186, dirX: 1, delay: 0.50 }
+      );
+      [112, 368].forEach((x, idx) => {
+        slots.push({ type: 'V1_ENFORCER', homeX: x, homeY: 148, rowIdx: 1, squad: 2 + idx });
+      });
+      [[174, 144], [240, 134], [306, 144], [150, 224], [240, 232], [330, 224]].forEach(([x, y], idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
+      });
+      for (let c = 0; c < 8; c++) {
+        slots.push({ type: 'DRONE', homeX: 60 + c * 51, homeY: 274 - Math.abs(c - 3.5) * 6, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else if (style === 'CENTOPHAGE_HIVE_AMBUSH') {
+      // Twin flanking Master Centophages entering from opposite edges + armored Enforcer diamond!
+      const top4 = top.types.slice(0, 4);
+      [112, 196, 284, 368].forEach((x, idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: 86, rowIdx: 0, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOPHAGE', startX: opts.instant ? 164 : 34, startY: 162, dirX: 1, delay: 0.45 },
+        { type: 'CENTOPHAGE', startX: opts.instant ? 316 : LOGICAL_W - 34, startY: 236, dirX: -1, delay: 1.05 }
+      );
+      [[240, 142], [186, 184], [294, 184], [240, 226]].forEach(([x, y], idx) => {
+        slots.push({ type: idx % 2 === 0 ? 'FLUX_ENFORCER' : 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 1 + (idx > 0 ? 1 : 0), squad: 2 + (idx % 2) });
+      });
+      [68, 122, 358, 412, 168, 312].forEach((x, idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: idx < 4 ? 276 : 262, rowIdx: 3, squad: 4 + (idx % 2) });
+      });
+    } else if (style === 'CENTOPHAGE_APEX_GAUNTLET') {
+      // Centophage + Super Centoid dual serpent corridor + twin Pulsar flank batteries!
+      top.types.forEach((type, idx) => {
+        slots.push({ type, homeX: top.xs[idx], homeY: 84, rowIdx: 0, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOPHAGE', startX: opts.instant ? 200 : 34, startY: 152, dirX: 1, delay: 0.45 },
+        { type: 'ALPHA_CENTOID', startX: opts.instant ? 280 : LOGICAL_W - 34, startY: 220, dirX: -1, delay: 1.15 }
+      );
+      [[74, 178], [406, 178]].forEach(([x, y], idx) => {
+        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + idx });
+      });
+      [148, 210, 270, 332].forEach((x, idx) => {
+        slots.push({ type: 'INTERCEPTOR', homeX: x, homeY: 184 + (idx % 2) * 14, rowIdx: 2, squad: 2 + (idx >= 2 ? 1 : 0) });
+      });
+      for (let c = 0; c < 6; c++) {
+        slots.push({ type: 'DRONE', homeX: 88 + c * 60, homeY: 278, rowIdx: 3, squad: 4 + (c % 2) });
+      }
+    } else {
+      // CENTOPHAGE_PARASITE_NEXUS: Central Centophage inside an X-cross of Elites, Pulsars & V1s!
+      const top4 = top.types.slice(0, 4);
+      [88, 188, 292, 392].forEach((x, idx) => {
+        if (top4[idx]) slots.push({ type: top4[idx], homeX: x, homeY: 86, rowIdx: 0, squad: idx % 2 });
+      });
+      centoidSpawns.push(
+        { type: 'CENTOPHAGE', startX: opts.instant ? 240 : 34, startY: 196, dirX: 1, delay: 0.55 }
+      );
+      [[116, 146], [364, 146]].forEach(([x, y], idx) => {
+        slots.push({ type: 'PULSAR', homeX: x, homeY: y, rowIdx: 1, squad: 2 + idx });
+      });
+      [[174, 168], [306, 168], [174, 232], [306, 232]].forEach(([x, y], idx) => {
+        slots.push({ type: idx < 2 ? 'V1_ENFORCER' : 'INTERCEPTOR', homeX: x, homeY: y, rowIdx: 2, squad: 2 + (idx % 2) });
+      });
+      [[84, 248], [136, 276], [240, 266], [344, 276], [396, 248], [240, 140]].forEach(([x, y], idx) => {
+        slots.push({ type: 'DRONE', homeX: x, homeY: y, rowIdx: 3, squad: 4 + (idx % 2) });
+      });
+    }
   } else {
     // 5 Base Formations: PHALANX, CHEVRON, TWIN_FLANKS, DIAMOND, ARCH
     top.types.forEach((type, idx) => {
@@ -697,10 +796,10 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
     slots = applyCostBasedSwaps(slots, sec, !!game.hardMode);
   }
 
-  // Extract any Centoid / Alpha Centoid created by cost swaps into centoidSpawns
+  // Extract any Centoid / Super Centoid / Centophage created by cost swaps into centoidSpawns
   const regularSlots = [];
   for (const s of slots) {
-    if (s.type === 'CENTOID' || s.type === 'ALPHA_CENTOID') {
+    if (s.type === 'CENTOID' || s.type === 'ALPHA_CENTOID' || s.type === 'CENTOPHAGE') {
       centoidSpawns.push({
         type: s.type,
         startX: opts.instant ? clamp(s.homeX, 110, LOGICAL_W - 110) : (s.homeX < LOGICAL_W * 0.5 ? 34 : LOGICAL_W - 34),
@@ -731,7 +830,7 @@ export function buildStandardWaveQueue(game, sec, waveNum = 4, opts = {}) {
       });
     }
     for (const cs of centoidSpawns) {
-      spawnCentoidChain(game, cs.type === 'ALPHA_CENTOID', cs.startX, cs.startY, cs.dirX);
+      spawnCentoidChain(game, cs.type, cs.startX, cs.startY, cs.dirX);
     }
     game.waveQueue = [];
     game.waveSpawnTimer = 0;
@@ -873,20 +972,32 @@ export function buildChallengeWaveQueue(game, challengeNum) {
 }
 
 /**
- * Challenges 4+: Builds 1 of 2 extra tactical rounds featuring unique battle formations
- * and active attack patterns!
+ * Challenges 2+: Builds an extra tactical challenge round — supports all 8 modes
+ * (4 classic + 4 new featuring Pulsars, Centoids, Super Centoids & Centophages!),
+ * plus direct forcedModeId launching from the Sandbox Challenge Tester!
  */
-export function startChallengeExtraRound(game, effChallengeNum, subRound) {
-  const modeIdx = ((effChallengeNum - CHALLENGE_EXTRA_ROUND_START) * 2 + (subRound - 1)) % EXTRA_ROUND_MODES.length;
-  const mode = EXTRA_ROUND_MODES[modeIdx];
-  const hardEscalated = effChallengeNum >= 4; // Normal Ch.4+ & Hard H-CH.02+ escalate with Master escorts!
+export function startChallengeExtraRound(game, effChallengeNum, subRound, forcedModeId = null) {
+  let mode;
+  if (forcedModeId) {
+    mode = EXTRA_ROUND_MODES.find(m => m.id === forcedModeId) || EXTRA_ROUND_MODES[0];
+  } else {
+    const eligible = EXTRA_ROUND_MODES.filter(m => effChallengeNum >= (m.minEffChallenge || 2));
+    const pool = eligible.length > 0 ? eligible : EXTRA_ROUND_MODES.slice(0, 4);
+    const modeIdx = ((Math.max(0, effChallengeNum - CHALLENGE_EXTRA_ROUND_START) * 2) + Math.max(0, subRound - 1)) % pool.length;
+    mode = pool[modeIdx];
+  }
+  const hardEscalated = !forcedModeId && effChallengeNum >= 4;
 
   game.waveQueue = [];
   game.waveSpawnTimer = 0;
   game.sectorPhase = 'CHALLENGE_BANNER';
   game.phaseTimer = 1.65;
-  const chPrefix = game.hardMode ? `H-CH.${String(game.challengeNum).padStart(2, '0')}` : `CH.${String(game.challengeNum).padStart(2, '0')}`;
-  game.bannerTitle = `${chPrefix} // EXTRA ROUND ${subRound}/${game.challengeExtraRounds}`;
+  const chPrefix = game.sandboxChallengeTest
+    ? 'CHALLENGE TEST'
+    : (game.hardMode ? `H-CH.${String(game.challengeNum).padStart(2, '0')}` : `CH.${String(game.challengeNum).padStart(2, '0')}`);
+  game.bannerTitle = game.sandboxChallengeTest
+    ? `${chPrefix} // ${mode.id.replaceAll('_', ' ')}`
+    : `${chPrefix} // EXTRA ROUND ${subRound}/${game.challengeExtraRounds}`;
   game.bannerSub = hardEscalated ? `${mode.title} [MASTER ESCORT]` : mode.title;
   game.bannerColor = mode.color;
   game.synth.playSectorStart(true);
@@ -992,7 +1103,7 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
       raidLaneY: 102,
       raidSpeed: 64
     });
-  } else {
+  } else if (mode.id === 'PHALANX_ASSAULT') {
     // PHALANX_ASSAULT: Fortified advancing battle wall + outer S-loop flankers (randomized Flux/Null order!)
     const wallTypes = shuffleArray(['V1_ENFORCER', 'FLUX_ENFORCER', 'V1_ENFORCER', 'NULL_ENFORCER', 'V1_ENFORCER']);
     const wallXs = [86, 163, 240, 317, 394];
@@ -1037,10 +1148,187 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound) {
         }
       });
     }
+  } else if (mode.id === 'TESLA_SURGE_TRIAL') {
+    // Challenge 5: Twin sweeping Pulsar batteries + Interceptor crossfire + Flux/Null Raider!
+    const pulsarCoords = [
+      { holdX: 94, holdY: 124, side: -1, delay: 0.25 },
+      { holdX: 386, holdY: 124, side: 1, delay: 0.45 },
+      { holdX: 164, holdY: 194, side: -1, delay: 0.85 },
+      { holdX: 316, holdY: 194, side: 1, delay: 1.05 }
+    ];
+    pulsarCoords.forEach((pc, idx) => {
+      items.push({
+        delay: pc.delay,
+        type: 'PULSAR',
+        homeX: pc.holdX,
+        homeY: pc.holdY,
+        startX: pc.side < 0 ? -36 : LOGICAL_W + 36,
+        startY: 88 + idx * 24,
+        challenge: true,
+        challengeExtra: true,
+        extraPattern: 'TESLA_SWEEP',
+        extraData: {
+          clock: 0,
+          side: pc.side,
+          holdX: pc.holdX,
+          holdY: pc.holdY,
+          holdDur: 6.2 + idx * 0.4,
+          shotTimer: 1.2 + idx * 0.25
+        }
+      });
+    });
+    for (let i = 0; i < 8; i++) {
+      const strand = i % 2;
+      items.push({
+        delay: 0.55 + Math.floor(i / 2) * 0.55 + strand * 0.12,
+        type: i % 2 === 0 ? 'INTERCEPTOR' : 'DRONE',
+        homeX: LOGICAL_W * 0.5,
+        homeY: 150,
+        startX: LOGICAL_W * 0.5 + (strand === 0 ? -125 : 125),
+        startY: -30,
+        challenge: true,
+        challengeExtra: true,
+        extraPattern: 'HELIX_BARRAGE',
+        extraData: {
+          clock: 0,
+          phase: strand * Math.PI,
+          amp: 145,
+          vy: 118,
+          shotTimer: 1.05 + (i % 3) * 0.3
+        }
+      });
+    }
+    items.push({
+      delay: 1.6,
+      type: 'FLUX_ENFORCER',
+      homeX: LOGICAL_W * 0.5,
+      homeY: 96,
+      path: null,
+      challenge: true,
+      challengeElite: true,
+      startX: -46,
+      raidDir: 1,
+      raidLaneY: 96,
+      raidSpeed: 62
+    });
+  } else if (mode.id === 'SERPENT_STAMPEDE') {
+    // Challenge 6: Staggered Centoids & Super Centoid carving through V1 Enforcers & Drones!
+    items.push(
+      { delay: 0.25, type: 'CENTOID', isCentoidSpawn: true, startX: 34, startY: 120, dirX: 1, homeX: 120, homeY: 120, challenge: true },
+      { delay: 0.90, type: 'ALPHA_CENTOID', isCentoidSpawn: true, startX: LOGICAL_W - 34, startY: 190, dirX: -1, homeX: 360, homeY: 190, challenge: true },
+      { delay: 1.65, type: 'CENTOID', isCentoidSpawn: true, startX: 34, startY: 256, dirX: 1, homeX: 120, homeY: 256, challenge: true }
+    );
+    const escortTypes = ['V1_ENFORCER', 'INTERCEPTOR', 'DRONE', 'DRONE'];
+    for (const side of [-1, 1]) {
+      escortTypes.forEach((type, idx) => {
+        const holdX = side < 0 ? 74 + idx * 28 : LOGICAL_W - 74 - idx * 28;
+        const holdY = 104 + idx * 34;
+        items.push({
+          delay: 0.4 + idx * 0.25,
+          type,
+          homeX: holdX,
+          homeY: holdY,
+          startX: side < 0 ? -36 : LOGICAL_W + 36,
+          startY: 70 + idx * 20,
+          challenge: true,
+          challengeExtra: true,
+          extraPattern: 'TWIN_PINCER',
+          extraData: {
+            clock: 0,
+            side,
+            holdX,
+            holdY,
+            holdDur: 3.4 + idx * 0.25,
+            shotTimer: 1.15 + idx * 0.28,
+            scissorAngle: side < 0 ? Math.PI * 0.34 : Math.PI * 0.66
+          }
+        });
+      });
+    }
+  } else if (mode.id === 'PREDATOR_FEEDING_FRENZY') {
+    // Challenge 7: Master Centophage prowling an arena packed with orbiting prey + Pulsar!
+    items.push(
+      { delay: 0.55, type: 'CENTOPHAGE', isCentoidSpawn: true, startX: 34, startY: 184, dirX: 1, homeX: 160, homeY: 184, challenge: true }
+    );
+    const orbitPrey = ['V1_ENFORCER', 'INTERCEPTOR', 'DRONE', 'DRONE', 'PULSAR', 'V1_ENFORCER', 'INTERCEPTOR', 'DRONE', 'DRONE', 'INTERCEPTOR'];
+    orbitPrey.forEach((type, i) => {
+      const baseAngle = (i / orbitPrey.length) * Math.PI * 2;
+      items.push({
+        delay: 0.12 + i * 0.10,
+        type,
+        homeX: LOGICAL_W * 0.5,
+        homeY: 205,
+        startX: i % 2 === 0 ? -34 : LOGICAL_W + 34,
+        startY: 74 + (i % 5) * 32,
+        challenge: true,
+        challengeExtra: true,
+        extraPattern: 'DIAMOND_VORTEX',
+        extraData: {
+          clock: 0,
+          baseAngle,
+          orbitRx: 152,
+          orbitRy: 92,
+          orbitDir: 1,
+          peelDelay: 7.5 + i * 0.3,
+          shotTimer: 1.65 + (i % 4) * 0.35,
+          exitVx: (i % 2 === 0 ? 1 : -1) * 75,
+          exitVy: 245
+        }
+      });
+    });
+  } else {
+    // Challenge 8 — APEX_NEXUS_GAUNTLET: Pulsars + Super Centoid + Master Centophage + Master Escort!
+    items.push(
+      { delay: 0.35, type: 'CENTOPHAGE', isCentoidSpawn: true, startX: 34, startY: 164, dirX: 1, homeX: 140, homeY: 164, challenge: true },
+      { delay: 1.05, type: 'ALPHA_CENTOID', isCentoidSpawn: true, startX: LOGICAL_W - 34, startY: 232, dirX: -1, homeX: 340, homeY: 232, challenge: true }
+    );
+    [[82, 134, -1], [398, 134, 1]].forEach(([hx, hy, side], idx) => {
+      items.push({
+        delay: 0.25 + idx * 0.2,
+        type: 'PULSAR',
+        homeX: hx,
+        homeY: hy,
+        startX: side < 0 ? -36 : LOGICAL_W + 36,
+        startY: 96,
+        challenge: true,
+        challengeExtra: true,
+        extraPattern: 'TESLA_SWEEP',
+        extraData: {
+          clock: 0,
+          side,
+          holdX: hx,
+          holdY: hy,
+          holdDur: 7.5,
+          shotTimer: 1.3
+        }
+      });
+    });
+    const wallTypes = ['FLUX_ENFORCER', 'V1_ENFORCER', 'NULL_ENFORCER', 'V1_ENFORCER'];
+    const wallXs = [106, 196, 284, 374];
+    wallTypes.forEach((type, idx) => {
+      items.push({
+        delay: 0.4 + idx * 0.16,
+        type,
+        homeX: wallXs[idx],
+        homeY: 94,
+        startX: wallXs[idx],
+        startY: -36,
+        challenge: true,
+        challengeExtra: true,
+        extraPattern: 'PHALANX_ASSAULT',
+        extraData: {
+          clock: 0,
+          role: 'WALL',
+          laneX: wallXs[idx],
+          shotTimer: 1.25 + (idx % 2) * 0.4,
+          wingFired: false
+        }
+      });
+    });
   }
 
   // H-CH.02+ / Ch.6+ Extra Rounds also include an escalated Master Enforcer escort!
-  if (hardEscalated && mode.id !== 'HELIX_BARRAGE') {
+  if (hardEscalated && mode.id !== 'HELIX_BARRAGE' && mode.id !== 'APEX_NEXUS_GAUNTLET') {
     const escortType = (effChallengeNum + subRound) % 2 === 0 ? 'MASTER_NULL_ENFORCER' : 'MASTER_FLUX_ENFORCER';
     const dir = subRound % 2 === 0 ? -1 : 1;
     items.push({
@@ -1084,10 +1372,10 @@ function getRediveHold(type) {
 }
 
 export function spawnEnemyFromItem(game, item) {
-  if (item.isCentoidSpawn || item.type === 'CENTOID' || item.type === 'ALPHA_CENTOID') {
+  if (item.isCentoidSpawn || item.type === 'CENTOID' || item.type === 'ALPHA_CENTOID' || item.type === 'CENTOPHAGE') {
     spawnCentoidChain(
       game,
-      item.type === 'ALPHA_CENTOID',
+      item.type,
       item.startX !== undefined ? item.startX : null,
       item.startY !== undefined ? item.startY : (item.homeY !== undefined ? item.homeY : null),
       item.dirX !== undefined ? item.dirX : null
@@ -1256,10 +1544,13 @@ export function spawnEnemyFromItem(game, item) {
 export function spawnDirectEnemy(game, type, x, y) {
   const cx = clamp(x, 34, LOGICAL_W - 34);
   const cy = clamp(y, 58, LOGICAL_H - 120);
-  if (type === 'CENTOID' || type === 'ALPHA_CENTOID') {
+  if (type === 'CENTOID' || type === 'ALPHA_CENTOID' || type === 'CENTOPHAGE') {
     const dirX = cx < LOGICAL_W * 0.5 ? -1 : 1; // Trail extends inward toward arena center
-    spawnCentoidChain(game, type === 'ALPHA_CENTOID', cx, cy, dirX);
-    game.spawnDeleteBurst(cx, cy, type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen, 12, 110);
+    spawnCentoidChain(game, type, cx, cy, dirX);
+    const burstCol = type === 'CENTOPHAGE'
+      ? COLORS.centophageAcid
+      : (type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen);
+    game.spawnDeleteBurst(cx, cy, burstCol, 12, 110);
     return;
   }
   spawnEnemyFromItem(game, {
@@ -1498,14 +1789,18 @@ export function updateSectorPhase(game, dt) {
         game.midWaveSpawns[mi].timer -= dt;
         if (game.midWaveSpawns[mi].timer <= 0) {
           const ms = game.midWaveSpawns.splice(mi, 1)[0];
-          if (ms.type === 'CENTOID' || ms.type === 'ALPHA_CENTOID') {
-            spawnCentoidChain(game, ms.type === 'ALPHA_CENTOID');
+          if (ms.type === 'CENTOID' || ms.type === 'ALPHA_CENTOID' || ms.type === 'CENTOPHAGE') {
+            spawnCentoidChain(game, ms.type);
             game.spawnPopup(
               LOGICAL_W * 0.5,
               116,
-              ms.type === 'ALPHA_CENTOID' ? 'ALPHA CENTOID INBOUND!' : 'CENTOID INBOUND!',
-              ms.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen,
-              1.25
+              ms.type === 'CENTOPHAGE'
+                ? 'CENTOPHAGE INBOUND!'
+                : (ms.type === 'ALPHA_CENTOID' ? 'SUPER CENTOID INBOUND!' : 'CENTOID INBOUND!'),
+              ms.type === 'CENTOPHAGE'
+                ? COLORS.centophageAcid
+                : (ms.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen),
+              1.3
             );
           } else if (ms.type === 'PULSAR') {
             const fromLeft = Math.random() < 0.5;
@@ -1574,7 +1869,7 @@ export function updateSectorPhase(game, dt) {
     game.formationShotTimer -= dt;
     if (game.formationShotTimer <= 0 && game.player.alive) {
       const shooters = game.enemies.filter(
-        e => e.state === 'FORMATION' && (e.type === 'INTERCEPTOR' || e.isEnforcer)
+        e => e.state === 'FORMATION' && !(e.fireDisabledTimer > 0) && (e.type === 'INTERCEPTOR' || e.isEnforcer)
       );
       if (shooters.length > 0) {
         let s = shooters[Math.floor(Math.random() * shooters.length)];
@@ -1637,7 +1932,9 @@ export function updateSectorPhase(game, dt) {
     }
 
     // Elite & Master Enforcer Wing scheduler (strictly Enforcers — Pulsars never launch Enforcer Wings!)
-    const elitesInForm = game.enemies.filter(e => e.isElite && e.isEnforcer && e.state === 'FORMATION');
+    const elitesInForm = game.enemies.filter(
+      e => e.isElite && e.isEnforcer && e.state === 'FORMATION' && !(e.fireDisabledTimer > 0)
+    );
     if (elitesInForm.length > 0) {
       game.wingLaunchTimer -= dt;
       if (game.wingLaunchTimer <= 0) {
@@ -1649,8 +1946,10 @@ export function updateSectorPhase(game, dt) {
   } else if (game.sectorPhase === 'CLEARED') {
     game.phaseTimer -= dt;
     if (game.phaseTimer <= 0) {
-      if (game.sandboxTrainingRound) {
+      if (game.sandboxTrainingRound || game.sandboxChallengeTest) {
         game.sandboxTrainingRound = false;
+        game.sandboxChallengeTest = false;
+        game.isChallengeStage = false;
         game.sectorPhase = 'COMBAT';
         game.enemies = [];
         game.enemyBullets = [];
@@ -1933,6 +2232,41 @@ function updateChallengeExtraEnemy(game, e, dt) {
     return e.y > LOGICAL_H + 56;
   }
 
+  if (e.extraPattern === 'TESLA_SWEEP') {
+    if (d.clock < 1.1) {
+      const k = Math.min(1, dt * 5.0);
+      e.x += (d.holdX - e.x) * k;
+      e.y += (d.holdY - e.y) * k;
+    } else if (d.clock < 1.1 + d.holdDur) {
+      const t = d.clock - 1.1;
+      e.x = clamp(d.holdX + Math.sin(t * 2.4) * 26 * d.side, 38, LOGICAL_W - 38);
+      e.y = d.holdY + Math.cos(t * 1.9) * 14;
+      // Let Pulsar fire leaf-falling electro balls cleanly during Tesla Sweep!
+      if (e.type === 'PULSAR' && !(e.fireDisabledTimer > 0)) {
+        d.shotTimer -= dt;
+        if (d.shotTimer <= 0 && p.alive) {
+          d.shotTimer = 2.6;
+          game.electroBalls.push({
+            baseX: e.x,
+            x: e.x,
+            y: e.y + 18,
+            vy: 92 + Math.random() * 16,
+            swayAmp: 34 + Math.random() * 20,
+            swayFreq: 2.8 + Math.random() * 1.1,
+            phase: Math.random() * Math.PI * 2,
+            age: 0,
+            radius: 13
+          });
+          game.synth.playElectroBall();
+        }
+      }
+    } else {
+      e.x += d.side * 95 * dt;
+      e.y += 195 * dt;
+    }
+    return e.y > LOGICAL_H + 56 || e.x < -64 || e.x > LOGICAL_W + 64;
+  }
+
   // PHALANX_ASSAULT
   if (d.role === 'WALL') {
     const marchWave = Math.sin(d.clock * 2.2);
@@ -1947,7 +2281,7 @@ function updateChallengeExtraEnemy(game, e, dt) {
     }
 
     d.shotTimer -= dt;
-    if (d.shotTimer <= 0 && e.y > 35 && e.y < LOGICAL_H - 150 && p.alive) {
+    if (d.shotTimer <= 0 && !(e.fireDisabledTimer > 0) && e.y > 35 && e.y < LOGICAL_H - 150 && p.alive) {
       fireDirectedBullet(game, e.x - 10, e.y + 14, Math.PI * 0.5, bulletSpd * 0.95, bCol);
       fireDirectedBullet(game, e.x + 10, e.y + 14, Math.PI * 0.5, bulletSpd * 0.95, bCol);
       d.shotTimer = 1.3;
@@ -1960,11 +2294,79 @@ function updateChallengeExtraEnemy(game, e, dt) {
   const edgeBase = d.side < 0 ? 58 : LOGICAL_W - 58;
   e.x = edgeBase - d.side * Math.sin(d.clock * 3.8) * 44;
   d.shotTimer -= dt;
-  if (d.shotTimer <= 0 && e.y > 50 && e.y < LOGICAL_H - 140 && p.alive) {
+  if (d.shotTimer <= 0 && !(e.fireDisabledTimer > 0) && e.y > 50 && e.y < LOGICAL_H - 140 && p.alive) {
     fireAimedBullet(game, e.x, e.y + 10, bulletSpd * 1.04, COLORS.gold, 0, 0.35);
     d.shotTimer = 0.95;
   }
   return e.y > LOGICAL_H + 56;
+}
+
+/**
+ * Chain Lightning contact repel: bounces a colliding enemy plane ~3 planes (114px) away
+ * and disables its firing for 4.0 seconds!
+ */
+function repelEnemyWithLightning(game, e) {
+  const p = game.player;
+  if ((e.repelGrace || 0) > 0) return;
+
+  let dx = e.x - p.x;
+  let dy = e.y - p.y;
+  let len = Math.hypot(dx, dy);
+  if (len < 0.1) {
+    dx = (Math.random() < 0.5 ? -0.35 : 0.35);
+    dy = -1;
+    len = Math.hypot(dx, dy);
+  }
+  dx /= len;
+  dy /= len;
+  // Bias upward so bounced enemies launch crisply away from the player zone
+  if (dy > -0.55) {
+    dy = -0.78;
+    const nLen = Math.hypot(dx, dy);
+    dx /= nLen;
+    dy /= nLen;
+  }
+
+  if (e.isCentoid) {
+    const chain = game.centoidChains && game.centoidChains.get(e.centoidChainId);
+    const shiftX = dx * CHAIN_LIGHTNING_REPEL_DIST;
+    const shiftY = dy * CHAIN_LIGHTNING_REPEL_DIST;
+    for (const seg of game.enemies) {
+      if (seg.isCentoid && seg.centoidChainId === e.centoidChainId) {
+        seg.x = clamp(seg.x + shiftX, 24, LOGICAL_W - 24);
+        seg.y = clamp(seg.y + shiftY, 54, LOGICAL_H - 96);
+        seg.fireDisabledTimer = CHAIN_LIGHTNING_DISABLE_DUR;
+        seg.repelGrace = 0.48;
+        seg.hitFlash = 0.16;
+      }
+    }
+    if (chain && chain.history) {
+      for (const pt of chain.history) {
+        pt.x = clamp(pt.x + shiftX, 24, LOGICAL_W - 24);
+        pt.y = clamp(pt.y + shiftY, 54, LOGICAL_H - 96);
+      }
+      chain.dirY = -1;
+    }
+  } else {
+    if (game.activeBeamBoss && game.activeBeamBoss.id === e.id) {
+      game.activeBeamBoss = null;
+      game.synth.stopTractorBeam();
+    }
+    e.bounceStartX = e.x;
+    e.bounceStartY = e.y;
+    e.bounceEndX = clamp(e.x + dx * CHAIN_LIGHTNING_REPEL_DIST, 28, LOGICAL_W - 28);
+    e.bounceEndY = clamp(e.y + dy * CHAIN_LIGHTNING_REPEL_DIST, 56, LOGICAL_H - 96);
+    e.bounceT = 0;
+    e.bounceDur = 0.28;
+    e.state = 'BOUNCING';
+    e.fireDisabledTimer = CHAIN_LIGHTNING_DISABLE_DUR;
+    e.repelGrace = 0.48;
+    e.hitFlash = 0.18;
+  }
+
+  game.spawnDeleteBurst(e.x, e.y, COLORS.yellow, 12, 145, 'PLAYER');
+  game.synth.playChainLightning();
+  game.spawnPopup(e.x, e.y - 24, 'REPELLED! FIRE OFF 4s', COLORS.yellow, 1.15);
 }
 
 export function updateEnemies(game, dt) {
@@ -1986,10 +2388,19 @@ export function updateEnemies(game, dt) {
   // Update all living Centoid & Alpha Centoid segment chains
   updateCentoids(game, dt);
 
-  for (let i = game.enemies.length - 1; i >= 0; i--) {
-    const e = game.enemies[i];
+  // Snapshot-safe iteration: Death Cross Lightning inside damagePlayer() can one-shot
+  // and splice multiple enemies out of game.enemies during the same frame!
+  const removeEnemyRef = (target) => {
+    const rmIdx = game.enemies.indexOf(target);
+    if (rmIdx >= 0) game.enemies.splice(rmIdx, 1);
+  };
+
+  for (const e of [...game.enemies]) {
+    if (!e || game.enemies.indexOf(e) < 0) continue;
     if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt);
     if (e.surgePulse > 0) e.surgePulse = Math.max(0, e.surgePulse - dt);
+    if (e.fireDisabledTimer > 0) e.fireDisabledTimer = Math.max(0, e.fireDisabledTimer - dt);
+    if (e.repelGrace > 0) e.repelGrace = Math.max(0, e.repelGrace - dt);
     const spdMult = e.speedBuffed ? 1.3 : 1.0;
 
     if (e.isCentoid) {
@@ -2006,15 +2417,20 @@ export function updateEnemies(game, dt) {
         p.alive &&
         !p.capturedById &&
         p.invulnTimer <= 0 &&
+        !(e.repelGrace > 0) &&
         Math.hypot(e.x - p.x, e.y - p.y) < e.hitRadius + (p.dual ? 14 : 8)
       ) {
-        game.damagePlayer();
+        if (isPlayerShootingLightning(game)) {
+          repelEnemyWithLightning(game, e);
+        } else {
+          game.damagePlayer();
+        }
       }
       continue;
     }
 
-    // Consecutive Enforcer Wing Surge queue — PAUSED while preparing to abduct, abducting, or Sandbox Idle!
-    if (!game.sandboxIdle && e.wingSurgeQueue > 0 && e.state !== 'BEAM_APPROACH' && e.state !== 'BEAMING') {
+    // Consecutive Enforcer Wing Surge queue — PAUSED while fire-disabled, preparing to abduct, abducting, or Sandbox Idle!
+    if (!game.sandboxIdle && !(e.fireDisabledTimer > 0) && e.wingSurgeQueue > 0 && e.state !== 'BEAM_APPROACH' && e.state !== 'BEAMING') {
       e.wingSurgeTimer -= dt;
       if (e.wingSurgeTimer <= 0) {
         const idx = e.wingSurgeQueue;
@@ -2036,7 +2452,7 @@ export function updateEnemies(game, dt) {
       e.y = pos.y;
       if (e.pathT >= 1) {
         if (e.state === 'CHALLENGE') {
-          game.enemies.splice(i, 1);
+          removeEnemyRef(e);
           continue;
         }
         e.state = 'FORMATION';
@@ -2105,7 +2521,7 @@ export function updateEnemies(game, dt) {
         e.angle = Math.atan2(vy, vx) - Math.PI * 0.5;
       }
 
-      if (e.type !== 'PULSAR' && !game.sandboxIdle) {
+      if (e.type !== 'PULSAR' && !game.sandboxIdle && !(e.fireDisabledTimer > 0)) {
         e.shotCooldown -= dt;
         if (e.shotCooldown <= 0 && e.y < LOGICAL_H - 145 && p.alive) {
           const spd = Math.min(460, 275 + effSec * 12);
@@ -2162,11 +2578,23 @@ export function updateEnemies(game, dt) {
           game.spawnPopup(
             LOGICAL_W * 0.5,
             135,
-            isFluxMaster ? 'CYAN CRT FIELD // 1.5x SLOW!' : 'RED CRT FIELD // 0.5x DMG!',
+            isFluxMaster ? 'FLUX FIELD // 1.5x SLOW!' : 'NULL FIELD // 0.33x DMG!',
             isFluxMaster ? COLORS.cyan : COLORS.nullRed,
             1.7
           );
         }
+      }
+    } else if (e.state === 'BOUNCING') {
+      // Smooth ~3-plane knockback arc after colliding with a Chain-Lightning-shooting player!
+      e.bounceT = (e.bounceT || 0) + dt / Math.max(0.05, e.bounceDur || 0.28);
+      const u = clamp(e.bounceT, 0, 1);
+      const ease = 1 - Math.pow(1 - u, 3);
+      e.x = lerp(e.bounceStartX, e.bounceEndX, ease);
+      e.y = lerp(e.bounceStartY, e.bounceEndY, ease);
+      e.angle = (1 - u) * 0.45 * (e.bounceEndX >= e.bounceStartX ? 1 : -1);
+      if (u >= 1) {
+        e.angle = 0;
+        e.state = 'RETURNING';
       }
     } else if (e.state === 'BEAM_APPROACH') {
       updateEnforcerBeamApproach(game, e, dt);
@@ -2214,7 +2642,7 @@ export function updateEnemies(game, dt) {
       }
 
       if ((e.raidDir > 0 && e.x > LOGICAL_W + 70) || (e.raidDir < 0 && e.x < -70)) {
-        game.enemies.splice(i, 1);
+        removeEnemyRef(e);
         continue;
       }
     } else if (e.state === 'CHALLENGE_GUARD') {
@@ -2233,7 +2661,7 @@ export function updateEnemies(game, dt) {
         e.y += (ty - e.y) * Math.min(1, dt * 8.5);
 
         e.shotCooldown -= dt;
-        if (e.shotCooldown <= 0 && e.x > 24 && e.x < LOGICAL_W - 24 && p.alive) {
+        if (e.shotCooldown <= 0 && !(e.fireDisabledTimer > 0) && e.x > 24 && e.x < LOGICAL_W - 24 && p.alive) {
           const spd = Math.min(430, 275 + game.sector * 6);
           const col = boss.type === 'MASTER_NULL_ENFORCER' ? COLORS.nullRed : COLORS.cyan;
           fireAimedBullet(game, e.x, e.y + 10, spd, col, 0, 0.2);
@@ -2245,14 +2673,14 @@ export function updateEnemies(game, dt) {
         e.x += e.raidDir * 85 * dt;
         e.y += 235 * dt;
         if (e.y > LOGICAL_H + 54 || e.x < -64 || e.x > LOGICAL_W + 64) {
-          game.enemies.splice(i, 1);
+          removeEnemyRef(e);
           continue;
         }
       }
     } else if (e.state === 'CHALLENGE_EXTRA') {
       const exited = updateChallengeExtraEnemy(game, e, dt);
       if (exited) {
-        game.enemies.splice(i, 1);
+        removeEnemyRef(e);
         continue;
       }
     }
@@ -2274,9 +2702,15 @@ export function updateEnemies(game, dt) {
       p.alive &&
       !p.capturedById &&
       p.invulnTimer <= 0 &&
+      !isPlasmaShieldActive(game) &&
+      !(e.repelGrace > 0) &&
       Math.hypot(e.x - p.x, e.y - p.y) < e.hitRadius + (p.dual ? 14 : 8)
     ) {
-      game.damagePlayer();
+      if (isPlayerShootingLightning(game)) {
+        repelEnemyWithLightning(game, e);
+      } else {
+        game.damagePlayer();
+      }
     }
   }
 

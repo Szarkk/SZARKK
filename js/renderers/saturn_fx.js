@@ -10,7 +10,7 @@
      multi-stage 32-bit Sega Saturn fireball explosions + hot pixel shrapnel.
    ========================================================================= */
 
-import { COLORS, LOGICAL_H } from '../config.js';
+import { COLORS, LOGICAL_H, LOGICAL_W, PLASMA_RING_RADIUS } from '../config.js';
 import { clamp } from '../utils.js';
 
 function drawPixelDisc(ctx, cx, cy, r, color) {
@@ -48,6 +48,7 @@ function drawPixelRing(ctx, cx, cy, r, stepSize, color, dots = 24, angleOff = 0)
 }
 
 function drawPixelThickLine(ctx, x0, y0, x1, y1, size, color) {
+  if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return;
   let ix0 = Math.round(x0);
   let iy0 = Math.round(y0);
   const ix1 = Math.round(x1);
@@ -60,9 +61,10 @@ function drawPixelThickLine(ctx, x0, y0, x1, y1, size, color) {
   const sz = Math.max(1, Math.round(size));
   const half = Math.floor(sz * 0.5);
   ctx.fillStyle = color;
-  const stepStride = sz >= 3 ? 2 : 1;
+  const stepStride = sz >= 2 ? 2 : 1;
+  const maxSteps = Math.min(2000, dx + dy + 2);
   let count = 0;
-  while (true) {
+  while (count <= maxSteps) {
     if (count % stepStride === 0 || (ix0 === ix1 && iy0 === iy1)) {
       ctx.fillRect(ix0 - half, iy0 - half, sz, sz);
     }
@@ -169,6 +171,21 @@ export function drawPixelShrapnelParticle(ctx, pt) {
 export function drawPixelPlayerBullet(ctx, b, time = 0) {
   const bx = Math.round(b.x);
   const by = Math.round(b.y);
+  if (b.ricochet) {
+    // High-voltage electric yellow-white ricocheted enemy bullet!
+    const pulse = Math.floor(time * 26 + bx) % 2;
+    ctx.save();
+    ctx.fillStyle = COLORS.yellowOrange;
+    ctx.fillRect(bx - 4, by - 4, 8, 8);
+    ctx.fillStyle = COLORS.yellow;
+    ctx.fillRect(bx - 3, by - 3, 6, 6);
+    ctx.fillRect(bx - (pulse ? 6 : 5), by - 1, pulse ? 12 : 10, 2);
+    ctx.fillRect(bx - 1, by - (pulse ? 6 : 5), 2, pulse ? 12 : 10);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bx - 2, by - 2, 4, 4);
+    ctx.restore();
+    return;
+  }
   const isRed = !!b.redLaserBullet;
   const isClone = !!b.cloneBolt;
   const isPurple = !!b.purple && !isClone;
@@ -432,6 +449,133 @@ export function drawPixelChainLightning(ctx, bolt) {
       drawPixelThickLine(ctx, a.x, a.y, b.x, b.y, outerSz, COLORS.yellowOrange);
       drawPixelThickLine(ctx, a.x, a.y, b.x, b.y, midSz, COLORS.yellow);
       drawPixelThickLine(ctx, a.x, a.y, b.x, b.y, 1, '#ffffff');
+    }
+  }
+  ctx.restore();
+}
+
+/**
+ * Full-screen Vertical + Horizontal Cross Lightning Death Animation!
+ * Used identically on BOTH 32-Bit Aurex Fighter AND Alpha Test legacy skin.
+ */
+export function drawDeathCrossLightning(ctx, cl, time = 0) {
+  const t = clamp(cl.age / Math.max(0.01, cl.maxLife), 0, 1);
+  const fade = t < 0.16 ? (t / 0.16) : Math.pow(1 - (t - 0.16) / 0.84, 1.35);
+  const cx = Math.round(cl.x);
+  const cy = Math.round(cl.y);
+  const stepTick = Math.floor(time * 28 + cl.seed * 7);
+
+  // Deterministic pseudo-random helper per frame tick so lightning crackles crisply without GC
+  const hash = (n) => {
+    const s = Math.sin(n * 127.1 + stepTick * 311.7 + cl.seed * 19.3) * 43758.5453;
+    return s - Math.floor(s);
+  };
+
+  // Beam thickness swells violently on impact then narrows cleanly as it fades
+  const env = t < 0.14 ? (0.45 + (t / 0.14) * 0.55) : Math.max(0.15, 1 - (t - 0.14) * 0.95);
+  const auraW = Math.max(4, Math.round(28 * env));
+  const midW = Math.max(2, Math.round(14 * env));
+  const coreW = Math.max(2, Math.round(6 * env));
+
+  ctx.save();
+
+  // 1) Translucent full-screen golden-amber outer glow sleeves (Vertical + Horizontal Cross)
+  ctx.globalAlpha = fade * 0.42;
+  ctx.fillStyle = COLORS.yellowOrange;
+  ctx.fillRect(cx - Math.floor(auraW / 2), 0, auraW, LOGICAL_H);
+  ctx.fillRect(0, cy - Math.floor(auraW / 2), LOGICAL_W, auraW);
+
+  // 2) Blazing neon yellow main cross plasma columns
+  ctx.globalAlpha = fade * 0.88;
+  ctx.fillStyle = COLORS.yellow;
+  ctx.fillRect(cx - Math.floor(midW / 2), 0, midW, LOGICAL_H);
+  ctx.fillRect(0, cy - Math.floor(midW / 2), LOGICAL_W, midW);
+
+  // 3) White-hot center spines
+  ctx.globalAlpha = fade;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx - Math.floor(coreW / 2), 0, coreW, LOGICAL_H);
+  ctx.fillRect(0, cy - Math.floor(coreW / 2), LOGICAL_W, coreW);
+
+  // 4) Dual jagged high-voltage stepped lightning strands crackling along BOTH full-screen axes!
+  const jitterAmp = Math.round(15 * env + 4);
+  for (let strand = 0; strand < 2; strand++) {
+    const col = strand === 0 ? '#ffffff' : COLORS.yellow;
+    const sz = strand === 0 ? 2 : 3;
+    ctx.globalAlpha = fade * (strand === 0 ? 0.96 : 0.78);
+
+    // Vertical jagged lightning strand (y = 0 -> LOGICAL_H)
+    let prevX = cx;
+    let prevY = 0;
+    const vStep = 28;
+    for (let y = vStep; y <= LOGICAL_H + vStep; y += vStep) {
+      const ny = Math.min(LOGICAL_H, y);
+      const jx = ny >= LOGICAL_H ? cx : Math.round(cx + (hash(y * 0.13 + strand * 51) - 0.5) * 2 * jitterAmp);
+      drawPixelThickLine(ctx, prevX, prevY, jx, ny, sz, col);
+      prevX = jx;
+      prevY = ny;
+    }
+
+    // Horizontal jagged lightning strand (x = 0 -> LOGICAL_W)
+    let hPrevX = 0;
+    let hPrevY = cy;
+    const hStep = 26;
+    for (let x = hStep; x <= LOGICAL_W + hStep; x += hStep) {
+      const nx = Math.min(LOGICAL_W, x);
+      const jy = nx >= LOGICAL_W ? cy : Math.round(cy + (hash(x * 0.17 + strand * 97 + 200) - 0.5) * 2 * jitterAmp);
+      drawPixelThickLine(ctx, hPrevX, hPrevY, nx, jy, sz, col);
+      hPrevX = nx;
+      hPrevY = jy;
+    }
+  }
+
+  // 5) Blazing central detonation rings & cross-star flash right at player's death point (cx, cy)
+  const ringR = Math.round(14 + t * 58);
+  ctx.globalAlpha = fade * 0.9;
+  drawPixelRing(ctx, cx, cy, ringR, 3, COLORS.yellow, 24, t * 2.2);
+  if (t < 0.6) {
+    ctx.globalAlpha = (1 - t / 0.6) * 0.95;
+    drawPixelRing(ctx, cx, cy, Math.round(8 + t * 38), 2, '#ffffff', 16, -t * 3.0);
+    drawPixelDisc(ctx, cx, cy, Math.round((1 - t / 0.6) * 20), '#ffffff');
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Subtle crackling yellow-white electric stun sparks on enemies whose firing is disabled for 4s!
+ */
+export function drawEnemyFireDisabledSparks(ctx, e, time = 0, isPixel = true) {
+  const rx = Math.round(e.x);
+  const ry = Math.round(e.y);
+  const r = (e.hitRadius || 16) + 4;
+  ctx.save();
+  for (let k = 0; k < 3; k++) {
+    const a0 = time * 6.5 + (k * Math.PI * 2) / 3 + (e.id || 0);
+    const a1 = a0 + 0.85;
+    const am = (a0 + a1) * 0.5;
+    const rm = r + Math.sin(time * 42 + k * 3.1) * 4;
+    const x0 = rx + Math.cos(a0) * r;
+    const y0 = ry + Math.sin(a0) * r;
+    const xm = rx + Math.cos(am) * rm;
+    const ym = ry + Math.sin(am) * rm;
+    const x1 = rx + Math.cos(a1) * r;
+    const y1 = ry + Math.sin(a1) * r;
+    if (isPixel) {
+      drawPixelThickLine(ctx, x0, y0, xm, ym, 2, COLORS.yellow);
+      drawPixelThickLine(ctx, xm, ym, x1, y1, 2, COLORS.yellow);
+      drawPixelThickLine(ctx, x0, y0, xm, ym, 1, '#ffffff');
+      drawPixelThickLine(ctx, xm, ym, x1, y1, 1, '#ffffff');
+    } else {
+      ctx.strokeStyle = COLORS.yellow;
+      ctx.shadowColor = COLORS.yellow;
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(xm, ym);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
     }
   }
   ctx.restore();
@@ -861,4 +1005,409 @@ export function renderPowerupPickupFx(ctx, list, player, time = 0) {
 
     ctx.restore();
   }
+}
+
+/* =========================================================================
+   5) PLASMA RINGS WEAPON, GUIDED AIM LINE & GLOWING 8s ARENA BORDER
+   (Green + Dark Purple + Hints of Yellow — works on 32-Bit & Alpha Test!)
+   ========================================================================= */
+function raycastToArenaBorder(ox, oy, dx, dy, pad = PLASMA_RING_RADIUS) {
+  const minX = pad;
+  const maxX = LOGICAL_W - pad;
+  const minY = pad;
+  const maxY = LOGICAL_H - pad;
+  let bestT = Infinity;
+  let hitVertical = false;
+
+  if (Math.abs(dx) > 1e-5) {
+    const tL = (minX - ox) / dx;
+    if (tL > 0.5 && tL < bestT) { bestT = tL; hitVertical = true; }
+    const tR = (maxX - ox) / dx;
+    if (tR > 0.5 && tR < bestT) { bestT = tR; hitVertical = true; }
+  }
+  if (Math.abs(dy) > 1e-5) {
+    const tT = (minY - oy) / dy;
+    if (tT > 0.5 && tT < bestT) { bestT = tT; hitVertical = false; }
+    const tB = (maxY - oy) / dy;
+    if (tB > 0.5 && tB < bestT) { bestT = tB; hitVertical = false; }
+  }
+  if (!Number.isFinite(bestT)) {
+    return { x: ox, y: oy, rx: dx, ry: dy };
+  }
+  return {
+    x: clamp(ox + dx * bestT, minX, maxX),
+    y: clamp(oy + dy * bestT, minY, maxY),
+    rx: hitVertical ? -dx : dx,
+    ry: hitVertical ? dy : -dy
+  };
+}
+
+export function drawPixelPlasmaRing(ctx, ring, time = 0) {
+  const rx = Math.round(ring.x);
+  const ry = Math.round(ring.y);
+  const r = Math.round(ring.radius || PLASMA_RING_RADIUS);
+  const spin = ring.spin || (time * 8);
+
+  ctx.save();
+  // Translucent dark-purple + green stepped plasma afterimage trail
+  if (ring.trail && ring.trail.length > 0) {
+    const tLen = ring.trail.length;
+    for (let k = 0; k < tLen; k += 2) {
+      const frac = (k + 1) / Math.max(1, tLen);
+      ctx.globalAlpha = frac * 0.34;
+      drawPixelRing(
+        ctx,
+        ring.trail[k].x,
+        ring.trail[k].y,
+        Math.max(8, r - (1 - frac) * 4),
+        2,
+        k % 4 === 0 ? COLORS.centophagePurple : COLORS.centoidGreen,
+        14,
+        spin - (tLen - k) * 0.25
+      );
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Subtle dark-purple translucent inner energy field (ring remains clearly hollow!)
+  ctx.globalAlpha = 0.22;
+  drawPixelDisc(ctx, rx, ry, r - 3, '#251766');
+  ctx.globalAlpha = 1;
+
+  // Outer dark-purple containment halo -> vibrant acid-green main plasma ring -> crisp lime-white core rim
+  drawPixelRing(ctx, rx, ry, r + 1, 4, '#251766', 24, spin * 0.5);
+  drawPixelRing(ctx, rx, ry, r, 3, '#4e30b8', 24, -spin * 0.4);
+  drawPixelRing(ctx, rx, ry, r - 1, 3, '#2dff7a', 24, spin);
+  drawPixelRing(ctx, rx, ry, r - 2, 2, COLORS.centophageAcid, 20, -spin * 0.8);
+  drawPixelRing(ctx, rx, ry, r - 4, 1, '#f4ffba', 16, spin * 1.2);
+
+  // 3 orbiting bright yellow plasma spark nodes riding the ring circumference
+  for (let k = 0; k < 3; k++) {
+    const a = spin * 1.4 + (k * Math.PI * 2) / 3;
+    const sx = Math.round(rx + Math.cos(a) * r);
+    const sy = Math.round(ry + Math.sin(a) * r);
+    ctx.fillStyle = COLORS.yellow;
+    ctx.fillRect(sx - 2, sy - 2, 4, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx - 1, sy - 1, 2, 2);
+  }
+  ctx.restore();
+}
+
+export function drawPlasmaShieldBubble(ctx, player, time = 0, isPixel = true, fadeRatio = 1) {
+  if (!player || !player.alive || fadeRatio <= 0.01) return;
+  const r = (player.dual ? 33 : 25) + Math.sin(time * 9) * 1.2;
+  const px = Math.round(player.x);
+  const py = Math.round(player.y);
+
+  ctx.save();
+  // Translucent green + dark-purple protective dome fill (clearly reads as a temporary damage-blocking shield!)
+  ctx.globalAlpha = 0.24 * fadeRatio;
+  if (isPixel) {
+    drawPixelDisc(ctx, px, py, r - 1, '#251766');
+    ctx.globalAlpha = 0.16 * fadeRatio;
+    drawPixelDisc(ctx, px, py, r - 4, '#2dff7a');
+  } else {
+    const grad = ctx.createRadialGradient(px, py, 3, px, py, r);
+    grad.addColorStop(0, 'rgba(37, 23, 102, 0.14)');
+    grad.addColorStop(0.68, 'rgba(78, 48, 184, 0.32)');
+    grad.addColorStop(1, 'rgba(45, 255, 122, 0.48)');
+    ctx.globalAlpha = fadeRatio;
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Crisp double-ring shield barrier + orbiting yellow energy nodes
+  if (isPixel) {
+    ctx.globalAlpha = 0.88 * fadeRatio;
+    drawPixelRing(ctx, px, py, r + 2, 3, '#4e30b8', 24, -time * 1.8);
+    drawPixelRing(ctx, px, py, r, 2, '#2dff7a', 24, time * 2.2);
+    ctx.globalAlpha = 0.72 * fadeRatio;
+    drawPixelRing(ctx, px, py, r - 2, 1, '#e8ff9e', 16, -time * 2.6);
+    ctx.globalAlpha = 0.95 * fadeRatio;
+    for (let k = 0; k < 4; k++) {
+      const a = time * 2.8 + k * (Math.PI * 0.5);
+      const tx = Math.round(px + Math.cos(a) * (r + 1));
+      const ty = Math.round(py + Math.sin(a) * (r + 1));
+      ctx.fillStyle = COLORS.yellow;
+      ctx.fillRect(tx - 1, ty - 1, 3, 3);
+    }
+  } else {
+    ctx.globalAlpha = 0.9 * fadeRatio;
+    ctx.strokeStyle = '#4e30b8';
+    ctx.lineWidth = 3.6;
+    ctx.beginPath();
+    ctx.arc(px, py, r + 1.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = '#2dff7a';
+    ctx.shadowColor = COLORS.centophageAcid;
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let k = 0; k < 4; k++) {
+      const a = time * 2.8 + k * (Math.PI * 0.5);
+      ctx.fillStyle = COLORS.yellow;
+      ctx.beginPath();
+      ctx.arc(px + Math.cos(a) * (r + 1), py + Math.sin(a) * (r + 1), 2.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+export function drawPlasmaAimGuide(ctx, player, ps, time = 0, isPixel = true) {
+  if (!player || !player.alive || !ps) return;
+  const dx = Math.cos(ps.aimAngle);
+  const dy = Math.sin(ps.aimAngle);
+  const hit1 = raycastToArenaBorder(player.x, player.y, dx, dy, PLASMA_RING_RADIUS);
+  const hit2 = raycastToArenaBorder(hit1.x, hit1.y, hit1.rx, hit1.ry, PLASMA_RING_RADIUS);
+
+  // Cap bounce preview ray to ~180px so it's super helpful without cluttering the screen
+  const bdx = hit2.x - hit1.x;
+  const bdy = hit2.y - hit1.y;
+  const bLen = Math.hypot(bdx, bdy);
+  const previewLen = Math.min(180, bLen);
+  const bEndX = bLen > 1 ? hit1.x + (bdx / bLen) * previewLen : hit1.x;
+  const bEndY = bLen > 1 ? hit1.y + (bdy / bLen) * previewLen : hit1.y;
+
+  const pulse = 0.72 + Math.sin(time * 12) * 0.28;
+
+  // 1) Temporary damage-blocking protective Plasma Shield bubble around the aiming fighter!
+  drawPlasmaShieldBubble(ctx, player, time, isPixel, 1);
+
+  ctx.save();
+
+  // 2) Primary guided aim line (dark purple backing + acid green dash + racing yellow chevrons!)
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = '#4e30b8';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y);
+  ctx.lineTo(hit1.x, hit1.y);
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.94;
+  ctx.strokeStyle = COLORS.centophageAcid;
+  ctx.shadowColor = '#2dff7a';
+  ctx.shadowBlur = isPixel ? 0 : 10;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 6]);
+  ctx.lineDashOffset = -(time * 68);
+  ctx.beginPath();
+  ctx.moveTo(player.x, player.y);
+  ctx.lineTo(hit1.x, hit1.y);
+  ctx.stroke();
+
+  // Ricochet preview ray (translucent violet-green)
+  ctx.globalAlpha = 0.52;
+  ctx.strokeStyle = COLORS.centophageViolet;
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([5, 6]);
+  ctx.lineDashOffset = -(time * 52);
+  ctx.beginPath();
+  ctx.moveTo(hit1.x, hit1.y);
+  ctx.lineTo(bEndX, bEndY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Racing yellow spark pips traveling along primary aim line
+  const dist1 = Math.hypot(hit1.x - player.x, hit1.y - player.y);
+  const step = 48;
+  const off = (time * 130) % step;
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = COLORS.yellow;
+  for (let d = off; d < dist1 - 10; d += step) {
+    const px = Math.round(player.x + dx * d);
+    const py = Math.round(player.y + dy * d);
+    ctx.fillRect(px - 2, py - 2, 4, 4);
+  }
+
+  // 3) Wall impact reticle diamond at first ricochet point
+  const hx = Math.round(hit1.x);
+  const hy = Math.round(hit1.y);
+  ctx.globalAlpha = pulse;
+  ctx.strokeStyle = COLORS.yellow;
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(hx, hy - 7);
+  ctx.lineTo(hx + 7, hy);
+  ctx.lineTo(hx, hy + 7);
+  ctx.lineTo(hx - 7, hy);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fillStyle = '#2dff7a';
+  ctx.fillRect(hx - 2, hy - 2, 4, 4);
+
+  // 4) Compact aiming prompt & 4.0s countdown bar right beneath the stopped fighter
+  const promptY = Math.min(LOGICAL_H - 12, Math.round(player.y + 34));
+  const aimLeft = Math.max(0, ps.aimTimer !== undefined ? ps.aimTimer : 4.0);
+  const aimMax = Math.max(0.1, ps.aimMax || 4.0);
+  const urgent = ps.phase === 'AIMING' && aimLeft < 1.25;
+  const msg = ps.phase === 'FIRING'
+    ? (ps.randomAutoFire ? `AUTO-FIRE (${ps.shotsLeft})` : `FIRING PLASMA (${ps.shotsLeft})`)
+    : `AIM & FIRE (${aimLeft.toFixed(1)}s)`;
+  ctx.globalAlpha = 0.94;
+  ctx.font = '700 8px "Silkscreen", ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  const boxW = 122;
+  const bx = Math.round(player.x - boxW * 0.5);
+  ctx.fillStyle = 'rgba(12, 6, 28, 0.9)';
+  ctx.fillRect(bx, promptY - 9, boxW, ps.phase === 'AIMING' ? 16 : 13);
+  ctx.fillStyle = urgent ? COLORS.yellow : COLORS.centophageAcid;
+  ctx.fillText(msg, Math.round(player.x), promptY);
+  if (ps.phase === 'AIMING') {
+    const ratio = clamp(aimLeft / aimMax, 0, 1);
+    const barW = boxW - 8;
+    ctx.fillStyle = '#251766';
+    ctx.fillRect(bx + 4, promptY + 3, barW, 3);
+    ctx.fillStyle = urgent ? COLORS.yellow : '#2dff7a';
+    ctx.fillRect(bx + 4, promptY + 3, Math.round(barW * ratio), 3);
+  }
+  ctx.restore();
+}
+
+export function drawPlasmaArenaBorder(ctx, ps, time = 0, isPixel = true, isSandbox = false) {
+  if (!ps || !ps.borderActive) return;
+  const expiring = ps.borderTimerStarted && ps.borderTimer < 1.6;
+  const blink = expiring ? (0.45 + 0.55 * Math.abs(Math.sin(time * 22))) : 1;
+  const pulse = (0.82 + Math.sin(time * 9) * 0.18) * blink;
+
+  ctx.save();
+  // 1) Soft dark-purple + green edge aura vignette hugging all 4 arena walls
+  const edgeW = 16;
+  const gTop = ctx.createLinearGradient(0, 0, 0, edgeW);
+  gTop.addColorStop(0, `rgba(78, 48, 184, ${(0.52 * pulse).toFixed(3)})`);
+  gTop.addColorStop(0.45, `rgba(45, 255, 122, ${(0.22 * pulse).toFixed(3)})`);
+  gTop.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gTop;
+  ctx.fillRect(0, 0, LOGICAL_W, edgeW);
+
+  const gBot = ctx.createLinearGradient(0, LOGICAL_H, 0, LOGICAL_H - edgeW);
+  gBot.addColorStop(0, `rgba(78, 48, 184, ${(0.52 * pulse).toFixed(3)})`);
+  gBot.addColorStop(0.45, `rgba(45, 255, 122, ${(0.22 * pulse).toFixed(3)})`);
+  gBot.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gBot;
+  ctx.fillRect(0, LOGICAL_H - edgeW, LOGICAL_W, edgeW);
+
+  const gLeft = ctx.createLinearGradient(0, 0, edgeW, 0);
+  gLeft.addColorStop(0, `rgba(78, 48, 184, ${(0.52 * pulse).toFixed(3)})`);
+  gLeft.addColorStop(0.45, `rgba(45, 255, 122, ${(0.22 * pulse).toFixed(3)})`);
+  gLeft.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gLeft;
+  ctx.fillRect(0, 0, edgeW, LOGICAL_H);
+
+  const gRight = ctx.createLinearGradient(LOGICAL_W, 0, LOGICAL_W - edgeW, 0);
+  gRight.addColorStop(0, `rgba(78, 48, 184, ${(0.52 * pulse).toFixed(3)})`);
+  gRight.addColorStop(0.45, `rgba(45, 255, 122, ${(0.22 * pulse).toFixed(3)})`);
+  gRight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = gRight;
+  ctx.fillRect(LOGICAL_W - edgeW, 0, edgeW, LOGICAL_H);
+
+  // 2) Crisp layered 4-sided glowing containment rails (Dark Purple outer -> Toxic Green inner!)
+  ctx.globalAlpha = pulse;
+  if (isPixel) {
+    // Dark purple outer containment border (3px)
+    ctx.fillStyle = '#251766';
+    ctx.fillRect(0, 0, LOGICAL_W, 5);
+    ctx.fillRect(0, LOGICAL_H - 5, LOGICAL_W, 5);
+    ctx.fillRect(0, 0, 5, LOGICAL_H);
+    ctx.fillRect(LOGICAL_W - 5, 0, 5, LOGICAL_H);
+
+    // Mid violet pulse dashes alternating with acid green
+    ctx.fillStyle = '#4e30b8';
+    ctx.fillRect(1, 1, LOGICAL_W - 2, 3);
+    ctx.fillRect(1, LOGICAL_H - 4, LOGICAL_W - 2, 3);
+    ctx.fillRect(1, 1, 3, LOGICAL_H - 2);
+    ctx.fillRect(LOGICAL_W - 4, 1, 3, LOGICAL_H - 2);
+
+    // Bright green inner neon border rail (2px)
+    ctx.fillStyle = '#2dff7a';
+    ctx.fillRect(3, 3, LOGICAL_W - 6, 2);
+    ctx.fillRect(3, LOGICAL_H - 5, LOGICAL_W - 6, 2);
+    ctx.fillRect(3, 3, 2, LOGICAL_H - 6);
+    ctx.fillRect(LOGICAL_W - 5, 3, 2, LOGICAL_H - 6);
+  } else {
+    ctx.strokeStyle = '#4e30b8';
+    ctx.shadowColor = '#4e30b8';
+    ctx.shadowBlur = 14;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, LOGICAL_W - 6, LOGICAL_H - 6);
+
+    ctx.strokeStyle = '#2dff7a';
+    ctx.shadowColor = COLORS.centophageAcid;
+    ctx.shadowBlur = 12;
+    ctx.lineWidth = 2.4;
+    ctx.strokeRect(4, 4, LOGICAL_W - 8, LOGICAL_H - 8);
+  }
+
+  // 3) Racing hints of yellow energy sparks gliding around the perimeter + corner anchor gems!
+  const perim = (LOGICAL_W + LOGICAL_H) * 2;
+  const sparkCount = 10;
+  for (let i = 0; i < sparkCount; i++) {
+    let dist = ((i / sparkCount) * perim + time * 210) % perim;
+    let sx = 0;
+    let sy = 0;
+    let horiz = true;
+    if (dist < LOGICAL_W) {
+      sx = dist; sy = 3; horiz = true;
+    } else if (dist < LOGICAL_W + LOGICAL_H) {
+      sx = LOGICAL_W - 3; sy = dist - LOGICAL_W; horiz = false;
+    } else if (dist < LOGICAL_W * 2 + LOGICAL_H) {
+      sx = LOGICAL_W - (dist - LOGICAL_W - LOGICAL_H); sy = LOGICAL_H - 3; horiz = true;
+    } else {
+      sx = 3; sy = LOGICAL_H - (dist - LOGICAL_W * 2 - LOGICAL_H); horiz = false;
+    }
+    ctx.fillStyle = i % 2 === 0 ? COLORS.yellow : COLORS.centophageAcid;
+    if (horiz) {
+      ctx.fillRect(Math.round(sx - 7), Math.round(sy - 1), 14, 3);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(sx - 3), Math.round(sy), 6, 1);
+    } else {
+      ctx.fillRect(Math.round(sx - 1), Math.round(sy - 7), 3, 14);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(Math.round(sx), Math.round(sy - 3), 1, 6);
+    }
+  }
+
+  // Glowing corner reflector blocks (dark purple + green + yellow center)
+  const corners = [
+    [2, 2],
+    [LOGICAL_W - 12, 2],
+    [2, LOGICAL_H - 12],
+    [LOGICAL_W - 12, LOGICAL_H - 12]
+  ];
+  for (const [cx, cy] of corners) {
+    ctx.fillStyle = '#4e30b8';
+    ctx.fillRect(cx, cy, 10, 10);
+    ctx.fillStyle = '#2dff7a';
+    ctx.fillRect(cx + 2, cy + 2, 6, 6);
+    ctx.fillStyle = COLORS.yellow;
+    ctx.fillRect(cx + 4, cy + 4, 2, 2);
+  }
+
+  // 4) Compact top-center Plasma Border countdown pill
+  const pillY = isSandbox ? 36 : 10;
+  const pillW = 164;
+  const pillX = Math.round(LOGICAL_W * 0.5 - pillW * 0.5);
+  const label = ps.borderTimerStarted
+    ? `PLASMA BORDER // ${ps.borderTimer.toFixed(1)}s`
+    : `PLASMA BORDER // ARMED`;
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = 'rgba(14, 8, 34, 0.88)';
+  ctx.fillRect(pillX, pillY, pillW, 15);
+  ctx.fillStyle = '#4e30b8';
+  ctx.fillRect(pillX, pillY, pillW, 1);
+  ctx.fillRect(pillX, pillY + 14, pillW, 1);
+  ctx.fillStyle = expiring ? COLORS.yellow : '#2dff7a';
+  ctx.fillRect(pillX, pillY, 3, 15);
+  ctx.fillRect(pillX + pillW - 3, pillY, 3, 15);
+  ctx.font = '700 7.6px "Silkscreen", ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = expiring ? COLORS.yellow : COLORS.centophageAcid;
+  ctx.fillText(label, LOGICAL_W * 0.5, pillY + 10);
+  ctx.restore();
 }

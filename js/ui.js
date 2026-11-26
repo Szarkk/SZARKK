@@ -11,6 +11,9 @@ import {
   GAME_VERSION,
   LOGICAL_H,
   LOGICAL_W,
+  PLASMA_AIM_TIMEOUT,
+  PLASMA_BORDER_DUR,
+  PLASMA_RING_COUNT,
   PLAYER_MIN_Y,
   POWERUP_MAX_ENERGY,
   RED_LASER_DRAIN_PER_SEC,
@@ -216,27 +219,32 @@ export function renderArchivePreviews(game) {
       drawPixelCapsule(c, 34, 29 + bob, 'YELLOW', t, 1.35);
     } else if (p.id === 'CAPSULE_CLONE') {
       drawPixelCapsule(c, 34, 29 + bob, 'CLONE', t, 1.35);
-    } else if (p.id === 'CENTOID' || p.id === 'ALPHA_CENTOID') {
-      // Miniature 3-segment Centoid / Alpha Centoid chain with horned head in front!
+    } else if (p.id === 'CAPSULE_PLASMA') {
+      drawPixelCapsule(c, 34, 29 + bob, 'PLASMA', t, 1.35);
+    } else if (p.id === 'CENTOID' || p.id === 'ALPHA_CENTOID' || p.id === 'CENTOPHAGE') {
+      // Miniature 3-segment Centoid / Super Centoid / Master Centophage chain with horned head in front!
       const isAlpha = p.id === 'ALPHA_CENTOID';
+      const isPhage = p.id === 'CENTOPHAGE';
       const isPixelEnemy = getEnemySkinMeta(game.enemySkin).renderer !== 'ALPHA_VECTOR';
       c.imageSmoothingEnabled = !isPixelEnemy;
       const segs = [
-        { x: 18, y: 31 + Math.sin(t * 3.5 + 1.4) * 3.5, head: false, ord: 2 },
-        { x: 33, y: 29 + Math.sin(t * 3.5 + 0.7) * 3.5, head: false, ord: 1 },
-        { x: 48, y: 30 + Math.sin(t * 3.5) * 3.5, head: true, ord: 0 }
+        { x: 18, y: 31 + Math.sin(t * 3.5 + 1.4) * 3.5, head: false, tail: true, ord: 2 },
+        { x: 33, y: 29 + Math.sin(t * 3.5 + 0.7) * 3.5, head: false, tail: false, ord: 1 },
+        { x: 48, y: 30 + Math.sin(t * 3.5) * 3.5, head: true, tail: false, ord: 0 }
       ];
       for (const s of segs) {
+        const hpVal = isPhage ? (s.head ? 8 : 3) : (isAlpha ? (s.head ? 6 : 2) : (s.head ? 4 : 1));
         drawEnemySprite(c, {
           type: p.id,
           x: s.x,
           y: s.y,
-          hp: isAlpha ? 2 : 1,
-          maxHp: isAlpha ? 2 : 1,
+          hp: hpVal,
+          maxHp: hpVal,
           hitFlash: 0,
           angle: 0,
           isCentoid: true,
           isCentoidHead: s.head,
+          isCentoidTail: s.tail,
           centoidOrder: s.ord
         }, t, 0.72, game.enemySkin);
       }
@@ -268,6 +276,7 @@ export function renderArchivePreviews(game) {
 const ENEMY_SHOWCASE_CYCLE = [
   { type: 'MASTER_FLUX_ENFORCER', scale: 0.76, yOff: 3 },
   { type: 'MASTER_NULL_ENFORCER', scale: 0.76, yOff: 3 },
+  { type: 'CENTOPHAGE', scale: 1.15, yOff: 0, isCentoid: true, isCentoidHead: true },
   { type: 'PULSAR', scale: 0.86, yOff: -1 },
   { type: 'V1_ENFORCER', scale: 1.0, yOff: 0 },
   { type: 'ALPHA_CENTOID', scale: 1.15, yOff: 0, isCentoid: true, isCentoidHead: true },
@@ -614,29 +623,60 @@ function renderLifeIconHtml(skinId, isSandbox = false) {
       : `<svg class="life-ship-svg" viewBox="0 0 20 22"><polygon points="10,1 19,19 10,14 1,19" fill="rgba(235,245,255,0.85)" stroke="#ffffff" stroke-width="1.8"/></svg>`;
   }
 
-  // 32-Bit Pixel-Art Miniature Valkyrie Mk-II Aurex Fighter life icon (canards + swept wings + wingtip rods + twin tails!)
-  const body = isSandbox ? '#b8ffe6' : '#ffffff';
-  const wing = isSandbox ? '#68f2c2' : '#dfe4ee';
-  const silver = isSandbox ? '#26a87d' : '#969fae';
-  const dark = isSandbox ? '#053224' : '#181c24';
-  return `<svg class="life-ship-svg is-pixel" viewBox="0 0 13 13" shape-rendering="crispEdges">`
-    + `<rect x="6" y="0" width="1" height="10" fill="${body}"/>`
-    + `<rect x="5" y="2" width="3" height="8" fill="${body}"/>`
-    + `<rect x="4" y="3" width="5" height="1" fill="${wing}"/>`
-    + `<rect x="6" y="3" width="1" height="2" fill="${dark}"/>`
-    + `<rect x="3" y="5" width="7" height="3" fill="${wing}"/>`
-    + `<rect x="1" y="6" width="11" height="2" fill="${wing}"/>`
-    + `<rect x="0" y="6" width="1" height="2" fill="${silver}"/>`
-    + `<rect x="12" y="6" width="1" height="2" fill="${silver}"/>`
-    + `<rect x="4" y="8" width="5" height="1" fill="${body}"/>`
-    + `<rect x="3" y="9" width="7" height="1" fill="${silver}"/>`
-    + `<rect x="5" y="9" width="3" height="1" fill="${body}"/>`
-    + `<rect x="2" y="10" width="2" height="1" fill="${silver}"/>`
-    + `<rect x="9" y="10" width="2" height="1" fill="${silver}"/>`
-    + `<rect x="6" y="10" width="1" height="1" fill="${dark}"/>`
-    + `<rect x="4" y="11" width="1" height="2" fill="${body}"/>`
-    + `<rect x="8" y="11" width="1" height="2" fill="${body}"/>`
-    + `</svg>`;
+  // 32-Bit Pixel-Art Mini-Valkyrie Aurex Fighter life icon (Design B: 20x22 outlined 1:1 miniature!)
+  const p = isSandbox
+    ? {
+        s0: '#032018', s1: '#0A4735', s2: '#1C8565', s3: '#4CD6A8',
+        s4: '#9CFCE0', s5: '#E2FFF5', thr: '#E2FFF5', thrDim: '#5EEAC0'
+      }
+    : {
+        s0: '#0C0E12', s1: '#242934', s2: '#5A6270', s3: '#9EA5B2',
+        s4: '#E4E7EE', s5: '#FFFFFF', thr: '#FFFFFF', thrDim: '#B8C4D4'
+      };
+  const rects = [];
+  const add = (x, y, w, h, c) => rects.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/>`);
+  const sym = (dx, y, h, c) => { add(9 - dx, y, 1, h, c); add(10 + dx, y, 1, h, c); };
+
+  // 1) Crisp 1px obsidian outer silhouette
+  add(8, 0, 4, 3, p.s0);
+  add(7, 2, 6, 17, p.s0);
+  sym(3, 4, 4, p.s0); sym(4, 5, 3, p.s0); sym(5, 6, 2, p.s0);
+  sym(3, 8, 7, p.s0); sym(4, 9, 7, p.s0); sym(5, 10, 7, p.s0);
+  sym(6, 11, 7, p.s0); sym(7, 12, 6, p.s0); sym(8, 9, 9, p.s0); sym(9, 10, 7, p.s0);
+  sym(3, 15, 5, p.s0); sym(4, 16, 4, p.s0); sym(5, 17, 3, p.s0);
+
+  // 2) Forward mini-canards
+  sym(3, 5, 2, p.s4); sym(3, 5, 1, p.s5); sym(4, 6, 1, p.s3);
+
+  // 3) Swept-back Valkyrie main delta wings & pointy wingtip laser rods
+  sym(3, 9, 5, p.s4); sym(3, 9, 1, p.s5); sym(3, 13, 1, p.s2);
+  sym(4, 10, 5, p.s4); sym(4, 10, 1, p.s5); sym(4, 13, 1, p.s3); sym(4, 14, 1, p.s2);
+  sym(5, 11, 5, p.s4); sym(5, 11, 1, p.s5); sym(5, 14, 1, p.s3); sym(5, 15, 1, p.s2);
+  sym(6, 12, 5, p.s4); sym(6, 12, 1, p.s5); sym(6, 15, 1, p.s3); sym(6, 16, 1, p.s2);
+  sym(7, 13, 4, p.s3); sym(7, 13, 1, p.s5); sym(7, 16, 1, p.s2);
+  sym(8, 10, 1, p.s5); sym(8, 11, 1, p.s3); sym(8, 12, 5, p.s2); sym(8, 13, 2, p.s5);
+
+  // 4) Angled rear horizontal tail stabilizers
+  sym(3, 16, 3, p.s3); sym(3, 16, 1, p.s4); sym(3, 18, 1, p.s2);
+  sym(4, 17, 2, p.s3); sym(4, 18, 1, p.s2);
+
+  // 5) Central supersonic fuselage, intakes, dorsal fin stripes & smoked canopy glint
+  add(8, 3, 4, 15, p.s4);
+  add(9, 1, 2, 17, p.s5);
+  sym(1, 3, 2, p.s3);
+  sym(2, 9, 5, p.s1);
+  sym(1, 14, 4, p.s3);
+  add(8, 5, 4, 5, p.s0);
+  add(9, 6, 2, 3, p.s1);
+  add(9, 6, 1, 2, p.s5);
+
+  // 6) Twin silver engine bells, dark center sting & white thruster plumes
+  sym(2, 17, 2, p.s2); sym(2, 17, 1, p.s3);
+  add(9, 17, 2, 2, p.s1);
+  sym(2, 19, 3, p.thrDim);
+  sym(2, 19, 2, p.thr);
+
+  return `<svg class="life-ship-svg is-pixel" viewBox="0 0 20 22" shape-rendering="crispEdges">${rects.join('')}</svg>`;
 }
 
 export function updateHUD(game) {
@@ -644,7 +684,9 @@ export function updateHUD(game) {
   game.elHigh.textContent = String(game.highScore).padStart(6, '0');
   game.elStartHigh.textContent = String(game.highScore).padStart(6, '0');
   if (game.sandboxMode) {
-    if (game.sandboxTrainingRound) {
+    if (game.sandboxChallengeTest) {
+      game.elSector.textContent = 'SBX-C';
+    } else if (game.sandboxTrainingRound) {
       game.elSector.textContent = `${game.hardMode ? 'TH' : 'T'}${String(game.sector).padStart(2, '0')}`;
     } else {
       game.elSector.textContent = game.hardMode ? 'SBX-H' : 'SBX';
@@ -696,12 +738,14 @@ function buildPowerupGaugeSlots(game, activeTypes) {
     t === 'CYAN' ? 'pwr-cyan'
       : (t === 'RED' ? 'pwr-red'
         : (t === 'YELLOW' ? 'pwr-yellow'
-          : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple')));
+          : (t === 'PLASMA' ? 'pwr-plasma'
+            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple'))));
   const slotClsFor = (t) =>
     t === 'CYAN' ? 'pwr-cyan'
       : (t === 'RED' ? 'pwr-red'
         : (t === 'YELLOW' ? 'pwr-yellow seg-24'
-          : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6')));
+          : (t === 'PLASMA' ? 'pwr-plasma'
+            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6'))));
 
   bar.className = activeTypes.length > 1 ? 'pwr-multi' : barClsFor(activeTypes[0]);
 
@@ -793,6 +837,30 @@ export function updateStatusPills(game) {
         refs.elName.textContent = compact ? `CLONES x${cnt}` : `FIGHTER CLONES (x${cnt})`;
         refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
         refs.fill.style.width = `${pct}%`;
+      } else if (type === 'PLASMA') {
+        const ps = game.plasmaRingState;
+        if (ps && ps.phase === 'AIMING') {
+          const aimLeft = Math.max(0, ps.aimTimer !== undefined ? ps.aimTimer : PLASMA_AIM_TIMEOUT);
+          const aimMax = Math.max(0.1, ps.aimMax || PLASMA_AIM_TIMEOUT);
+          refs.elName.textContent = compact ? 'PLASMA AIM' : 'PLASMA RINGS // AIM & FIRE';
+          refs.elVal.textContent = `${aimLeft.toFixed(1)}s`;
+          refs.fill.style.width = `${clamp((aimLeft / aimMax) * 100, 0, 100)}%`;
+        } else if (ps && ps.phase === 'FIRING') {
+          refs.elName.textContent = compact
+            ? 'PLASMA FIRE'
+            : (ps.randomAutoFire ? 'PLASMA RINGS // RANDOM AUTO' : 'PLASMA RINGS // FIRING');
+          refs.elVal.textContent = `${ps.shotsLeft}/${PLASMA_RING_COUNT}`;
+          refs.fill.style.width = '100%';
+        } else if (ps && ps.borderActive) {
+          const secLeft = Math.max(0, ps.borderTimer || 0);
+          refs.elName.textContent = compact ? 'PLASMA BDR' : 'PLASMA BORDER';
+          refs.elVal.textContent = ps.borderTimerStarted ? `${secLeft.toFixed(1)}s` : 'ARMED';
+          refs.fill.style.width = `${clamp((secLeft / Math.max(0.1, ps.borderMax || PLASMA_BORDER_DUR)) * 100, 0, 100)}%`;
+        } else {
+          refs.elName.textContent = 'PLASMA RINGS';
+          refs.elVal.textContent = '0.0s';
+          refs.fill.style.width = '0%';
+        }
       }
     }
   }
@@ -818,7 +886,7 @@ export function updateStatusPills(game) {
       const fd = game.fieldDebuff;
       const isCyan = fd.type === 'CYAN';
       game.pillField.className = `status-pill ${isCyan ? 'slow' : 'dmg'}`;
-      game.pillFieldLabel.textContent = isCyan ? 'CYAN FIELD 1.5x SLOW' : 'RED FIELD 0.5x DMG';
+      game.pillFieldLabel.textContent = isCyan ? 'FLUX FIELD 1.5x SLOW' : 'NULL FIELD 0.33x DMG';
       game.pillFieldTime.textContent = fd.indefinite ? '∞' : `${fd.timer.toFixed(1)}s`;
       game.pillFieldFill.style.width = fd.indefinite
         ? '100%'
@@ -1222,6 +1290,31 @@ export function bindEvents(game) {
       }
     }
 
+    // Plasma Rings 360-degree pointer aiming & click-to-fire during ship pause!
+    const ps = game.plasmaRingState;
+    if (ps && (ps.phase === 'AIMING' || ps.phase === 'FIRING') && game.player && game.player.alive) {
+      const rect = game.canvas.getBoundingClientRect();
+      const lx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
+      const ly = ((e.clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
+      const dx = lx - game.player.x;
+      const dy = ly - game.player.y;
+      if (Math.hypot(dx, dy) > 4) {
+        ps.aimAngle = Math.atan2(dy, dx);
+      }
+      e.preventDefault();
+      if (e.pointerType === 'mouse' && e.button === 0 && ps.phase === 'AIMING') {
+        game.tapFireBuffer = TAP_BUFFER_TIME;
+        game.freshFirePress = true;
+      } else if (e.pointerType !== 'mouse') {
+        // Touch drag anywhere on canvas aims the guided line without moving the paused ship
+        game.dragPointerId = e.pointerId;
+        game.dragLastX = e.clientX;
+        game.dragLastY = e.clientY;
+        game.dragActive = true;
+      }
+      return;
+    }
+
     // In Desktop Mode, left-click on canvas fires; in Touch UI mode, touch/drag anywhere in bottom 2/5ths!
     if (game.desktopMode && e.pointerType === 'mouse') {
       if (e.button === 0) {
@@ -1258,6 +1351,23 @@ export function bindEvents(game) {
       const lx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * LOGICAL_W;
       const ly = ((e.clientY - rect.top) / Math.max(1, rect.height)) * LOGICAL_H;
       moveSandboxDrag(game, e.pointerId, lx, ly);
+      return;
+    }
+    // Live 360-degree guided-line aiming during Plasma Rings pause (never drags ship position!)
+    const ps = game.plasmaRingState;
+    if (game.state === 'PLAYING' && ps && (ps.phase === 'AIMING' || (ps.phase === 'FIRING' && !ps.randomAutoFire)) && game.player && game.player.alive) {
+      if (e.pointerType === 'mouse' || e.pointerId === game.dragPointerId) {
+        const rect = game.canvas.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          const lx = ((e.clientX - rect.left) / rect.width) * LOGICAL_W;
+          const ly = ((e.clientY - rect.top) / rect.height) * LOGICAL_H;
+          const dx = lx - game.player.x;
+          const dy = ly - game.player.y;
+          if (Math.hypot(dx, dy) > 4) {
+            ps.aimAngle = Math.atan2(dy, dx);
+          }
+        }
+      }
       return;
     }
     if (e.pointerId === game.dragPointerId && game.dragActive && game.state === 'PLAYING') {

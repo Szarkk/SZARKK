@@ -564,6 +564,150 @@ function drawAlphaCentoid32(ctx, cx, cy, e, time) {
 }
 
 /* -------------------------------------------------------------------------
+   9b. MASTER CENTOPHAGE (Tier 4 Master — Overlord Graft, Obsidian/Acid/Dark Purple)
+       Same size as Centoid/Super Centoid! Replaces crimson with Super Centoid dark purple.
+   ------------------------------------------------------------------------- */
+function drawCentophage32(ctx, cx, cy, e, time) {
+  const px = makePx(ctx, cx, cy);
+  const o = '#07090d';
+  const [a0, a1, a2, a3] = ['#12161e', '#1e2530', '#313c4b', '#506075'];
+  const [v0, v1, v2, v3] = ['#2e4700', '#69a600', '#ccff00', '#edff8f'];
+  // Dark purple straight from Super/Alpha Centoid's ALPHA_RAMP!
+  const [p0, p1, p2, p3] = ALPHA_RAMP;
+  const cl1 = '#b8f000';
+  const cl2 = '#f4ffaa';
+  const isHead = !!e.isCentoidHead;
+  const isTail = !!e.isCentoidTail && !isHead;
+  const ord = e.centoidOrder || 0;
+  const step = Math.round(Math.sin(time * 22 + ord * 1.15) * 2.5);
+  const pulse = Math.floor(time * 10 + ord) % 2 === 0;
+
+  // Angular scythe-blade legs (chartreuse rear blade + dark-purple front scythe!)
+  if (!isTail) {
+    for (const dir of [-1, 1]) {
+      const s1 = dir < 0 ? step : -step;
+      const yOut = dir < 0 ? -15 : 9;
+      const bladeY = dir < 0 ? -15 : 13;
+      px(-5 + s1, yOut, 4, 6, o);
+      px(-4 + s1, yOut + (dir < 0 ? 1 : 0), 2, 5, a3);
+      px(-2 + s1, bladeY, 4, 2, cl1);
+      px(1 + s1, bladeY, 2, 2, cl2);
+
+      px(3 - s1, yOut, 3, 6, o);
+      px(4 - s1, yOut + (dir < 0 ? 1 : 0), 2, 5, a3);
+      px(5 - s1, bladeY, 3, 2, p2); // Super Centoid dark-purple front scythe edge
+      px(6 - s1, bladeY, 1, 2, p3);
+    }
+  }
+
+  if (isHead) {
+    // Interlocking serrated fangs (+10..+20) tipped in Super Centoid dark purple
+    px(10, -10, 9, 4, o);
+    px(11, -9, 8, 2, a3);
+    px(17, -8, 3, 3, p2);
+    px(18, -8, 2, 2, p3);
+    px(13, -6, 2, 2, v2);
+
+    px(10, 6, 9, 4, o);
+    px(11, 7, 8, 2, a3);
+    px(17, 5, 3, 3, p2);
+    px(18, 6, 2, 2, p3);
+    px(13, 4, 2, 2, v2);
+
+    // Swept-back Master acid-chartreuse crown horns
+    px(-14, -12, 7, 4, o);
+    px(-13, -11, 6, 2, v2);
+    px(-14, -11, 2, 2, v3);
+    px(-14, 8, 7, 4, o);
+    px(-13, 9, 6, 2, v2);
+    px(-14, 9, 2, 2, v3);
+
+    // Heavy angular obsidian battle-helm carapace
+    px(-12, -11, 23, 22, o);
+    px(-9, -12, 17, 24, o);
+    px(10, -7, 5, 14, o);
+
+    px(-11, -10, 21, 20, a0);
+    px(-8, -11, 15, 22, a1);
+    px(-5, -9, 13, 18, a2);
+    px(8, -5, 5, 10, a2);
+    // Beveled crown armor plates
+    px(-9, -8, 12, 3, a3);
+    px(-9, 5, 12, 3, a3);
+
+    // Central glowing Master crest diamond (acid surround + dark-purple core!)
+    px(-7, -4, 10, 8, o);
+    px(-6, -3, 8, 6, v1);
+    px(-4, -2, 5, 4, pulse ? v3 : v2);
+    px(-3, -2, 4, 4, p1);
+    px(-2, -1, 3, 2, p2);
+    px(-1, -1, 1, 2, p3);
+
+    // Sharp fierce slanting Super-Centoid dark-purple Master eyes
+    px(3, -8, 6, 4, o);
+    px(4, -7, 5, 2, p1);
+    px(5, -7, 4, 2, p2);
+    px(6, -6, 3, 2, p3);
+    px(8, -6, 1, 1, '#d8c4ff');
+
+    px(3, 4, 6, 4, o);
+    px(4, 5, 5, 2, p1);
+    px(5, 5, 4, 2, p2);
+    px(6, 4, 3, 2, p3);
+    px(8, 5, 1, 1, '#d8c4ff');
+  } else if (isTail) {
+    // Serrated harvester blade tail with dark-purple core
+    px(-17, -3, 9, 6, o);
+    px(-16, -2, 8, 4, a3);
+    px(-17, -1, 6, 2, v2);
+    px(-14, -1, 3, 2, v3);
+
+    px(-9, -8, 17, 16, o);
+    px(-8, -7, 15, 14, a0);
+    px(-6, -6, 11, 12, a1);
+    px(-4, -4, 8, 8, a2);
+    px(-3, -2, 6, 4, p1);
+    px(-2, -2, 5, 4, p2);
+    px(-1, -1, 2, 2, p3);
+  } else {
+    const graft = e.absorbedTint || null;
+    // Chevron-plated sovereign armor with twin lateral chartreuse gill vents
+    px(-11, -10, 22, 20, o);
+    px(-8, -11, 16, 22, o);
+
+    px(-10, -9, 20, 18, a0);
+    px(-7, -10, 14, 20, a1);
+    px(-5, -8, 11, 16, a2);
+
+    // Sharp forward-pointing obsidian chevron ridge
+    px(-2, -9, 3, 18, a3);
+    px(1, -6, 2, 12, a3);
+    px(3, -3, 2, 6, a3);
+
+    // Lateral acid gill vents
+    px(-8, -8, 5, 3, o);
+    px(-7, -7, 4, 2, pulse ? v3 : v2);
+    px(-8, 5, 5, 3, o);
+    px(-7, 5, 4, 2, pulse ? v3 : v2);
+
+    // Central core: stolen entity tint wrapped in acid veins, or pulsing dark-purple Master conduit!
+    px(-5, -4, 8, 8, o);
+    if (graft) {
+      px(-4, -3, 6, 6, graft.mid);
+      px(-2, -2, 3, 4, graft.bright);
+      px(-5, -1, 2, 2, v2);
+      px(2, -1, 2, 2, v2);
+    } else {
+      px(-4, -3, 6, 6, p0);
+      px(-4, -3, 6, 6, p1);
+      px(-3, -2, 4, 4, p2);
+      px(-2, -1, 3, 2, pulse ? p3 : p2);
+      px(-1, -1, 1, 2, pulse ? '#d8c4ff' : p3);
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------
    10. PULSAR (Tier 3 Elite Gold/Yellow Fighter + Twin Tesla Lightning Rods!)
    ------------------------------------------------------------------------- */
 function drawPulsar32(ctx, cx, cy, e, time) {
@@ -750,6 +894,9 @@ function drawEnemyBodyDispatch(ctx, cx, cy, e, time) {
       break;
     case 'ALPHA_CENTOID':
       drawAlphaCentoid32(ctx, cx, cy, e, time);
+      break;
+    case 'CENTOPHAGE':
+      drawCentophage32(ctx, cx, cy, e, time);
       break;
     case 'PULSAR':
       drawPulsar32(ctx, cx, cy, e, time);

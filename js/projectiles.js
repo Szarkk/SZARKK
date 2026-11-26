@@ -17,11 +17,17 @@ import {
   FIRE_COOLDOWN,
   FLUX_THREAD_BULLET_SLOW,
   HOMING_MISSILE_SPEED,
+  HOMING_TRACK_HALF_WIDTH,
   LOGICAL_H,
   LOGICAL_W,
+  PLASMA_RING_DMG,
+  PLASMA_RING_HIT_COOLDOWN,
+  PLASMA_RING_RADIUS,
+  PLASMA_RING_SPEED,
   PLAYER_BULLET_SPEED,
   PLAYER_MAX_Y,
   PLAYER_MIN_Y,
+  POWERUP_MAX_ENERGY,
   PULSAR_JAM_DUR,
   PULSAR_SPARK_SLOW_DUR,
   RED_LASER_DRAIN_PER_SEC,
@@ -37,7 +43,7 @@ import {
   hasPowerup,
   removePowerupSlot
 } from './powerups.js';
-import { getPlayerDamageMult, getPlayerFireCooldownMult, getPlayerMoveSpeedMult } from './player.js';
+import { getPlayerDamageMult, getPlayerFireCooldownMult, getPlayerMoveSpeedMult, isPlasmaShieldActive, isPlayerShootingLightning } from './player.js';
 import { damageEnforcerWing, shatterThreadTrail } from './enforcers.js';
 import { damageEnemy } from './enemies.js';
 
@@ -130,9 +136,10 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
     }
   }
 
-  // Damage all Enemies inside the AOE blast
-  for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
-    const e = game.enemies[ei];
+  // Damage all Enemies inside the AOE blast (snapshot-safe against Centoid multi-segment splices)
+  for (const e of [...game.enemies]) {
+    const ei = game.enemies.indexOf(e);
+    if (ei < 0) continue;
     if (Math.hypot(e.x - x, e.y - y) <= aoeRadius + e.hitRadius) {
       game.shotsHit++;
       damageEnemy(game, ei, dmg, e.x, e.y, COLORS.purpleBright);
@@ -150,25 +157,34 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
 
 /**
  * CYAN POWER-UP — Homing Missiles:
- * 2x shot count per glider, assigns different enemies across the volley,
- * breaks Null Threads in 1 hit, and deals 1.3x damage to Elite/Master Enforcers [Null].
+ * Twin forward-launched missiles per glider that only track targets within ±2 planes
+ * (HOMING_TRACK_HALF_WIDTH = 76px on each side) ahead of the missile (no 360-degree spinning!),
+ * break Null Threads in 1 hit, and deal 1.3x damage to Elite/Master Enforcers [Null].
  */
 export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
   const p = game.player;
-  const candidates = [];
-  for (const cap of game.capsules) {
-    if (cap.y > -24 && cap.y < LOGICAL_H - 20) candidates.push({ kind: 'CAPSULE', ref: cap });
-  }
-  for (const e of game.enemies) {
-    if (e.y > -24 && e.y < LOGICAL_H - 20) candidates.push({ kind: 'ENEMY', ref: e });
-  }
-  for (const ew of game.enforcerWings) {
-    candidates.push({ kind: 'ENFORCER_WING', ref: ew });
-  }
-  candidates.sort((a, b) => Math.hypot(a.ref.x - p.x, a.ref.y - p.y) - Math.hypot(b.ref.x - p.x, b.ref.y - p.y));
 
-  let targetCursor = 0;
   for (const ox of shipOffsets) {
+    const laneCenter = p.x + ox;
+    const candidates = [];
+    for (const cap of game.capsules) {
+      if (cap.y > -24 && cap.y < p.y - 8 && Math.abs(cap.x - laneCenter) <= HOMING_TRACK_HALF_WIDTH) {
+        candidates.push({ kind: 'CAPSULE', ref: cap });
+      }
+    }
+    for (const e of game.enemies) {
+      if (e.y > -24 && e.y < p.y - 8 && Math.abs(e.x - laneCenter) <= HOMING_TRACK_HALF_WIDTH) {
+        candidates.push({ kind: 'ENEMY', ref: e });
+      }
+    }
+    for (const ew of game.enforcerWings) {
+      if (ew.y > -24 && ew.y < p.y - 8 && Math.abs(ew.x - laneCenter) <= HOMING_TRACK_HALF_WIDTH) {
+        candidates.push({ kind: 'ENFORCER_WING', ref: ew });
+      }
+    }
+    candidates.sort((a, b) => Math.hypot(a.ref.x - laneCenter, a.ref.y - p.y) - Math.hypot(b.ref.x - laneCenter, b.ref.y - p.y));
+
+    let targetCursor = 0;
     const pairSpread = [-1, 1];
     for (const side of pairSpread) {
       const targetObj = candidates.length > 0
@@ -176,20 +192,20 @@ export function fireHomingMissiles(game, shipOffsets, baseDmg, weakened) {
         : null;
       targetCursor++;
 
-      const startX = p.x + ox + side * 8;
-      const startY = p.y - 14;
-      const initAngle = -Math.PI / 2 + side * 0.34;
+      const startX = laneCenter + side * 8;
+      const startY = p.y - 16;
+      const initAngle = -Math.PI / 2; // Both missiles fire straight forward!
       game.homingMissiles.push({
         x: startX,
         y: startY,
-        vx: Math.cos(initAngle) * HOMING_MISSILE_SPEED,
-        vy: Math.sin(initAngle) * HOMING_MISSILE_SPEED,
+        vx: 0,
+        vy: -HOMING_MISSILE_SPEED,
         angle: initAngle,
         dmg: baseDmg,
         weakened,
         targetKind: targetObj ? targetObj.kind : null,
         targetRef: targetObj ? targetObj.ref : null,
-        life: 3.0,
+        life: 2.2,
         trail: []
       });
       game.shotsFired++;
@@ -304,9 +320,10 @@ export function updateContinuousLaserBeams(game, dt = 0) {
       }
     }
 
-    // 4) Pierce ALL Enemy Ships along the beam segment [stopY .. beamBottomY]
-    for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
-      const e = game.enemies[ei];
+    // 4) Pierce ALL Enemy Ships along the beam segment [stopY .. beamBottomY] (snapshot-safe!)
+    for (const e of [...game.enemies]) {
+      const ei = game.enemies.indexOf(e);
+      if (ei < 0) continue;
       const beamHalfW = e.hitRadius + 5;
       if (e.y <= beamBottomY && e.y >= stopY && Math.abs(e.x - beamX) <= beamHalfW) {
         impacts.push(e.y);
@@ -470,10 +487,10 @@ export function updateArcWavesAndCannon(game, dt) {
       }
     }
 
-    // 4) Damage Enemies
-    for (let ei = game.enemies.length - 1; ei >= 0; ei--) {
-      const e = game.enemies[ei];
-      if (w.hitEnemyIds.has(e.id)) continue;
+    // 4) Damage Enemies (snapshot-safe against Centoid multi-segment splices)
+    for (const e of [...game.enemies]) {
+      const ei = game.enemies.indexOf(e);
+      if (ei < 0 || w.hitEnemyIds.has(e.id)) continue;
       if (Math.abs(e.x - w.x) <= w.radius + e.hitRadius * 0.7 && Math.abs(e.y - w.y) <= e.hitRadius + 16) {
         w.hitEnemyIds.add(e.id);
         damageEnemy(game, ei, w.dmg, e.x, e.y, COLORS.purpleBright);
@@ -544,6 +561,7 @@ export function updateArcWavesAndCannon(game, dt) {
 export function updatePlayerBullets(game, dt) {
   for (let i = game.playerBullets.length - 1; i >= 0; i--) {
     const b = game.playerBullets[i];
+    if (b.vx) b.x += b.vx * dt;
     b.y += b.vy * dt;
 
     // Bullets slowed by a cyan Flux Thread dissolve after 2.0 seconds
@@ -556,7 +574,7 @@ export function updatePlayerBullets(game, dt) {
       }
     }
 
-    if (b.y < -20) {
+    if (b.y < -24 || b.y > LOGICAL_H + 24 || b.x < -24 || b.x > LOGICAL_W + 24) {
       game.playerBullets.splice(i, 1);
       continue;
     }
@@ -671,20 +689,29 @@ export function updatePlayerBullets(game, dt) {
 }
 
 export function updateHomingMissiles(game, dt) {
+  const isTrackableAhead = (m, ref) => {
+    if (!ref) return false;
+    // Strict ±2 planes (76px each side) forward tracking corridor — never spins back or chases cross-screen!
+    return ref.y <= m.y - 4 && Math.abs(ref.x - m.x) <= HOMING_TRACK_HALF_WIDTH;
+  };
+
   for (let i = game.homingMissiles.length - 1; i >= 0; i--) {
     const m = game.homingMissiles[i];
     m.life -= dt;
 
     let validTarget = null;
-    if (m.targetKind === 'CAPSULE' && game.capsules.includes(m.targetRef)) {
+    if (m.targetKind === 'CAPSULE' && game.capsules.includes(m.targetRef) && isTrackableAhead(m, m.targetRef)) {
       validTarget = m.targetRef;
-    } else if (m.targetKind === 'ENEMY' && game.enemies.includes(m.targetRef)) {
+    } else if (m.targetKind === 'ENEMY' && game.enemies.includes(m.targetRef) && isTrackableAhead(m, m.targetRef)) {
       validTarget = m.targetRef;
-    } else if (m.targetKind === 'ENFORCER_WING' && game.enforcerWings.includes(m.targetRef)) {
+    } else if (m.targetKind === 'ENFORCER_WING' && game.enforcerWings.includes(m.targetRef) && isTrackableAhead(m, m.targetRef)) {
       validTarget = m.targetRef;
     } else {
+      m.targetKind = null;
+      m.targetRef = null;
       let bestD = Infinity;
       for (const cap of game.capsules) {
+        if (!isTrackableAhead(m, cap)) continue;
         const d = Math.hypot(cap.x - m.x, cap.y - m.y);
         if (d < bestD) {
           bestD = d;
@@ -694,6 +721,7 @@ export function updateHomingMissiles(game, dt) {
         }
       }
       for (const e of game.enemies) {
+        if (!isTrackableAhead(m, e)) continue;
         const d = Math.hypot(e.x - m.x, e.y - m.y);
         if (d < bestD) {
           bestD = d;
@@ -703,6 +731,7 @@ export function updateHomingMissiles(game, dt) {
         }
       }
       for (const ew of game.enforcerWings) {
+        if (!isTrackableAhead(m, ew)) continue;
         const d = Math.hypot(ew.x - m.x, ew.y - m.y);
         if (d < bestD) {
           bestD = d;
@@ -713,14 +742,14 @@ export function updateHomingMissiles(game, dt) {
       }
     }
 
-    if (validTarget) {
-      const desired = Math.atan2(validTarget.y - m.y, validTarget.x - m.x);
-      let diff = desired - m.angle;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      const maxTurn = 7.8 * dt;
-      m.angle += clamp(diff, -maxTurn, maxTurn);
-    }
+    const forwardAng = -Math.PI / 2;
+    const desired = validTarget ? Math.atan2(validTarget.y - m.y, validTarget.x - m.x) : forwardAng;
+    let diff = desired - m.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const maxTurn = (validTarget ? 5.0 : 3.2) * dt;
+    // Clamp strictly inside a forward cone (±48 deg) so missiles never spin in circles!
+    m.angle = clamp(m.angle + clamp(diff, -maxTurn, maxTurn), forwardAng - 0.84, forwardAng + 0.84);
 
     m.vx = Math.cos(m.angle) * HOMING_MISSILE_SPEED;
     m.vy = Math.sin(m.angle) * HOMING_MISSILE_SPEED;
@@ -841,6 +870,7 @@ function inFront270Arc(dx, dy) {
  */
 export function fireChainLightning(game, shipOffsets, baseDmg, _weakened, boltIdx = 0, burstExcludeSet = null) {
   const p = game.player;
+  p.lightningActiveTimer = 0.36;
   const dmg = baseDmg * CHAIN_LIGHTNING_DMG;
   // Randomized forward-hull emitter jitter so bolts spark out organically rather than on a fixed grid
   const emitX = (Math.random() - 0.5) * 14;
@@ -1065,11 +1095,165 @@ export function fireChainLightning(game, shipOffsets, baseDmg, _weakened, boltId
   game.synth.playChainLightning();
 }
 
+/**
+ * Triggers full-screen Vertical + Horizontal Cross Lightning immediately at the player's
+ * death position when dying while holding Chain Lightning:
+ * - ONE-SHOTS every enemy, Enforcer Wing, projectile & thread intersecting the cross beams!
+ * - Triggers regular-damage Chain Lightning jumps (200px, up to 8 targets) off struck targets!
+ */
+export function triggerDeathCrossLightning(game, dx, dy) {
+  if (!game.deathCrossLightnings) game.deathCrossLightnings = [];
+  game.deathCrossLightnings.push({
+    x: dx,
+    y: dy,
+    age: 0,
+    maxLife: 0.72,
+    seed: Math.random() * 100
+  });
+
+  const beamHalfW = 18;
+  const inCross = (tx, ty, r = 0) => (
+    Math.abs(tx - dx) <= beamHalfW + r || Math.abs(ty - dy) <= beamHalfW + r
+  );
+
+  // 1) Instantly vaporize hostile bullets, electro balls, pulsar sparks & threads in the cross!
+  for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
+    const eb = game.enemyBullets[i];
+    if (inCross(eb.x, eb.y, 6)) {
+      game.spawnDeleteBurst(eb.x, eb.y, COLORS.yellow, 4, 80);
+      game.enemyBullets.splice(i, 1);
+    }
+  }
+  for (let i = game.electroBalls.length - 1; i >= 0; i--) {
+    const eb = game.electroBalls[i];
+    if (inCross(eb.x, eb.y, eb.radius || 13)) {
+      game.spawnDeleteBurst(eb.x, eb.y, COLORS.yellow, 6, 95);
+      game.electroBalls.splice(i, 1);
+    }
+  }
+  for (let i = game.pulsarSparks.length - 1; i >= 0; i--) {
+    const sp = game.pulsarSparks[i];
+    if (inCross(sp.x, sp.y, 8)) {
+      game.pulsarSparks.splice(i, 1);
+    }
+  }
+  for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+    const trail = game.threadTrails[ti];
+    let hit = false;
+    for (const seg of trail.segments) {
+      if (inCross(seg.x1, seg.y1, 8) || inCross(seg.x2, seg.y2, 8) || inCross((seg.x1 + seg.x2) * 0.5, (seg.y1 + seg.y2) * 0.5, 8)) {
+        hit = true;
+        break;
+      }
+    }
+    if (hit) {
+      shatterThreadTrail(game, ti, dx, dy, COLORS.yellow);
+    }
+  }
+
+  // 2) Pop any floating power-up capsules inside the cross
+  for (let ci = game.capsules.length - 1; ci >= 0; ci--) {
+    const cap = game.capsules[ci];
+    if (inCross(cap.x, cap.y, cap.hitRadius)) {
+      destroyAndCollectCapsule(game, ci);
+    }
+  }
+
+  // 3) Collect cross-hit anchors and ONE-SHOT all Enforcer Wings & Enemies inside the cross!
+  const crossAnchors = [];
+  for (let li = game.enforcerWings.length - 1; li >= 0; li--) {
+    const ew = game.enforcerWings[li];
+    if (inCross(ew.x, ew.y, 14)) {
+      crossAnchors.push({ x: ew.x, y: ew.y, radius: 14 });
+      damageEnforcerWing(game, li, (ew.hp || 1) + 999);
+    }
+  }
+  // Snapshot matching enemies first since Centoid headshots splice multiple entries
+  const crossEnemies = game.enemies.filter(e => inCross(e.x, e.y, e.hitRadius));
+  for (const e of crossEnemies) {
+    const idx = game.enemies.indexOf(e);
+    if (idx < 0) continue;
+    crossAnchors.push({ x: e.x, y: e.y, radius: e.hitRadius });
+    e.beamShield = 0; // Cross lightning one-shots through tractor capacitor shield too!
+    damageEnemy(game, idx, (e.hp || 1) + 999, e.x, e.y, COLORS.yellow);
+  }
+
+  // 4) Trigger regular-damage Chain Lightning branching from cross-hit targets (or death origin)
+  const seeds = crossAnchors.length > 0 ? crossAnchors : [{ x: dx, y: dy, radius: 18 }];
+  const regularDmg = getPlayerDamageMult(game) * CHAIN_LIGHTNING_DMG;
+  const visitedRefs = new Set();
+  let remainingJumps = CHAIN_LIGHTNING_MAX_JUMPS;
+
+  for (const seed of seeds) {
+    if (remainingJumps <= 0) break;
+    let curX = seed.x;
+    let curY = seed.y;
+    let curRadius = seed.radius;
+    const segments = [];
+
+    while (remainingJumps > 0) {
+      let nextTarget = null;
+      let bestDist = CHAIN_LIGHTNING_JUMP_RANGE;
+
+      const consider = (kind, ref, tx, ty, r) => {
+        if (visitedRefs.has(ref)) return;
+        const edgeDist = Math.max(0, Math.hypot(tx - curX, ty - curY) - curRadius - r);
+        if (edgeDist <= bestDist) {
+          bestDist = edgeDist;
+          nextTarget = { kind, ref, x: tx, y: ty, radius: r };
+        }
+      };
+
+      for (const e of game.enemies) consider('ENEMY', e, e.x, e.y, e.hitRadius);
+      for (const ew of game.enforcerWings) consider('ENFORCER_WING', ew, ew.x, ew.y, 14);
+      for (const eb of game.enemyBullets) consider('ENEMY_BULLET', eb, eb.x, eb.y, 6);
+
+      if (!nextTarget) break;
+      visitedRefs.add(nextTarget.ref);
+      remainingJumps--;
+      segments.push(buildLightningPath(curX, curY, nextTarget.x, nextTarget.y));
+      curX = nextTarget.x;
+      curY = nextTarget.y;
+      curRadius = nextTarget.radius;
+
+      game.spawnDeleteBurst(nextTarget.x, nextTarget.y, COLORS.yellow, 5, 95);
+      if (nextTarget.kind === 'ENEMY_BULLET') {
+        const bi = game.enemyBullets.indexOf(nextTarget.ref);
+        if (bi >= 0) game.enemyBullets.splice(bi, 1);
+      } else if (nextTarget.kind === 'ENFORCER_WING') {
+        const li = game.enforcerWings.indexOf(nextTarget.ref);
+        if (li >= 0) damageEnforcerWing(game, li, regularDmg);
+      } else if (nextTarget.kind === 'ENEMY') {
+        const ei = game.enemies.indexOf(nextTarget.ref);
+        if (ei >= 0) damageEnemy(game, ei, regularDmg, nextTarget.x, nextTarget.y, COLORS.yellow);
+      }
+    }
+
+    if (segments.length > 0) {
+      game.lightningBolts.push({
+        segments,
+        life: 0.42,
+        maxLife: 0.42
+      });
+    }
+  }
+
+  game.synth.playChainLightning();
+  game.spawnPopup(dx, Math.max(48, dy - 36), 'CROSS LIGHTNING!', COLORS.yellow, 1.45);
+}
+
 export function updateFighterClonesAndBolts(game, dt) {
-  // 1) Fade visual Chain Lightning arcs
+  // 1) Fade visual Chain Lightning arcs & Death Cross Lightning blasts
   for (let i = game.lightningBolts.length - 1; i >= 0; i--) {
     game.lightningBolts[i].life -= dt;
     if (game.lightningBolts[i].life <= 0) game.lightningBolts.splice(i, 1);
+  }
+  if (game.deathCrossLightnings && game.deathCrossLightnings.length > 0) {
+    for (let i = game.deathCrossLightnings.length - 1; i >= 0; i--) {
+      const cl = game.deathCrossLightnings[i];
+      cl.age += dt;
+      if (cl.age >= cl.maxLife) game.deathCrossLightnings.splice(i, 1);
+    }
   }
 
   // 2) Update Fighter Clones (0.8s tethered left/right/back -> detach w/ 1.0s i-frames & 3 HP, 2x dark-purple bolts!)
@@ -1100,8 +1284,7 @@ export function updateFighterClonesAndBolts(game, dt) {
         cl.tetherTimer -= dt;
         if (cl.tetherTimer <= 0) {
           cl.detached = true;
-          cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off!
-          game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 8, 95, 'PLAYER');
+          cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off (clean disperse, no explosion!)
         }
       }
     } else {
@@ -1206,6 +1389,12 @@ export function updatePulsarHazards(game, dt) {
       game.electroBalls.splice(i, 1);
       continue;
     }
+    if (p.alive && !p.capturedById && isPlasmaShieldActive(game) && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 34 : 26)) {
+      game.spawnDeleteBurst(eb.x, eb.y, COLORS.centophageAcid, 5, 100, 'PLAYER');
+      game.synth.playThreadDeflect();
+      game.electroBalls.splice(i, 1);
+      continue;
+    }
     if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 26 : 19)) {
       p.fireJamTimer = PULSAR_JAM_DUR;
       p.fireJamMax = PULSAR_JAM_DUR;
@@ -1240,6 +1429,12 @@ export function updatePulsarHazards(game, dt) {
       continue;
     }
 
+    if (p.alive && !p.capturedById && isPlasmaShieldActive(game) && Math.hypot(sp.x - p.x, sp.y - p.y) < (p.dual ? 32 : 24)) {
+      game.spawnDeleteBurst(sp.x, sp.y, COLORS.centophageAcid, 4, 85, 'PLAYER');
+      game.synth.playThreadDeflect();
+      game.pulsarSparks.splice(i, 1);
+      continue;
+    }
     if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(sp.x - p.x, sp.y - p.y) < (p.dual ? 22 : 14)) {
       p.sparkSlowTimer = PULSAR_SPARK_SLOW_DUR;
       p.sparkSlowMax = PULSAR_SPARK_SLOW_DUR;
@@ -1253,12 +1448,15 @@ export function updatePulsarHazards(game, dt) {
 
 export function updateEnemyBullets(game, dt) {
   const p = game.player;
-  for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
-    const eb = game.enemyBullets[i];
+  // Snapshot-safe iteration: Death Cross Lightning inside damagePlayer() can vaporize
+  // multiple enemy bullets in the same tick, which previously shifted indices out of bounds!
+  for (const eb of [...game.enemyBullets]) {
+    const curIdx = game.enemyBullets.indexOf(eb);
+    if (curIdx < 0) continue;
     eb.x += eb.vx * dt;
     eb.y += eb.vy * dt;
     if (eb.y > LOGICAL_H + 22 || eb.x < -22 || eb.x > LOGICAL_W + 22) {
-      game.enemyBullets.splice(i, 1);
+      game.enemyBullets.splice(curIdx, 1);
       continue;
     }
 
@@ -1269,7 +1467,8 @@ export function updateEnemyBullets(game, dt) {
         const cl = game.fighterClones[ci];
         if (cl.detached && cl.invulnTimer <= 0 && Math.hypot(eb.x - cl.x, eb.y - cl.y) < 13) {
           damageFighterClone(game, ci);
-          game.enemyBullets.splice(i, 1);
+          const rmIdx = game.enemyBullets.indexOf(eb);
+          if (rmIdx >= 0) game.enemyBullets.splice(rmIdx, 1);
           hitClone = true;
           break;
         }
@@ -1277,9 +1476,259 @@ export function updateEnemyBullets(game, dt) {
     }
     if (hitClone) continue;
 
+    // Temporary Plasma Aim/Post-Fire Shield absorbs enemy bullets cleanly with zero damage!
+    if (p.alive && !p.capturedById && isPlasmaShieldActive(game) && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 33 : 25)) {
+      game.spawnDeleteBurst(eb.x, eb.y, COLORS.centophageAcid, 5, 105, 'PLAYER');
+      game.synth.playThreadDeflect();
+      const rmIdx = game.enemyBullets.indexOf(eb);
+      if (rmIdx >= 0) game.enemyBullets.splice(rmIdx, 1);
+      continue;
+    }
+
     if (p.alive && !p.capturedById && p.invulnTimer <= 0 && Math.hypot(eb.x - p.x, eb.y - p.y) < (p.dual ? 22 : 13)) {
+      if (isPlayerShootingLightning(game)) {
+        // Bullet touches user while shooting Chain Lightning -> RICOCHET back to hit enemies!
+        const speed = 560;
+        let aimTarget = null;
+        let bestD = Infinity;
+        for (const e of game.enemies) {
+          const d = Math.hypot(e.x - eb.x, e.y - eb.y);
+          if (d < bestD) { bestD = d; aimTarget = e; }
+        }
+        if (!aimTarget) {
+          for (const ew of game.enforcerWings) {
+            const d = Math.hypot(ew.x - eb.x, ew.y - eb.y);
+            if (d < bestD) { bestD = d; aimTarget = ew; }
+          }
+        }
+        let rvx;
+        let rvy;
+        if (aimTarget) {
+          const ang = Math.atan2(aimTarget.y - eb.y, aimTarget.x - eb.x);
+          rvx = Math.cos(ang) * speed;
+          rvy = Math.sin(ang) * speed;
+        } else {
+          const ang = Math.atan2(-Math.abs(eb.vy || 200) - 160, (eb.x - p.x) * 6 - (eb.vx || 0));
+          rvx = Math.cos(ang) * speed;
+          rvy = Math.sin(ang) * speed;
+        }
+        game.playerBullets.push({
+          x: eb.x,
+          y: eb.y,
+          vx: rvx,
+          vy: rvy,
+          dmg: getPlayerDamageMult(game) * 1.5,
+          weakened: false,
+          purple: false,
+          cloneBolt: false,
+          redLaserBullet: false,
+          ricochet: true,
+          slowedByFlux: false,
+          dissolveTimer: 0,
+          dissolveMax: 0
+        });
+        game.spawnDeleteBurst(eb.x, eb.y, COLORS.yellow, 6, 115, 'PLAYER');
+        game.synth.playThreadDeflect();
+        game.spawnPopup(p.x, p.y - 26, 'RICOCHET!', COLORS.yellow, 0.85);
+        const rmIdx = game.enemyBullets.indexOf(eb);
+        if (rmIdx >= 0) game.enemyBullets.splice(rmIdx, 1);
+        continue;
+      }
+      // Remove the hitting bullet BEFORE damagePlayer() (which may fire Death Cross Lightning!)
+      const rmIdx = game.enemyBullets.indexOf(eb);
+      if (rmIdx >= 0) game.enemyBullets.splice(rmIdx, 1);
       game.damagePlayer();
-      game.enemyBullets.splice(i, 1);
+    }
+  }
+}
+
+/* =========================================================================
+   PLASMA RINGS (PIERCING, BORDER-RICOCHETING, 8s ARENA CONTAINMENT BORDER)
+   ========================================================================= */
+export function fireSinglePlasmaRing(game, angle) {
+  const p = game.player;
+  if (!p || !p.alive || p.capturedById) return;
+  const dmgMult = getPlayerDamageMult(game);
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const startX = clamp(p.x + cosA * 18, PLASMA_RING_RADIUS + 2, LOGICAL_W - PLASMA_RING_RADIUS - 2);
+  const startY = clamp(p.y + sinA * 18, PLASMA_RING_RADIUS + 2, LOGICAL_H - PLASMA_RING_RADIUS - 2);
+
+  if (!game.plasmaRings) game.plasmaRings = [];
+  game.plasmaRings.push({
+    x: startX,
+    y: startY,
+    vx: cosA * PLASMA_RING_SPEED,
+    vy: sinA * PLASMA_RING_SPEED,
+    radius: PLASMA_RING_RADIUS,
+    dmg: dmgMult * PLASMA_RING_DMG,
+    angle,
+    spin: 0,
+    bounces: 0,
+    trail: [],
+    hitCooldowns: new Map()
+  });
+
+  game.shotsFired++;
+  game.shake = Math.max(game.shake, 0.08);
+  game.synth.playPlasmaRingLaunch();
+  game.spawnDeleteBurst(startX, startY, COLORS.centophageAcid, 7, 130, 'PLAYER');
+}
+
+export function updatePlasmaRings(game, dt) {
+  const ps = game.plasmaRingState;
+  const inBanner =
+    game.sectorPhase === 'BANNER' ||
+    game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CLEARED';
+
+  const startBorderTimerIfNeeded = () => {
+    if (ps && ps.borderActive && !ps.borderTimerStarted && ps.phase !== 'AIMING') {
+      ps.borderTimerStarted = true;
+    }
+  };
+
+  // Tick the 8-second glowing border countdown ONLY after the first ring hits an enemy or border
+  if (ps && ps.borderActive && ps.borderTimerStarted && !inBanner) {
+    ps.borderTimer = Math.max(0, ps.borderTimer - dt);
+    if (hasPowerup(game, 'PLASMA')) {
+      game.powerup.slots.PLASMA = (ps.borderTimer / Math.max(0.1, ps.borderMax)) * POWERUP_MAX_ENERGY;
+    }
+    if (ps.borderTimer <= 0.001) {
+      ps.borderActive = false;
+      ps.borderTimer = 0;
+      if (ps.phase === 'ACTIVE_BORDER') {
+        removePowerupSlot(game, 'PLASMA', false);
+      }
+    }
+  }
+
+  if (!game.plasmaRings || game.plasmaRings.length === 0) return;
+
+  for (const ring of [...game.plasmaRings]) {
+    const curIdx = game.plasmaRings.indexOf(ring);
+    if (curIdx < 0) continue;
+
+    // Tick down per-target pass-through hit cooldowns so rings pierce cleanly without instant-deleting bosses
+    for (const [k, cd] of ring.hitCooldowns.entries()) {
+      const next = cd - dt;
+      if (next <= 0) ring.hitCooldowns.delete(k);
+      else ring.hitCooldowns.set(k, next);
+    }
+
+    ring.x += ring.vx * dt;
+    ring.y += ring.vy * dt;
+    ring.spin += dt * 8.5;
+    ring.trail.push({ x: ring.x, y: ring.y });
+    if (ring.trail.length > 8) ring.trail.shift();
+
+    const r = ring.radius || PLASMA_RING_RADIUS;
+    if (ps && ps.borderActive) {
+      // Ricochet cleanly off all 4 glowing arena borders
+      let bounced = false;
+      if (ring.x <= r) {
+        ring.x = r;
+        ring.vx = Math.abs(ring.vx);
+        bounced = true;
+      } else if (ring.x >= LOGICAL_W - r) {
+        ring.x = LOGICAL_W - r;
+        ring.vx = -Math.abs(ring.vx);
+        bounced = true;
+      }
+      if (ring.y <= r) {
+        ring.y = r;
+        ring.vy = Math.abs(ring.vy);
+        bounced = true;
+      } else if (ring.y >= LOGICAL_H - r) {
+        ring.y = LOGICAL_H - r;
+        ring.vy = -Math.abs(ring.vy);
+        bounced = true;
+      }
+      if (bounced) {
+        ring.bounces++;
+        ring.angle = Math.atan2(ring.vy, ring.vx);
+        ring.hitCooldowns.clear();
+        startBorderTimerIfNeeded();
+        game.synth.playPlasmaRingBounce();
+        game.spawnDeleteBurst(ring.x, ring.y, COLORS.centophageAcid, 6, 130, 'PLAYER');
+        game.spawnDeleteBurst(ring.x, ring.y, COLORS.yellow, 3, 95, 'PLAYER');
+      }
+    } else {
+      // Once border has vanished, rings keep flying until fully out of frame!
+      if (
+        ring.x < -(r + 18) ||
+        ring.x > LOGICAL_W + r + 18 ||
+        ring.y < -(r + 18) ||
+        ring.y > LOGICAL_H + r + 18
+      ) {
+        const rmIdx = game.plasmaRings.indexOf(ring);
+        if (rmIdx >= 0) game.plasmaRings.splice(rmIdx, 1);
+        continue;
+      }
+    }
+
+    // 1) Pop floating power-up capsules on pass-through
+    for (let ci = game.capsules.length - 1; ci >= 0; ci--) {
+      const cap = game.capsules[ci];
+      if (Math.hypot(cap.x - ring.x, cap.y - ring.y) <= r + cap.hitRadius) {
+        destroyAndCollectCapsule(game, ci);
+      }
+    }
+
+    // 2) Slice through enemies like lasers (snapshot-safe against Centoid/Centophage headshots!)
+    for (const e of [...game.enemies]) {
+      const ei = game.enemies.indexOf(e);
+      if (ei < 0) continue;
+      if (Math.hypot(e.x - ring.x, e.y - ring.y) <= r + (e.hitRadius || 16)) {
+        const key = `E_${e.id}`;
+        if ((ring.hitCooldowns.get(key) || 0) <= 0) {
+          ring.hitCooldowns.set(key, PLASMA_RING_HIT_COOLDOWN);
+          startBorderTimerIfNeeded();
+          game.shotsHit++;
+          damageEnemy(game, ei, ring.dmg, e.x, e.y, COLORS.centophageAcid);
+          game.spawnDeleteBurst(e.x, e.y, COLORS.centophageViolet, 4, 110, 'PLAYER');
+        }
+      }
+    }
+
+    // 3) Slice through Enforcer Wings (snapshot-safe)
+    for (const ew of [...game.enforcerWings]) {
+      const wi = game.enforcerWings.indexOf(ew);
+      if (wi < 0) continue;
+      if (Math.hypot(ew.x - ring.x, ew.y - ring.y) <= r + 14) {
+        const key = `W_${ew.id}`;
+        if ((ring.hitCooldowns.get(key) || 0) <= 0) {
+          ring.hitCooldowns.set(key, PLASMA_RING_HIT_COOLDOWN);
+          startBorderTimerIfNeeded();
+          game.shotsHit++;
+          damageEnforcerWing(game, wi, ring.dmg);
+        }
+      }
+    }
+
+    // 4) Chip Null Threads cleanly on pass-through without stopping the ring
+    for (let ti = game.threadTrails.length - 1; ti >= 0; ti--) {
+      const trail = game.threadTrails[ti];
+      if (trail.variant !== 'NULL') continue;
+      const key = `T_${trail.id}`;
+      if ((ring.hitCooldowns.get(key) || 0) > 0) continue;
+      let hitThread = false;
+      for (const seg of trail.segments) {
+        if (distToSeg(ring.x, ring.y, seg.x1, seg.y1, seg.x2, seg.y2) <= r + 4) {
+          hitThread = true;
+          break;
+        }
+      }
+      if (hitThread) {
+        ring.hitCooldowns.set(key, PLASMA_RING_HIT_COOLDOWN);
+        trail.hitsRemaining -= 2;
+        trail.flashTimer = 0.14;
+        if (trail.hitsRemaining <= 0) {
+          shatterThreadTrail(game, ti);
+        } else {
+          game.synth.playThreadDeflect();
+        }
+      }
     }
   }
 }

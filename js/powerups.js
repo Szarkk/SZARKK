@@ -8,6 +8,9 @@ import {
   ALPHA_CENTOID_DROP_CHANCE,
   CAPSULE_BOUNDS,
   CAPSULE_DROP_DELAY,
+  CENTOPHAGE_DROP_CLONE,
+  CENTOPHAGE_DROP_LIGHTNING,
+  CENTOPHAGE_DROP_PLASMA,
   CLONE_BREAKOFF_TIME,
   CLONE_DURATION,
   CLONE_HP,
@@ -18,6 +21,10 @@ import {
   LOGICAL_H,
   LOGICAL_W,
   MASTER_STREAK_REWARD_COUNT,
+  PLASMA_AIM_TIMEOUT,
+  PLASMA_BORDER_DUR,
+  PLASMA_POWERUP_START_SECTOR,
+  PLASMA_RING_COUNT,
   POWERUP_MAX_ENERGY,
   PULSAR_DROP_CHANCE,
   PURPLE_POWERUP_START_SECTOR,
@@ -33,10 +40,48 @@ export function createPowerupState() {
       RED: 0,
       PURPLE: 0,
       YELLOW: 0,
-      CLONE: 0
+      CLONE: 0,
+      PLASMA: 0
     },
     order: [] // Active distinct power-up types in collection order
   };
+}
+
+export function createPlasmaRingState() {
+  return {
+    phase: 'IDLE', // IDLE | AIMING | FIRING | ACTIVE_BORDER
+    aimAngle: -Math.PI / 2,
+    aimGrace: 0,
+    aimTimer: PLASMA_AIM_TIMEOUT,
+    aimMax: PLASMA_AIM_TIMEOUT,
+    randomAutoFire: false,
+    shotsLeft: 0,
+    shotTimer: 0,
+    borderActive: false,
+    borderTimer: PLASMA_BORDER_DUR,
+    borderMax: PLASMA_BORDER_DUR,
+    borderTimerStarted: false
+  };
+}
+
+export function resetPlasmaRingState(game) {
+  if (!game.plasmaRingState) {
+    game.plasmaRingState = createPlasmaRingState();
+    return;
+  }
+  const ps = game.plasmaRingState;
+  ps.phase = 'IDLE';
+  ps.aimAngle = -Math.PI / 2;
+  ps.aimGrace = 0;
+  ps.aimTimer = PLASMA_AIM_TIMEOUT;
+  ps.aimMax = PLASMA_AIM_TIMEOUT;
+  ps.randomAutoFire = false;
+  ps.shotsLeft = 0;
+  ps.shotTimer = 0;
+  ps.borderActive = false;
+  ps.borderTimer = PLASMA_BORDER_DUR;
+  ps.borderMax = PLASMA_BORDER_DUR;
+  ps.borderTimerStarted = false;
 }
 
 export function createArcWaveState() {
@@ -69,8 +114,10 @@ export function hasPowerup(game, type) {
 
 export function getActivePowerups(game) {
   const awPhase = game.arcWaveState.phase;
+  const ps = game.plasmaRingState;
   return game.powerup.order.filter((type) => {
     if (type === 'PURPLE' && (awPhase === 'CANNON_READY' || awPhase === 'CANNON_CHARGING')) return true;
+    if (type === 'PLASMA' && ps && (ps.phase === 'AIMING' || ps.phase === 'FIRING' || ps.borderActive)) return true;
     return (game.powerup.slots[type] || 0) > 0;
   });
 }
@@ -81,9 +128,12 @@ export function clearActivePowerup(game) {
   game.powerup.slots.PURPLE = 0;
   game.powerup.slots.YELLOW = 0;
   game.powerup.slots.CLONE = 0;
+  game.powerup.slots.PLASMA = 0;
   game.powerup.order = [];
   resetArcWaveState(game);
   game.arcWaveState.auraFade = 0;
+  resetPlasmaRingState(game);
+  game.plasmaRings = [];
   game.redLaserActive = false;
   game.redLaserPulseTimer = 0;
   game.activeLaserBeams = [];
@@ -106,6 +156,8 @@ export function removePowerupSlot(game, type, silent = false) {
     game.activeLaserBeams = [];
   } else if (type === 'PURPLE') {
     resetArcWaveState(game);
+  } else if (type === 'PLASMA') {
+    resetPlasmaRingState(game);
   } else if (type === 'YELLOW' && game.player) {
     game.player.lightningBurstLeft = 0;
     game.player.lightningBurstTimer = 0;
@@ -126,14 +178,18 @@ export function removePowerupSlot(game, type, silent = false) {
           ? 'LASER EMPTY'
           : (type === 'YELLOW'
             ? 'LIGHTNING EMPTY'
-            : (type === 'CLONE' ? 'CLONES EXPIRED' : 'ARC WAVE EMPTY')));
+            : (type === 'PLASMA'
+              ? 'PLASMA BORDER DOWN'
+              : (type === 'CLONE' ? 'CLONES EXPIRED' : 'ARC WAVE EMPTY'))));
       const col = type === 'CYAN'
         ? COLORS.cyan
         : (type === 'RED'
           ? COLORS.nullRed
           : (type === 'YELLOW'
             ? COLORS.yellow
-            : (type === 'CLONE' ? COLORS.clonePurple : COLORS.purpleBright)));
+            : (type === 'PLASMA'
+              ? COLORS.centophageAcid
+              : (type === 'CLONE' ? COLORS.clonePurple : COLORS.purpleBright))));
       game.spawnPopup(game.player.x, game.player.y - 28, label, col, 0.95);
     }
   }
@@ -153,6 +209,9 @@ export function consumePowerupEnergy(game, type, amount) {
 }
 
 export function getUnlockedCapsuleTypes(effSec, waveNum = 1, hardMode = false, inChallenge = false) {
+  if (effSec >= PLASMA_POWERUP_START_SECTOR) {
+    return ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE', 'PLASMA'];
+  }
   if (hardMode || (effSec >= YELLOW_POWERUP_START_SECTOR && effSec >= CLONE_POWERUP_START_SECTOR)) {
     return ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE'];
   }
@@ -209,7 +268,7 @@ export function rollEnemyCapsuleDrop(game, enemy) {
 
   const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
   const unlocked = getUnlockedCapsuleTypes(effSec, game.sectorWave || 1, game.hardMode, game.isChallengeStage);
-  if (unlocked.length === 0) return;
+  if (unlocked.length === 0 && enemy.type !== 'CENTOPHAGE') return;
 
   const allowCyan = unlocked.includes('CYAN');
   const allowRed = unlocked.includes('RED');
@@ -220,8 +279,13 @@ export function rollEnemyCapsuleDrop(game, enemy) {
     // Pulsar: 10% chance to drop Chain Lightning ONLY (never drops other capsules!)
     if (Math.random() < PULSAR_DROP_CHANCE) drops.push('YELLOW');
   } else if (enemy.type === 'ALPHA_CENTOID') {
-    // Alpha Centoid: 20% chance to drop Fighter Clones ONLY (rolled once when chain/head defeated!)
+    // Super Centoid: 20% chance to drop Fighter Clones ONLY (rolled once when chain/head defeated!)
     if (Math.random() < ALPHA_CENTOID_DROP_CHANCE) drops.push('CLONE');
+  } else if (enemy.type === 'CENTOPHAGE') {
+    // Master Centophage: Independent rolls — 7% Fighter Clones, 7% Chain Lightning, 25% Plasma Rings!
+    if (Math.random() < CENTOPHAGE_DROP_CLONE) drops.push('CLONE');
+    if (Math.random() < CENTOPHAGE_DROP_LIGHTNING) drops.push('YELLOW');
+    if (Math.random() < CENTOPHAGE_DROP_PLASMA) drops.push('PLASMA');
   } else if (enemy.type === 'MASTER_FLUX_ENFORCER') {
     // Master Enforcer [Flux]: Independent rolls — 25% Cyan, 5% Red, 10% Purple (Sec 04+)
     if (allowCyan && Math.random() < 0.25) drops.push('CYAN');
@@ -275,6 +339,7 @@ function capsuleColorForType(type) {
   if (type === 'PURPLE') return COLORS.purple;
   if (type === 'YELLOW') return COLORS.yellow;
   if (type === 'CLONE') return COLORS.clonePurple;
+  if (type === 'PLASMA') return COLORS.centophageAcid;
   return COLORS.nullRed;
 }
 
@@ -345,7 +410,9 @@ export function spawnCapsule(game, x, y, type, mode = 'DROP', glowReward = null)
         ? 'ARC WAVE CAPSULE — SHOOT!'
         : (type === 'YELLOW'
           ? 'LIGHTNING CAPSULE — SHOOT!'
-          : (type === 'CLONE' ? 'CLONE CAPSULE — SHOOT!' : 'LASER CAPSULE — SHOOT!')));
+          : (type === 'PLASMA'
+            ? 'PLASMA CAPSULE — SHOOT!'
+            : (type === 'CLONE' ? 'CLONE CAPSULE — SHOOT!' : 'LASER CAPSULE — SHOOT!'))));
     game.spawnPopup(LOGICAL_W * 0.5, startY - 26, driftLabel, col, 1.35);
   } else if (mode === 'SANDBOX_PLACE') {
     const px = clamp(x, 28, LOGICAL_W - 28);
@@ -464,6 +531,33 @@ export function collectCapsule(game, cap) {
       ? `CLONES REFRESHED ${Math.round(CLONE_DURATION)}s!`
       : (isStacking ? 'STACKED // FIGHTER CLONES!' : 'FIGHTER CLONES x3!');
     game.spawnPopup(game.player.x, game.player.y - 34, label, '#b9a6ff', 1.45);
+  } else if (cap.type === 'PLASMA') {
+    // Activate Plasma Rings aim-pause! Ship stops & arena border lights up green/dark-purple/yellow!
+    if (!game.plasmaRingState) game.plasmaRingState = createPlasmaRingState();
+    const ps = game.plasmaRingState;
+    ps.phase = 'AIMING';
+    ps.aimAngle = -Math.PI / 2;
+    ps.aimGrace = 0.22;
+    ps.aimTimer = PLASMA_AIM_TIMEOUT;
+    ps.aimMax = PLASMA_AIM_TIMEOUT;
+    ps.randomAutoFire = false;
+    ps.shotsLeft = PLASMA_RING_COUNT;
+    ps.shotTimer = 0;
+    ps.borderActive = true;
+    ps.borderTimer = PLASMA_BORDER_DUR;
+    ps.borderMax = PLASMA_BORDER_DUR;
+    ps.borderTimerStarted = false;
+    if (game.player) {
+      game.player.vx = 0;
+      game.player.vy = 0;
+      game.player.bankAxis = 0;
+      game.player.thrustAxis = 0;
+    }
+    game.redLaserActive = false;
+    game.activeLaserBeams = [];
+    game.freshFirePress = false;
+    game.tapFireBuffer = 0;
+    game.spawnPopup(game.player.x, game.player.y - 36, 'PLASMA RINGS! AIM & FIRE (3)', COLORS.centophageAcid, 1.55);
   } else {
     const label = alreadyHasSame
       ? 'LASER RECHARGED 100%'

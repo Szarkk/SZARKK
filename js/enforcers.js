@@ -21,6 +21,7 @@ import {
 } from './config.js';
 import { clamp, distToSeg, evalCubic, lerp } from './utils.js';
 import { hasPowerup, removePowerupSlot } from './powerups.js';
+import { isPlasmaShieldActive, isPlayerShootingLightning } from './player.js';
 
 export function startEnforcerBeam(game, enforcer) {
   enforcer.state = 'BEAM_APPROACH';
@@ -65,7 +66,7 @@ export function updateEnforcerBeaming(game, e, dt) {
   const p = game.player;
   e.beamTimer -= dt;
 
-  if (p.alive && !p.dual && !p.capturedById && p.invulnTimer <= 0 && p.y > e.y + 12) {
+  if (p.alive && !p.dual && !p.capturedById && p.invulnTimer <= 0 && !isPlasmaShieldActive(game) && p.y > e.y + 12) {
     const topY = e.y + 12;
     const botY = LOGICAL_H - 18;
     const depth = clamp((p.y - topY) / Math.max(1, botY - topY), 0, 1);
@@ -427,10 +428,14 @@ export function damageEnforcerWing(game, idx, dmg, quiet = false) {
 
 export function updateEnforcerWingsAndThreads(game, dt) {
   const p = game.player;
+  const removeWingRef = (target) => {
+    const rmIdx = game.enforcerWings.indexOf(target);
+    if (rmIdx >= 0) game.enforcerWings.splice(rmIdx, 1);
+  };
 
-  // 1) Update Enforcer Wings (Flux curved swoops & Null 90-degree corridors)
-  for (let i = game.enforcerWings.length - 1; i >= 0; i--) {
-    const ew = game.enforcerWings[i];
+  // 1) Update Enforcer Wings (snapshot-safe against Death Cross Lightning splices!)
+  for (const ew of [...game.enforcerWings]) {
+    if (!ew || game.enforcerWings.indexOf(ew) < 0) continue;
     const prevX = ew.x;
     const prevY = ew.y;
     let finished = false;
@@ -504,6 +509,20 @@ export function updateEnforcerWingsAndThreads(game, dt) {
       ew.prevY = ew.y;
     }
 
+    // Temporary Plasma Aim/Post-Fire Shield blocks Enforcer Wing impacts safely!
+    if (
+      !finished &&
+      p.alive &&
+      !p.capturedById &&
+      isPlasmaShieldActive(game) &&
+      Math.hypot(ew.x - p.x, ew.y - p.y) < (p.dual ? 32 : 24)
+    ) {
+      game.spawnDeleteBurst(ew.x, ew.y, COLORS.centophageAcid, 8, 120, 'PLAYER');
+      game.synth.playThreadDeflect();
+      removeWingRef(ew);
+      continue;
+    }
+
     // Direct Enforcer Wing collision with player ship
     if (
       !finished &&
@@ -512,14 +531,22 @@ export function updateEnforcerWingsAndThreads(game, dt) {
       p.invulnTimer <= 0 &&
       Math.hypot(ew.x - p.x, ew.y - p.y) < (p.dual ? 24 : 16)
     ) {
-      game.damagePlayer();
+      if (isPlayerShootingLightning(game)) {
+        // Active Chain Lightning discharge shatters/repels colliding Enforcer Wing safely!
+        game.spawnDeleteBurst(ew.x, ew.y, COLORS.yellow, 14, 155);
+        game.spawnPopup(ew.x, ew.y - 16, 'DEFLECTED!', COLORS.yellow, 0.9);
+        game.synth.playChainLightning();
+        removeWingRef(ew);
+        continue;
+      }
+      removeWingRef(ew);
       game.spawnDeleteBurst(ew.x, ew.y, ew.variant === 'NULL' ? COLORS.nullRed : COLORS.cyan, 12, 135);
-      game.enforcerWings.splice(i, 1);
+      game.damagePlayer();
       continue;
     }
 
     if (finished) {
-      game.enforcerWings.splice(i, 1);
+      removeWingRef(ew);
     }
   }
 

@@ -7,31 +7,31 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=0.1.2ad">
+  <link rel="stylesheet" href="css/style.css?v=0.1.2am">
   <script type="importmap">
     {
       "imports": {
         "./js/animator.js": "./js/animator.js?v=0.1.2i",
-        "./js/audio.js": "./js/audio.js?v=0.1.2i",
-        "./js/config.js": "./js/config.js?v=0.1.2t",
-        "./js/enemies.js": "./js/enemies.js?v=0.1.2i",
-        "./js/enforcers.js": "./js/enforcers.js?v=0.1.2i",
+        "./js/audio.js": "./js/audio.js?v=0.1.2aj",
+        "./js/config.js": "./js/config.js?v=0.1.2al",
+        "./js/enemies.js": "./js/enemies.js?v=0.1.2ak",
+        "./js/enforcers.js": "./js/enforcers.js?v=0.1.2ak",
         "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.2i",
-        "./js/main.js": "./js/main.js?v=0.1.2z",
-        "./js/player.js": "./js/player.js?v=0.1.2v",
-        "./js/powerups.js": "./js/powerups.js?v=0.1.2y",
-        "./js/projectiles.js": "./js/projectiles.js?v=0.1.2v",
-        "./js/renderer.js": "./js/renderer.js?v=0.1.2y",
-        "./js/renderers/saturn_enemy_sprites.js": "./js/renderers/saturn_enemy_sprites.js?v=0.1.2t",
-        "./js/renderers/saturn_fx.js": "./js/renderers/saturn_fx.js?v=0.1.2ae",
-        "./js/renderers/saturn_pixel_sprites.js": "./js/renderers/saturn_pixel_sprites.js?v=0.1.2aa",
-        "./js/sandbox.js": "./js/sandbox.js?v=0.1.2t",
+        "./js/main.js": "./js/main.js?v=0.1.2aj",
+        "./js/player.js": "./js/player.js?v=0.1.2al",
+        "./js/powerups.js": "./js/powerups.js?v=0.1.2al",
+        "./js/projectiles.js": "./js/projectiles.js?v=0.1.2ak",
+        "./js/renderer.js": "./js/renderer.js?v=0.1.2ak",
+        "./js/renderers/saturn_enemy_sprites.js": "./js/renderers/saturn_enemy_sprites.js?v=0.1.2ai",
+        "./js/renderers/saturn_fx.js": "./js/renderers/saturn_fx.js?v=0.1.2al",
+        "./js/renderers/saturn_pixel_sprites.js": "./js/renderers/saturn_pixel_sprites.js?v=0.1.2aj",
+        "./js/sandbox.js": "./js/sandbox.js?v=0.1.2am",
         "./js/skins.js": "./js/skins.js?v=0.1.2v",
-        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.2i",
+        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.2aj",
         "./js/sprite_loader.js": "./js/sprite_loader.js?v=0.1.2i",
-        "./js/sprite_manifest.js": "./js/sprite_manifest.js?v=0.1.2i",
-        "./js/sprites.js": "./js/sprites.js?v=0.1.2u",
-        "./js/ui.js": "./js/ui.js?v=0.1.2ab",
+        "./js/sprite_manifest.js": "./js/sprite_manifest.js?v=0.1.2aj",
+        "./js/sprites.js": "./js/sprites.js?v=0.1.2aj",
+        "./js/ui.js": "./js/ui.js?v=0.1.2am",
         "./js/utils.js": "./js/utils.js?v=0.1.2i"
       }
     }
@@ -92,7 +92,7 @@
         </div>
         <div id="pill-field" class="status-pill slow hidden">
           <div class="status-row">
-            <span id="pill-field-label">CYAN FIELD</span>
+            <span id="pill-field-label">FLUX FIELD</span>
             <span id="pill-field-time">4.0s</span>
           </div>
           <div class="status-track"><div id="pill-field-fill" class="status-fill"></div></div>
@@ -120,12 +120,13 @@
 
       <div id="sandbox-pwr-corner" class="sandbox-pwr-corner hidden" aria-label="Quick Power-Up &amp; Ruler Controls">
         <div id="sbx-pwr-tray" class="sbx-pwr-tray hidden">
-          <button type="button" id="sbx-pwr-all" class="sbx-pwr-item is-all">ALL 5</button>
+          <button type="button" id="sbx-pwr-all" class="sbx-pwr-item is-all">ALL 6</button>
           <div id="sbx-pwr-tray-list" class="sbx-pwr-tray-list"></div>
         </div>
         <button type="button" id="sbx-btn-pwr-tray" class="sbx-corner-btn is-tray" title="Expand Power-Up Selector">PWR &#9650;</button>
         <button type="button" id="sbx-btn-open-skins" class="sbx-corner-btn is-skins" title="Switch Aurex Fighter Skins">SKINS</button>
         <button type="button" id="sbx-btn-ruler" class="sbx-corner-btn is-ruler" title="Toggle Ship Chain Lightning Ruler">RULER</button>
+        <button type="button" id="sbx-btn-reset-pos" class="sbx-corner-btn is-reset" title="Reset Player to Original Spawn Position">RESET POS</button>
         <button type="button" id="sbx-btn-quick-clear-pwr" class="sbx-corner-btn is-clr" title="Clear Active Power-Ups">CLR PWR</button>
       </div>
 
@@ -237,7 +238,23 @@
               <div id="sbx-field-grid" class="sbx-chip-grid"></div>
             </div>
 
-            <!-- 6. TRAINING ROUNDS -->
+            <!-- 6. CHALLENGE ARENA TESTER -->
+            <div id="sbx-challenge-box" class="sbx-section sbx-challenge-box">
+              <div class="sbx-sec-head">
+                <span class="sbx-sec-title">CHALLENGE ARENA TESTER</span>
+                <span class="sbx-sec-hint">12 CHALLENGES</span>
+              </div>
+              <label class="sbx-field">
+                <span>SELECT CHALLENGE</span>
+                <select id="sbx-sel-challenge" class="sbx-select"></select>
+              </label>
+              <div class="btn-pair">
+                <button type="button" id="sbx-btn-start-challenge" class="sbx-action-btn emerald">START CHALLENGE</button>
+                <button type="button" id="sbx-btn-stop-challenge" class="sbx-action-btn danger hidden">STOP CHALLENGE</button>
+              </div>
+            </div>
+
+            <!-- 7. TRAINING ROUNDS -->
             <div class="sbx-section sbx-training-box">
               <div class="sbx-sec-head">
                 <span class="sbx-sec-title">TRAINING ROUNDS (REAL SECTOR SIM)</span>
@@ -566,6 +583,6 @@
     </nav>
   </div>
 
-  <script type="module" src="js/main.js?v=0.1.2z"></script>
+  <script type="module" src="js/main.js?v=0.1.2aj"></script>
 </body>
 </html>

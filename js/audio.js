@@ -10,6 +10,8 @@ export class SynthEngine {
     this.tractorOsc = null;
     this.tractorLfo = null;
     this.tractorGain = null;
+    this._noiseBuffer = null;
+    this._lastDeleteBurstAt = 0;
   }
 
   unlock() {
@@ -62,14 +64,18 @@ export class SynthEngine {
     if (!this.enabled || !this.ctx || this.ctx.state !== 'running') return;
     try {
       const now = this.ctx.currentTime;
-      const len = Math.max(1, Math.floor(this.ctx.sampleRate * dur));
-      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-      const data = buf.getChannelData(0);
-      for (let i = 0; i < len; i++) {
-        data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      if (!this._noiseBuffer) {
+        // Pre-bake a single reusable 0.6s noise buffer (zero per-explosion main-thread allocs!)
+        const len = Math.max(1, Math.floor(this.ctx.sampleRate * 0.6));
+        const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        this._noiseBuffer = buf;
       }
       const src = this.ctx.createBufferSource();
-      src.buffer = buf;
+      src.buffer = this._noiseBuffer;
       const filter = this.ctx.createBiquadFilter();
       filter.type = 'bandpass';
       filter.frequency.setValueAtTime(freq, now);
@@ -80,7 +86,7 @@ export class SynthEngine {
       src.connect(filter);
       filter.connect(gain);
       gain.connect(this.master);
-      src.start(now);
+      src.start(now, 0, Math.min(dur + 0.02, 0.58));
     } catch {}
   }
 
@@ -116,7 +122,9 @@ export class SynthEngine {
           ? [587.33, 783.99, 1174.66, 1567.98]
           : (type === 'CLONE'
             ? [329.63, 493.88, 659.25, 987.77]
-            : [392.0, 523.25, 783.99, 1046.5])));
+            : (type === 'PLASMA'
+              ? [392.0, 587.33, 880.0, 1318.5]
+              : [392.0, 523.25, 783.99, 1046.5]))));
     notes.forEach((f, i) => this.tone(f, f * 1.04, 0.11, 'square', 0.18, i * 0.055));
   }
 
@@ -151,6 +159,16 @@ export class SynthEngine {
     this.tone(460, 920, 0.16, 'triangle', 0.14, 0.02);
   }
 
+  playPlasmaRingLaunch() {
+    this.tone(260, 980, 0.16, 'sawtooth', 0.22);
+    this.tone(520, 1480, 0.14, 'triangle', 0.16, 0.02);
+  }
+
+  playPlasmaRingBounce() {
+    this.tone(680, 1320, 0.09, 'sine', 0.18);
+    this.tone(1140, 720, 0.08, 'triangle', 0.12, 0.015);
+  }
+
   playPurpleBullet(weakened = false) {
     this.tone(weakened ? 780 : 1460, weakened ? 320 : 520, 0.06, 'square', 0.13);
   }
@@ -175,6 +193,9 @@ export class SynthEngine {
   }
 
   playDeleteBurst(big = false) {
+    const nowMs = performance.now();
+    if (!big && nowMs - this._lastDeleteBurstAt < 28) return;
+    this._lastDeleteBurstAt = nowMs;
     this.noise(big ? 0.34 : 0.18, big ? 0.3 : 0.2, big ? 480 : 1150);
     this.tone(big ? 250 : 480, 48, big ? 0.32 : 0.17, 'sawtooth', big ? 0.25 : 0.15);
   }

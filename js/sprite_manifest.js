@@ -81,6 +81,16 @@ export const SPRITE_MANIFEST = {
       body: { src: 'enemies/alpha_centoid_body.png', frames: 4, fps: 10, loop: true }
     }
   },
+  CENTOPHAGE: {
+    cellW: 32,
+    cellH: 32,
+    rotateMode: 'SNAP_16',
+    clips: {
+      head: { src: 'enemies/centophage_head.png', frames: 4, fps: 12, loop: true },
+      body: { src: 'enemies/centophage_body.png', frames: 4, fps: 12, loop: true },
+      tail: { src: 'enemies/centophage_tail.png', frames: 4, fps: 12, loop: true }
+    }
+  },
 
   // ADVANCED ENEMY (48x48)
   V1_ENFORCER: {
@@ -150,6 +160,7 @@ export const SPRITE_MANIFEST = {
   CAPSULE_PURPLE: { cellW: 32, cellH: 32, clips: { idle: { src: 'pickups/capsule_purple_idle.png', frames: 4, fps: 10, loop: true } } },
   CAPSULE_YELLOW: { cellW: 32, cellH: 32, clips: { idle: { src: 'pickups/capsule_yellow_idle.png', frames: 4, fps: 10, loop: true } } },
   CAPSULE_CLONE:  { cellW: 32, cellH: 32, clips: { idle: { src: 'pickups/capsule_clone_idle.png',  frames: 4, fps: 10, loop: true } } },
+  CAPSULE_PLASMA: { cellW: 32, cellH: 32, clips: { idle: { src: 'pickups/capsule_plasma_idle.png', frames: 4, fps: 10, loop: true } } },
 
   // ANIMATED EXPLOSIONS & ONE-SHOT PIXELLAB VFX
   FX_HIT_SPARK:    { cellW: 24,  cellH: 24,  clips: { play: { src: 'fx/fx_hit_spark.png',    frames: 4,  fps: 18, loop: false } } },

@@ -24,9 +24,10 @@ export const MASTER_START_SECTOR = 6;           // Master Enforcers appear at Se
 export const MASTER_ENFORCER_HP = 18;           // Master Enforcers take 18 hits
 export const MASTER_STREAK_REWARD_COUNT = 10;   // Kill 10 Master Flux or Null without dying -> glowing reward capsule
 export const ELITE_ABDUCTION_CHANCE = 0.10;     // 10% chance per wave for 1 Elite Enforcer to abduct
-export const HARD_FIELD_DEBUFF_CHANCE = 0.50;   // Hard Mode: 50% chance when surviving Master re-enters while 2+ power-ups active
-export const HARD_FIELD_DEBUFF_DUR = 4.0;       // 4.0s Cyan / Red Field CRT debuff duration
-export const HARD_FIELD_MIN_POWERUPS = 0;      // Active power-ups required for the Field roll (was effectively 2)
+export const HARD_FIELD_DEBUFF_CHANCE = 0.50;   // Hard Mode: 50% chance when surviving Master/Elite re-enters
+export const HARD_FIELD_DEBUFF_DUR = 4.0;       // 4.0s Flux / Null Field CRT debuff duration
+export const NULL_FIELD_DMG_MULT = 0.33;        // Null Field reduces player damage to 0.33x
+export const HARD_FIELD_MIN_POWERUPS = 0;       // Active power-ups required for the Field roll
 export const HARD_FIELD_ELITES_TRIGGER = true;  // Elite Flux/Null Enforcers (not just Masters) can trigger the Field
 export const CHALLENGE_INTERVAL = 2;            // Bonus Challenge stage after every 2nd standard sector (Sec 02->CH.01, Sec 04->CH.02, Sec 06->CH.03...)
 export const CHALLENGE_ELITE_START = 2;         // Starting at Challenge 2 (after Sec 04), 2x HP Elite Raiders spawn
@@ -35,13 +36,29 @@ export const CHALLENGE_MASTER_START = 3;        // Starting at Challenge 3 (afte
 export const HARD_MODE_SECTOR_OFFSET = 5;       // Hard Mode starts at Sec 06+ intensity (H01 = eff. Sec 06, full waves & Masters live)
 export const HARD_MODE_CHALLENGE_OFFSET = 2;    // Hard Mode H-CH.01 starts at Challenge 3+ (Guarded Masters + Extra Rounds)
 
-// MILESTONE 2 ENEMY CONSTANTS (Centoid, Alpha Centoid, Pulsar & Cost-Based Swaps)
+// MILESTONE 2 ENEMY CONSTANTS (Centoid, Super Centoid, Master Centophage, Pulsar & Cost-Based Swaps)
 export const CENTOID_START_SECTOR = 4;          // Advanced Tier: Centoids appear Sec 04+
-export const CENTOID_SEGMENTS = 8;              // 8 segments make up a Centoid / Alpha Centoid
+export const CENTOID_SEGMENTS = 8;              // 8 segments make up a Centoid
+export const CENTOID_HEAD_HP = 4;               // Centoid Head = 4 HP (body segments = 1 HP)
 export const CENTOID_MAX_SPLITS = 2;            // Max 2 living centoids split from 1 original
-export const ALPHA_CENTOID_START_SECTOR = 7;    // Elite Tier: Alpha Centoids appear Sec 07+
-export const ALPHA_CENTOID_SEG_HP = 2;          // 2 HP per segment (headshot deletes entire chain!)
+export const ALPHA_CENTOID_START_SECTOR = 7;    // Elite Tier: Super Centoids appear Sec 07+
+export const SUPER_CENTOID_SEGMENTS = 10;       // Super Centoids get 10 segments!
+export const SUPER_CENTOID_HEAD_HP = 6;         // Super Centoid Head = 6 HP
+export const ALPHA_CENTOID_SEG_HP = 2;          // Super Centoid body segments = 2 HP (headshot deletes entire chain!)
 export const ALPHA_CENTOID_DROP_CHANCE = 0.20;  // 20% chance to drop Fighter Clones capsule
+export const CENTOPHAGE_START_SECTOR = 8;       // Master Tier: Centophage ONLY appears Sector 08+!
+export const CENTOPHAGE_SEGMENTS = 6;           // Centophage starts with 6 segments
+export const CENTOPHAGE_HEAD_HP = 8;            // Centophage Head = 8 HP
+export const CENTOPHAGE_SEG_HP = 3;             // Centophage body segments = 3 HP
+export const CENTOPHAGE_SPEED_MULT = 1.8;       // 1.8x faster than Centoids & Super Centoids!
+export const CENTOPHAGE_CHECK_INTERVAL = 2.0;   // Every 2.0s rolls 80% chance to hunt a non-centoid entity
+export const CENTOPHAGE_CHASE_CHANCE = 0.80;    // 80% chase roll; on fail -> 6.0s cooldown
+export const CENTOPHAGE_FAIL_COOLDOWN = 6.0;    // 6.0s cooldown when 80% chase roll misses
+export const CENTOPHAGE_MAX_SEGMENTS = 24;      // Safety segment cap for marathon fights
+export const CENTOPHAGE_DROP_CLONE = 0.07;      // Independent 7% drop: Fighter Clones
+export const CENTOPHAGE_DROP_LIGHTNING = 0.07;  // Independent 7% drop: Chain Lightning
+export const CENTOPHAGE_DROP_PLASMA = 0.25;     // Independent 25% drop: Plasma Rings!
+export const CENTOPHAGE_DROP_CHANCE = 0.25;     // Legacy alias
 export const PULSAR_START_SECTOR = 7;           // Elite Tier: Pulsars appear Sec 07+
 export const PULSAR_HP = 6;                     // 6 HP yellow elite-sized fighter
 export const PULSAR_FIRE_INTERVAL = 3.0;        // Leaf-falling electro ball every 3.0s
@@ -60,7 +77,8 @@ export const UNIT_META = {
   ALPHA_CENTOID:        { tier: 3, cost: 3, minSec: ALPHA_CENTOID_START_SECTOR },
   PULSAR:               { tier: 3, cost: 3, minSec: PULSAR_START_SECTOR },
   MASTER_FLUX_ENFORCER: { tier: 4, cost: 6, minSec: MASTER_START_SECTOR },
-  MASTER_NULL_ENFORCER: { tier: 4, cost: 6, minSec: MASTER_START_SECTOR }
+  MASTER_NULL_ENFORCER: { tier: 4, cost: 6, minSec: MASTER_START_SECTOR },
+  CENTOPHAGE:           { tier: 4, cost: 6, minSec: CENTOPHAGE_START_SECTOR }
 };
 
 // POWER-UP CONSTANTS (Stackable Gauge-based Cyan, Red, Purple, Yellow & Clone Capsules!)
@@ -71,14 +89,26 @@ export const POWERUP_START_SECTOR = 2;          // Earliest sector capsules unlo
 export const PURPLE_POWERUP_START_SECTOR = 4;   // Purple Capsule (Arc Wave) starts Sector 04+
 export const YELLOW_POWERUP_START_SECTOR = 7;   // Yellow Capsule (Chain Lightning) starts Sector 07+
 export const CLONE_POWERUP_START_SECTOR = 7;    // Dark Blue/Purple Capsule (Fighter Clones) starts Sector 07+
+export const PLASMA_POWERUP_START_SECTOR = 8;   // Plasma Capsule (Plasma Rings) unlocks Sector 08+ & 25% Centophage drop
+export const PLASMA_RING_COUNT = 3;             // Fires 3 piercing plasma rings in quick succession
+export const PLASMA_RING_SHOT_INTERVAL = 0.25;  // 0.25s between each aimed ring
+export const PLASMA_RING_SPEED = 460;           // Slightly faster than enemy bullets (~300-430)
+export const PLASMA_RING_RADIUS = 17;           // Slightly bigger than Pulsar electro balls (13px)
+export const PLASMA_RING_DMG = 2.5;             // Piercing pass-through damage
+export const PLASMA_RING_HIT_COOLDOWN = 0.22;   // Per-target pass-through cooldown (resets on border bounce!)
+export const PLASMA_AIM_TIMEOUT = 4.0;          // 4.0s to aim before auto-firing 3 rings in 3 random directions!
+export const PLASMA_BORDER_DUR = 8.0;           // Glowing ricochet border lasts 8.0s after FIRST enemy or border hit!
 export const POWERUP_MAX_ENERGY = 100;          // Full horizontal power-up gauge capacity per slot
 export const CYAN_SHOT_ENERGY_COST = 100 / 30;  // 30 conserved Homing Missile volleys per full gauge
 export const YELLOW_SHOT_ENERGY_COST = 100 / 24;// 24 conserved Chain Lightning shots (3 individual bolts per burst = 3 ammo, 8 bursts)
 export const CHAIN_LIGHTNING_MAX_SHOTS = 24;
 export const CHAIN_LIGHTNING_RANGE = 152;       // Short range (~4 fighters long) across front 270-degree arc
-export const CHAIN_LIGHTNING_JUMP_RANGE = 118;  // Short-range edge-to-edge chain jump distance
-export const CHAIN_LIGHTNING_MAX_JUMPS = 4;     // Jumps to 4 additional targets
+export const CHAIN_LIGHTNING_JUMP_RANGE = 200;  // Extended 200px edge-to-edge chain jump distance
+export const CHAIN_LIGHTNING_MAX_JUMPS = 8;     // Jumps to up to 8 additional targets
 export const CHAIN_LIGHTNING_DMG = 1.0;         // 1.0 base damage per hit & jump
+export const CHAIN_LIGHTNING_REPEL_DIST = 114;  // Enemy plane bounce-off distance (~3 planes = 3 * 38px)
+export const CHAIN_LIGHTNING_DISABLE_DUR = 4.0; // Disables repelled enemy firing for 4.0 seconds
+export const HOMING_TRACK_HALF_WIDTH = 76;      // Homing tracking corridor: 2 planes (76px) on each side
 export const CHAIN_LIGHTNING_BURST_COUNT = 3;   // 3 bolts fired per burst
 export const CHAIN_LIGHTNING_BURST_INTERVAL = 0.25; // 3 bolts go out over 0.50s (0.00s, 0.25s, 0.50s)
 export const CHAIN_LIGHTNING_BURST_COOLDOWN = 0.80; // Waits 0.80s after burst before firing again
@@ -162,6 +192,9 @@ export const COLORS = {
   alphaBlue: '#2a4cff',
   alphaPurple: '#6f2cff',
   alphaPink: '#ff52c8',
+  centophageAcid: '#ccff00',
+  centophagePurple: '#4e30b8',
+  centophageViolet: '#8d5cff',
   white: '#ecffff'
 };
 
@@ -214,11 +247,11 @@ export const ARCHIVE_ENTRIES = [
     stats: [
       { text: '30 VOLLEYS (GAUGE)', cls: 'gold' },
       { text: 'STACKABLE', cls: 'emerald' },
-      { text: 'TRACKS CAPSULES', cls: '' },
+      { text: '±2 PLANE TRACKING', cls: '' },
       { text: '1-HIT NULL THREAD', cls: '' },
       { text: '1.3x VS NULL ENF', cls: 'warn' }
     ],
-    desc: 'Cyan power-up (Sector 02 Wave 3+) — shoot the capsule to charge 30 manual volleys of 2x homing missiles that track enemies, Enforcer Wings, and floating capsules! Stacks with different power-ups (splitting the bottom gauge and igniting an RGB gradient on your ship). Shatters crimson Null Threads in 1 hit and deals 1.3x damage to Elite/Master Enforcers [Null].'
+    desc: 'Cyan power-up (Sector 02 Wave 3+) — shoot the capsule to charge 30 manual volleys of twin forward-launched homing missiles that track enemies, Enforcer Wings, and capsules within 2 planes on either side! Stacks with different power-ups, shatters crimson Null Threads in 1 hit, and deals 1.3x damage to Elite/Master Enforcers [Null].'
   },
   {
     id: 'CAPSULE_RED',
@@ -257,11 +290,11 @@ export const ARCHIVE_ENTRIES = [
     cardClass: 'tier-pwr-yellow',
     stats: [
       { text: '24 SHOTS (3x BOLTS)', cls: 'gold' },
-      { text: 'FRONT 270° ARC', cls: '' },
-      { text: 'ZAPS ENEMY BULLETS', cls: 'emerald' },
-      { text: 'JUMPS +4 TARGETS', cls: 'warn' }
+      { text: 'RICOCHET & REPEL', cls: '' },
+      { text: 'DEATH CROSS ZAP', cls: 'emerald' },
+      { text: 'JUMPS +8 (200px)', cls: 'warn' }
     ],
-    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — transforms your Aurex Fighter yellow/gold and charges 24 shots fired as rapid 3-bolt bursts (3 individual lightning lines over 0.5s using 3 shots, then 0.8s cooldown) across a front 270-degree radius (~4 fighters). Each bolt independently zaps enemies, capsules, Enforcer Wings, and enemy bullets, dealing 1 damage and chaining edge-to-edge to up to 4 additional targets!'
+    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — charges 24 shots fired as rapid 3-bolt bursts across a front 270° arc, chaining up to 200px across 8 targets! While shooting lightning, incoming bullets ricochet into enemies and colliding enemy planes bounce 3 planes back with firing disabled for 4s. Dying with Chain Lightning unleashes a full-screen Cross Lightning blast that one-shots everything in its path and chains regular damage!'
   },
   {
     id: 'CAPSULE_CLONE',
@@ -275,7 +308,21 @@ export const ARCHIVE_ENTRIES = [
       { text: '2x BOLT SPEED', cls: '' },
       { text: 'STACKABLE', cls: '' }
     ],
-    desc: 'Dark blue & purple power-up (Sector 07+ & 20% Alpha Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after 0.8s with 1s invincibility frames and 4 HP each, firing dark purple bolts at 2x speed for 20s (timer pauses between sectors & challenges; clones vanish if you die).'
+    desc: 'Dark blue & purple power-up (Sector 07+ & 20% Super Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after 0.8s with 1s invincibility frames and 4 HP each, firing dark purple bolts at 2x speed for 20s (timer pauses between sectors & challenges; clones vanish if you die).'
+  },
+  {
+    id: 'CAPSULE_PLASMA',
+    name: 'PLASMA RINGS',
+    badge: 'POWER-UP • SEC 08+',
+    badgeClass: 'centophage',
+    cardClass: 'tier-pwr-plasma',
+    stats: [
+      { text: '3 PIERCING RINGS', cls: 'emerald' },
+      { text: '0.25s AIMED BURST', cls: 'gold' },
+      { text: '8s RICOCHET BORDER', cls: '' },
+      { text: '25% CENTOPHAGE DROP', cls: 'warn' }
+    ],
+    desc: 'Green, dark-purple & yellow Plasma Capsule (Sector 08+ & 25% Centophage drop) — wraps your ship in a temporary damage-blocking shield while lighting up the arena borders. You have 4s to aim a guided line in any direction and fire 3 large piercing Plasma Rings (0.25s apart), or the ship auto-fires them in 3 random directions! Grants 0.5s post-fire invincibility; the 8s ricochet border timer starts on the first enemy or wall impact.'
   },
   {
     id: 'DRONE',
@@ -324,25 +371,40 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'player',
     cardClass: 'tier-centoid',
     stats: [
-      { text: '8 SEGMENTS (1 HP EA)', cls: '' },
+      { text: '8 SEGMENTS', cls: '' },
+      { text: 'HEAD: 4 HP / SEG: 1 HP', cls: 'gold' },
       { text: 'HEADSHOT = INSTA-CLEAR', cls: 'emerald' },
       { text: 'SPLITS (MAX 2)', cls: 'warn' }
     ],
-    desc: 'Green & gold 8-segment cyber-serpent (Sector 04+). Zig-zags strictly horizontally across the arena, stepping down and rebounding upward at the bottom. Destroy the head to erase the entire Centoid at once without splitting!'
+    desc: 'Green & gold 8-segment cyber-serpent (Sector 04+). Reinforced 4 HP head with 1 HP body segments. Zig-zags strictly horizontally across the arena, stepping down and rebounding upward at the bottom. Destroy the head to erase the entire Centoid at once without splitting!'
   },
   {
     id: 'ALPHA_CENTOID',
-    name: 'ALPHA CENTOID',
+    name: 'SUPER CENTOID',
     badge: 'ELITE • SEC 07+',
     badgeClass: 'deploy',
     cardClass: 'tier-alpha',
     stats: [
-      { text: '8 SEGMENTS (2 HP EA)', cls: 'warn' },
+      { text: '10 SEGMENTS', cls: 'warn' },
+      { text: 'HEAD: 6 HP / SEG: 2 HP', cls: 'gold' },
       { text: '90° CORRIDOR PATH', cls: '' },
-      { text: 'DROP: 20% CLONES', cls: 'gold' },
-      { text: 'HEADSHOT = INSTA-CLEAR', cls: 'emerald' }
+      { text: 'DROP: 20% CLONES', cls: 'emerald' }
     ],
-    desc: 'Elite dark-blue, purple & pink 8-segment serpent (Sector 07+) that snaps along sharp 90° corridors like Null Threads. Splitting caps at 2 living snakes; headshots erase the entire chain. 20% chance to drop Fighter Clones.'
+    desc: 'Elite dark-blue, purple & pink 10-segment serpent (Sector 07+) with a 6 HP head and 2 HP body segments that snaps along sharp 90° corridors like Null Threads. Splitting caps at 2 living snakes; headshots erase the entire chain. 20% chance to drop Fighter Clones.'
+  },
+  {
+    id: 'CENTOPHAGE',
+    name: 'CENTOPHAGE',
+    badge: 'MASTER • SEC 08+',
+    badgeClass: 'centophage',
+    cardClass: 'tier-centophage',
+    stats: [
+      { text: '6+ SEGMENTS', cls: 'emerald' },
+      { text: 'HEAD: 8 HP / SEG: 3 HP', cls: 'warn' },
+      { text: '1.8x SPEED', cls: 'gold' },
+      { text: 'DROP: 25% PLASMA / 7%C / 7%L', cls: '' }
+    ],
+    desc: 'Master-tier parasitic Overlord Centoid (Sector 08+) moving 1.8x faster than Centoids & Super Centoids. Every 2s has an 80% chance to chase down a random non-Centoid entity (6s cooldown on miss) and devour it to grow its chain: +1 segment for Normal, +2 for Advanced, and +3 for Elite prey! Independent drops: 25% Plasma Rings, 7% Clones, 7% Chain Lightning.'
   },
   {
     id: 'PULSAR',
@@ -398,7 +460,7 @@ export const ARCHIVE_ENTRIES = [
       { text: 'DROP: 25%C / 5%R / 10%P', cls: 'gold' },
       { text: '10-KILL STREAK REWARD', cls: 'emerald' }
     ],
-    desc: 'Master-tier Flux dreadnought ringed in a radiant cyan aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Cyan reward capsule! On Hard Mode, re-entering after a dive while you stack power-ups can trigger a 4s Cyan CRT Field (1.5x slower move & fire rate).'
+    desc: 'Master-tier Flux dreadnought ringed in a radiant cyan aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Cyan reward capsule! On Hard Mode, re-entering after a dive can trigger a 4s Flux Field (1.5x slower move & fire rate).'
   },
   {
     id: 'MASTER_NULL_ENFORCER',
@@ -412,7 +474,7 @@ export const ARCHIVE_ENTRIES = [
       { text: 'DROP: 25%R / 5%C / 10%P', cls: 'gold' },
       { text: '10-KILL STREAK REWARD', cls: 'emerald' }
     ],
-    desc: 'Master-tier Null warframe blazing with a crimson-red aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Red reward capsule! On Hard Mode, re-entering after a dive while you stack power-ups can trigger a 4s Red CRT Field (2x damage reduction).'
+    desc: 'Master-tier Null warframe blazing with a crimson-red aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Red reward capsule! On Hard Mode, re-entering after a dive can trigger a 4s Null Field (reduces player damage to 0.33x).'
   },
   {
     id: 'ENFORCER_WING',

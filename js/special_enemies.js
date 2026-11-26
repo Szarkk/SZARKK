@@ -4,17 +4,102 @@
 
 import {
   ALPHA_CENTOID_SEG_HP,
+  CENTOID_HEAD_HP,
   CENTOID_MAX_SPLITS,
   CENTOID_SEGMENTS,
+  CENTOPHAGE_CHASE_CHANCE,
+  CENTOPHAGE_CHECK_INTERVAL,
+  CENTOPHAGE_FAIL_COOLDOWN,
+  CENTOPHAGE_HEAD_HP,
+  CENTOPHAGE_MAX_SEGMENTS,
+  CENTOPHAGE_SEGMENTS,
+  CENTOPHAGE_SEG_HP,
+  CENTOPHAGE_SPEED_MULT,
   COLORS,
   COST_SWAP_CHANCE,
   LOGICAL_H,
   LOGICAL_W,
   PULSAR_FIRE_INTERVAL,
+  SUPER_CENTOID_HEAD_HP,
+  SUPER_CENTOID_SEGMENTS,
   UNIT_META
 } from './config.js';
 import { clamp } from './utils.js';
 import { rollEnemyCapsuleDrop } from './powerups.js';
+import { handleEnforcerDestroyed } from './enforcers.js';
+
+function getCentoidSpec(variant) {
+  if (variant === 'CENTOPHAGE') {
+    return {
+      type: 'CENTOPHAGE',
+      isAlpha: false,
+      isCentophage: true,
+      isElite: true,
+      isMaster: true,
+      segCount: CENTOPHAGE_SEGMENTS,
+      headHp: CENTOPHAGE_HEAD_HP,
+      bodyHp: CENTOPHAGE_SEG_HP,
+      headRadius: 17,
+      bodyRadius: 14,
+      segSpacing: 20,
+      speed: Math.round(158 * CENTOPHAGE_SPEED_MULT), // 284 px/s (1.8x faster than Super Centoids & >2.1x faster than Centoids!)
+      ptsHead: 1200,
+      ptsBody: 250
+    };
+  }
+  if (variant === 'ALPHA_CENTOID' || variant === true) {
+    return {
+      type: 'ALPHA_CENTOID',
+      isAlpha: true,
+      isCentophage: false,
+      isElite: true,
+      isMaster: false,
+      segCount: SUPER_CENTOID_SEGMENTS,
+      headHp: SUPER_CENTOID_HEAD_HP,
+      bodyHp: ALPHA_CENTOID_SEG_HP,
+      headRadius: 17,
+      bodyRadius: 14,
+      segSpacing: 20,
+      speed: 158,
+      ptsHead: 450,
+      ptsBody: 120
+    };
+  }
+  return {
+    type: 'CENTOID',
+    isAlpha: false,
+    isCentophage: false,
+    isElite: false,
+    isMaster: false,
+    segCount: CENTOID_SEGMENTS,
+    headHp: CENTOID_HEAD_HP,
+    bodyHp: 1,
+    headRadius: 15,
+    bodyRadius: 13,
+    segSpacing: 19,
+    speed: 132,
+    ptsHead: 220,
+    ptsBody: 60
+  };
+}
+
+function getAbsorbedTintForPrey(preyType) {
+  switch (preyType) {
+    case 'DRONE':
+    case 'FLUX_ENFORCER':
+      return { outer: '#074559', mid: '#00c8e8', bright: '#a6fbff' };
+    case 'INTERCEPTOR':
+      return { outer: '#5e3d05', mid: '#f0a818', bright: '#fff0a6' };
+    case 'V1_ENFORCER':
+      return { outer: '#591e08', mid: '#ff6e24', bright: '#ffd29e' };
+    case 'NULL_ENFORCER':
+      return { outer: '#59081a', mid: '#ff1e42', bright: '#ffa6b8' };
+    case 'PULSAR':
+      return { outer: '#594804', mid: '#ffe640', bright: '#ffffff' };
+    default:
+      return { outer: '#2e4700', mid: '#ccff00', bright: '#edff8f' };
+  }
+}
 
 function sampleTrailAtDist(history, targetDist) {
   if (!history || history.length === 0) return { x: LOGICAL_W * 0.5, y: 80, angle: 0 };
@@ -38,10 +123,11 @@ function sampleTrailAtDist(history, targetDist) {
 }
 
 /**
- * Spawns an 8-segment Centoid (Advanced, green/gold Atari horizontal zig-zag)
- * or Alpha Centoid (Elite, dark blue/purple/pink 90-degree corridor crawler).
+ * Spawns a Centoid (8 seg, 4 HP head / 1 HP body), Super Centoid (10 seg, 6 HP head / 2 HP body),
+ * or Master-Tier Centophage (6 seg, 8 HP head / 3 HP body, 1.8x faster, consumes entities to grow!).
  */
-export function spawnCentoidChain(game, isAlpha = false, startX = null, startY = null, dirX = null) {
+export function spawnCentoidChain(game, variantOrIsAlpha = 'CENTOID', startX = null, startY = null, dirX = null) {
+  const spec = getCentoidSpec(variantOrIsAlpha);
   const fromLeft = dirX !== null ? dirX > 0 : Math.random() < 0.5;
   const initDirX = fromLeft ? 1 : -1;
   const sx = startX !== null ? clamp(startX, 34, LOGICAL_W - 34) : (fromLeft ? 34 : LOGICAL_W - 34);
@@ -49,13 +135,12 @@ export function spawnCentoidChain(game, isAlpha = false, startX = null, startY =
 
   const chainId = game.centoidIdSeq++;
   const rootId = chainId;
-  const segSpacing = isAlpha ? 20 : 19;
-  const speed = isAlpha ? 158 : 132;
+  const { segSpacing, speed, segCount, type, isAlpha, isCentophage } = spec;
   const initAngle = initDirX > 0 ? 0 : Math.PI;
 
-  // Pre-seed trail history behind the head so all 8 segments align crisply from frame 1
+  // Pre-seed trail history behind the head so all segments align crisply from frame 1
   const history = [];
-  const totalLen = CENTOID_SEGMENTS * segSpacing + 40;
+  const totalLen = segCount * segSpacing + 48;
   for (let d = 0; d <= totalLen; d += 4) {
     history.push({
       x: sx - initDirX * d,
@@ -67,7 +152,9 @@ export function spawnCentoidChain(game, isAlpha = false, startX = null, startY =
   const chain = {
     chainId,
     rootId,
+    type,
     isAlpha,
+    isCentophage,
     speed,
     segSpacing,
     // Centoid strict horizontal zig-zag state
@@ -77,37 +164,42 @@ export function spawnCentoidChain(game, isAlpha = false, startX = null, startY =
     stepRemaining: 0,
     leftBound: 28 + Math.random() * 18,
     rightBound: LOGICAL_W - 28 - Math.random() * 18,
-    // Alpha Centoid 90-degree corridor state (like crimson Null Threads!)
+    // Super Centoid / Centophage 90-degree corridor state
     axis: 'H', // 'H' | 'V'
     corridorDistLeft: 120 + Math.random() * 110,
+    // Master Centophage parasitic entity-hunting state
+    chaseTargetId: null,
+    chaseTimer: CENTOPHAGE_CHECK_INTERVAL, // 2.0s before first 80% hunt roll
     history
   };
   game.centoidChains.set(chainId, chain);
 
-  const type = isAlpha ? 'ALPHA_CENTOID' : 'CENTOID';
-  const segHp = isAlpha ? ALPHA_CENTOID_SEG_HP : 1;
-
-  for (let k = 0; k < CENTOID_SEGMENTS; k++) {
+  for (let k = 0; k < segCount; k++) {
     const pos = sampleTrailAtDist(history, k * segSpacing);
+    const isHead = k === 0;
+    const segHp = isHead ? spec.headHp : spec.bodyHp;
     game.enemies.push({
       id: game.enemyIdSeq++,
       type,
       isEnforcer: false,
-      isElite: isAlpha,
-      isMaster: false,
+      isElite: spec.isElite,
+      isMaster: spec.isMaster,
       isCentoid: true,
-      isCentoidHead: k === 0,
+      isCentoidHead: isHead,
+      isCentoidTail: k === segCount - 1,
+      isCentophage,
       centoidChainId: chainId,
       centoidRootId: rootId,
       centoidOrder: k,
+      absorbedTint: null,
       isChallengeElite: false,
       isChallengeExtra: false,
       isChallengeGuard: false,
-      hitRadius: k === 0 ? (isAlpha ? 17 : 15) : (isAlpha ? 14 : 13),
+      hitRadius: isHead ? spec.headRadius : spec.bodyRadius,
       maxHp: segHp,
       hp: segHp,
-      ptsForm: isAlpha ? (k === 0 ? 450 : 120) : (k === 0 ? 220 : 60),
-      ptsDive: isAlpha ? (k === 0 ? 450 : 120) : (k === 0 ? 220 : 60),
+      ptsForm: isHead ? spec.ptsHead : spec.ptsBody,
+      ptsDive: isHead ? spec.ptsHead : spec.ptsBody,
       x: pos.x,
       y: pos.y,
       homeX: pos.x,
@@ -139,24 +231,26 @@ export function spawnCentoidChain(game, isAlpha = false, startX = null, startY =
 }
 
 /**
- * Handles Centoid / Alpha Centoid headshot instant-delete AND body-hit splitting (max 2 living per original).
- * Returns true if this function handled deletion of the enemy & chain (suppressing duplicate splice).
+ * Handles Centoid / Super Centoid / Centophage headshot instant-delete AND body-hit splitting (max 2 living per original).
  */
 export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
   const chainId = e.centoidChainId;
   const rootId = e.centoidRootId;
   const chain = game.centoidChains.get(chainId);
-  const col = e.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen;
+  const spec = getCentoidSpec(e.type);
+  const col = e.type === 'CENTOPHAGE'
+    ? COLORS.centophageAcid
+    : (e.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGreen);
 
   // Remove the hit segment first
   game.enemies.splice(idx, 1);
-  game.spawnDeleteBurst(e.x, e.y, col, e.isCentoidHead ? 26 : 12, e.isCentoidHead ? 210 : 135);
+  game.spawnDeleteBurst(e.x, e.y, col, e.isCentoidHead ? 28 : 12, e.isCentoidHead ? 215 : 135);
   game.synth.playDeleteBurst(e.isCentoidHead);
   if (scored) {
     game.addScore(e.ptsForm, e.x, e.y, col);
   }
 
-  // HEADSHOT: Instantly deletes the entire Centoid chain at once without splitting!
+  // HEADSHOT: Instantly deletes the entire chain at once without splitting!
   if (e.isCentoidHead) {
     let bonusPts = 0;
     for (let i = game.enemies.length - 1; i >= 0; i--) {
@@ -168,15 +262,20 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
       }
     }
     game.centoidChains.delete(chainId);
+    const popCol = e.type === 'CENTOPHAGE'
+      ? COLORS.centophageAcid
+      : (e.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGold);
     if (scored && bonusPts > 0) {
-      game.addScore(bonusPts, e.x, e.y - 18, e.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGold);
+      game.addScore(bonusPts, e.x, e.y - 18, popCol);
     }
     game.spawnPopup(
       e.x,
       e.y - 30,
-      e.type === 'ALPHA_CENTOID' ? 'ALPHA HEADSHOT!' : 'CENTOID HEADSHOT!',
-      e.type === 'ALPHA_CENTOID' ? COLORS.alphaPink : COLORS.centoidGold,
-      1.25
+      e.type === 'CENTOPHAGE'
+        ? 'CENTOPHAGE HEADSHOT!'
+        : (e.type === 'ALPHA_CENTOID' ? 'SUPER HEADSHOT!' : 'CENTOID HEADSHOT!'),
+      popCol,
+      1.3
     );
     // Roll capsule drop once on clean headshot kill if no other split of this root remains
     const anyLeftForRoot = game.enemies.some(o => o.isCentoid && o.centoidRootId === rootId);
@@ -207,6 +306,7 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
   ahead.forEach((seg, k) => {
     seg.centoidOrder = k;
     seg.isCentoidHead = k === 0;
+    seg.isCentoidTail = k === ahead.length - 1;
   });
 
   if (behind.length === 0) return;
@@ -224,7 +324,13 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
     behind.forEach((seg, k) => {
       seg.centoidOrder = k;
       seg.isCentoidHead = k === 0;
-      seg.hitRadius = k === 0 ? (e.type === 'ALPHA_CENTOID' ? 17 : 15) : seg.hitRadius;
+      seg.isCentoidTail = k === behind.length - 1;
+      if (k === 0) {
+        seg.hitRadius = spec.headRadius;
+        seg.maxHp = spec.headHp;
+        seg.hp = spec.headHp;
+        seg.absorbedTint = null;
+      }
     });
     return;
   }
@@ -249,7 +355,9 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
     game.centoidChains.set(newChainId, {
       chainId: newChainId,
       rootId,
+      type: chain.type || e.type,
       isAlpha: chain.isAlpha,
+      isCentophage: !!chain.isCentophage,
       speed: chain.speed * 1.05,
       segSpacing: chain.segSpacing,
       dirX: newDirX,
@@ -258,8 +366,10 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
       stepRemaining: 0,
       leftBound: 28 + Math.random() * 18,
       rightBound: LOGICAL_W - 28 - Math.random() * 18,
-      axis: chain.isAlpha ? (chain.axis === 'H' ? 'V' : 'H') : 'H',
+      axis: (chain.isAlpha || chain.isCentophage) ? (chain.axis === 'H' ? 'V' : 'H') : 'H',
       corridorDistLeft: 95 + Math.random() * 95,
+      chaseTargetId: null,
+      chaseTimer: CENTOPHAGE_CHECK_INTERVAL,
       history: newHistory
     });
 
@@ -267,7 +377,13 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
       seg.centoidChainId = newChainId;
       seg.centoidOrder = k;
       seg.isCentoidHead = k === 0;
-      if (k === 0) seg.hitRadius = chain.isAlpha ? 17 : 15;
+      seg.isCentoidTail = k === behind.length - 1;
+      if (k === 0) {
+        seg.hitRadius = spec.headRadius;
+        seg.maxHp = spec.headHp;
+        seg.hp = spec.headHp;
+        seg.absorbedTint = null;
+      }
     });
 
     game.synth.playCentoidSplit();
@@ -275,11 +391,135 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
   } else {
     // Already at max 2 living centoids from this original: re-link tail cleanly to front chain
     const base = ahead.length;
+    const total = base + behind.length;
+    ahead.forEach((seg) => { seg.isCentoidTail = false; });
     behind.forEach((seg, k) => {
       seg.centoidOrder = base + k;
       seg.isCentoidHead = false;
+      seg.isCentoidTail = (base + k) === total - 1;
     });
   }
+}
+
+/**
+ * Centophage devours a caught non-Centoid entity and grafts +1 (Normal), +2 (Advanced),
+ * or +3 (Elite) new 3 HP segments onto its chain!
+ */
+function devourPreyAndGrowCentophage(game, chain, segs, prey) {
+  const preyIdx = game.enemies.indexOf(prey);
+  if (preyIdx < 0) return;
+
+  const meta = UNIT_META[prey.type] || { tier: 1 };
+  const rawGain = meta.tier === 3 ? 3 : (meta.tier === 2 ? 2 : 1);
+  const room = Math.max(0, CENTOPHAGE_MAX_SEGMENTS - segs.length);
+  const gainCount = Math.min(rawGain, room);
+
+  // Clean up tractor beam / captured fighter tether if the devoured enemy was an Enforcer!
+  if (game.activeBeamBoss && game.activeBeamBoss.id === prey.id) {
+    game.activeBeamBoss = null;
+    game.synth.stopTractorBeam();
+  }
+  if (prey.hasCapturedShip || (game.capturedFighter && game.capturedFighter.ownerId === prey.id)) {
+    handleEnforcerDestroyed(game, prey);
+  }
+
+  // Remove the devoured entity from the arena (no player score awarded — Centophage stole it!)
+  game.enemies.splice(preyIdx, 1);
+
+  const spec = getCentoidSpec('CENTOPHAGE');
+  const tint = getAbsorbedTintForPrey(prey.type);
+
+  // Extend history smoothly behind the current tail so newly grafted segments emerge cleanly
+  if (gainCount > 0) {
+    const tail = segs[segs.length - 1];
+    const tailEnd = chain.history[chain.history.length - 1] || { x: tail.x, y: tail.y, angle: tail.angle };
+    const backX = -Math.cos(tailEnd.angle || 0);
+    const backY = -Math.sin(tailEnd.angle || 0);
+    const extraDist = gainCount * chain.segSpacing + 24;
+    for (let d = 4; d <= extraDist; d += 4) {
+      chain.history.push({
+        x: clamp(tailEnd.x + backX * d, 18, LOGICAL_W - 18),
+        y: clamp(tailEnd.y + backY * d, 48, LOGICAL_H - 64),
+        angle: tailEnd.angle || 0
+      });
+    }
+
+    const startOrder = segs.length;
+    for (let g = 0; g < gainCount; g++) {
+      const ord = startOrder + g;
+      const pos = sampleTrailAtDist(chain.history, ord * chain.segSpacing);
+      const newSeg = {
+        id: game.enemyIdSeq++,
+        type: 'CENTOPHAGE',
+        isEnforcer: false,
+        isElite: true,
+        isMaster: true,
+        isCentoid: true,
+        isCentoidHead: false,
+        isCentoidTail: g === gainCount - 1,
+        isCentophage: true,
+        centoidChainId: chain.chainId,
+        centoidRootId: chain.rootId,
+        centoidOrder: ord,
+        absorbedTint: tint,
+        isChallengeElite: false,
+        isChallengeExtra: false,
+        isChallengeGuard: false,
+        hitRadius: spec.bodyRadius,
+        maxHp: spec.bodyHp,
+        hp: spec.bodyHp,
+        ptsForm: spec.ptsBody,
+        ptsDive: spec.ptsBody,
+        x: pos.x,
+        y: pos.y,
+        homeX: pos.x,
+        homeY: pos.y,
+        rowIdx: 0,
+        angle: pos.angle,
+        state: 'CENTOID',
+        path: null,
+        pathT: 1,
+        pathDur: 1,
+        hitFlash: 0.18,
+        animPhase: Math.random() * Math.PI * 2,
+        diveT: 0,
+        diveDur: 2.0,
+        divePattern: 'SWOOP',
+        divePath: null,
+        beamTimer: 0,
+        beamShield: 0,
+        hasCapturedShip: false,
+        shotCooldown: 2.0,
+        wingSurgeQueue: 0,
+        wingSurgeTimer: 0,
+        surgePulse: 0,
+        v1Synergy: null,
+        speedBuffed: segs[0]?.speedBuffed || false,
+        hpBuffed: false
+      };
+      game.enemies.push(newSeg);
+      segs.push(newSeg);
+    }
+    for (let k = 0; k < segs.length; k++) {
+      segs[k].isCentoidTail = (k === segs.length - 1);
+    }
+  }
+
+  // Devour visual & audio burst!
+  game.spawnDeleteBurst(prey.x, prey.y, COLORS.centophageAcid, 16, 165);
+  game.spawnDeleteBurst(prey.x, prey.y, COLORS.centophageViolet, 8, 120);
+  game.synth.playCentoidSplit();
+  game.spawnPopup(
+    prey.x,
+    Math.max(46, prey.y - 22),
+    gainCount > 0 ? `CONSUMED! +${gainCount} SEG` : 'CONSUMED! (MAX)',
+    COLORS.centophageAcid,
+    1.25
+  );
+
+  // Reset hunt cycle back to 2.0s patrol before next 80% chase roll
+  chain.chaseTargetId = null;
+  chain.chaseTimer = CENTOPHAGE_CHECK_INTERVAL;
 }
 
 export function updateCentoids(game, dt) {
@@ -307,6 +547,10 @@ export function updateCentoids(game, dt) {
     segs.sort((a, b) => a.centoidOrder - b.centoidOrder);
     const head = segs[0];
     head.isCentoidHead = true;
+    for (let k = 0; k < segs.length; k++) {
+      segs[k].isCentoidHead = (k === 0);
+      segs[k].isCentoidTail = (k === segs.length - 1);
+    }
 
     if (idleMode) continue;
 
@@ -315,8 +559,61 @@ export function updateCentoids(game, dt) {
     let hx = head.x;
     let hy = head.y;
     let angle = head.angle;
+    let chasingPrey = null;
 
-    if (!chain.isAlpha) {
+    // Master Centophage Parasitic Hunt Scheduler (every 2s -> 80% chase non-centoid, else 6s cooldown!)
+    if (chain.isCentophage) {
+      if (chain.chaseTargetId !== null) {
+        chasingPrey = game.enemies.find(o => o.id === chain.chaseTargetId && !o.isCentoid) || null;
+        if (!chasingPrey) {
+          chain.chaseTargetId = null;
+          chain.chaseTimer = CENTOPHAGE_CHECK_INTERVAL;
+        }
+      }
+
+      if (!chasingPrey) {
+        chain.chaseTimer = (chain.chaseTimer !== undefined ? chain.chaseTimer : CENTOPHAGE_CHECK_INTERVAL) - dt;
+        if (chain.chaseTimer <= 0) {
+          const candidates = game.enemies.filter((o) => {
+            if (!o || o.isCentoid) return false;
+            const meta = UNIT_META[o.type];
+            return meta && meta.tier >= 1 && meta.tier <= 3 && o.y >= 16 && o.y <= LOGICAL_H - 36;
+          });
+          if (candidates.length > 0) {
+            if (Math.random() < CENTOPHAGE_CHASE_CHANCE) {
+              chasingPrey = candidates[Math.floor(Math.random() * candidates.length)];
+              chain.chaseTargetId = chasingPrey.id;
+              game.spawnPopup(hx, Math.max(44, hy - 22), 'LOCK ON!', COLORS.centophageAcid, 0.85);
+            } else {
+              // 20% miss -> 6.0 second cooldown before rolling again!
+              chain.chaseTimer = CENTOPHAGE_FAIL_COOLDOWN;
+            }
+          } else {
+            chain.chaseTimer = CENTOPHAGE_CHECK_INTERVAL;
+          }
+        }
+      }
+    }
+
+    if (chain.isCentophage && chasingPrey) {
+      // Predatory direct chase at 1.8x speed toward target entity!
+      const dx = chasingPrey.x - hx;
+      const dy = chasingPrey.y - hy;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.1) {
+        angle = Math.atan2(dy, dx);
+        const move = Math.min(step, dist);
+        hx = clamp(hx + (dx / dist) * move, 24, LOGICAL_W - 24);
+        hy = clamp(hy + (dy / dist) * move, 48, LOGICAL_H - 64);
+      }
+      if (Math.hypot(chasingPrey.x - hx, chasingPrey.y - hy) <= head.hitRadius + chasingPrey.hitRadius + 4) {
+        devourPreyAndGrowCentophage(game, chain, segs, chasingPrey);
+        // Pick fresh horizontal/vertical corridor bias after devouring
+        chain.dirX = hx < LOGICAL_W * 0.5 ? 1 : -1;
+        chain.dirY = hy > LOGICAL_H * 0.55 ? -1 : 1;
+        chain.corridorDistLeft = 80 + Math.random() * 90;
+      }
+    } else if (!chain.isAlpha && !chain.isCentophage) {
       // CENTOID: Strict Atari horizontal zig-zags (NO diagonals or curves!) stepping down & reversing up at bottom
       if (chain.stepMode === 'HORIZ') {
         hx += chain.dirX * step;
@@ -352,7 +649,7 @@ export function updateCentoids(game, dt) {
         }
       }
     } else {
-      // ALPHA CENTOID: Moves like crimson Null Threads — crisp 90-degree orthogonal grid corridors!
+      // SUPER CENTOID & PATROLLING CENTOPHAGE: Sharp 90-degree orthogonal grid corridors!
       if (chain.axis === 'H') {
         hx += chain.dirX * step;
         angle = chain.dirX > 0 ? 0 : Math.PI;
@@ -396,7 +693,7 @@ export function updateCentoids(game, dt) {
     const first = chain.history[0];
     if (!first || Math.hypot(hx - first.x, hy - first.y) >= 2.5) {
       chain.history.unshift({ x: hx, y: hy, angle });
-      const maxPts = Math.ceil((segs.length * chain.segSpacing + 90) / 2.5);
+      const maxPts = Math.ceil((segs.length * chain.segSpacing + 110) / 2.5);
       if (chain.history.length > maxPts) {
         chain.history.length = maxPts;
       }
@@ -418,7 +715,7 @@ export function updateCentoids(game, dt) {
  * Updates Pulsar 3.0s leaf-falling electro ball firing (both in formation & diving!).
  */
 export function updatePulsarAttacks(game, e, dt) {
-  if (e.type !== 'PULSAR' || game.sandboxIdle) return;
+  if (e.type !== 'PULSAR' || game.sandboxIdle || (e.fireDisabledTimer || 0) > 0) return;
   if (e.state !== 'FORMATION' && e.state !== 'DIVING') return;
   e.pulsarTimer = (e.pulsarTimer !== undefined ? e.pulsarTimer : PULSAR_FIRE_INTERVAL * (0.5 + Math.random() * 0.5)) - dt;
   if (e.pulsarTimer <= 0 && game.player.alive) {
@@ -469,7 +766,7 @@ export function spawnPulsarDeathSparks(game, x, y) {
  * Respects sector unlock rules so late-game enemies never appear early.
  */
 export function applyCostBasedSwaps(slots, effSec, hardMode = false) {
-  const sec = hardMode ? Math.max(effSec, 8) : effSec;
+  const sec = hardMode ? Math.max(effSec, 7) : effSec;
   const unlockedByTier = (tier) =>
     Object.entries(UNIT_META)
       .filter(([, meta]) => meta.tier === tier && sec >= meta.minSec)

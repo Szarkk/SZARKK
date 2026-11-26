@@ -15,6 +15,9 @@ import {
   FIRE_COOLDOWN,
   LOGICAL_H,
   LOGICAL_W,
+  NULL_FIELD_DMG_MULT,
+  PLASMA_AIM_TIMEOUT,
+  PLASMA_RING_SHOT_INTERVAL,
   PLAYER_BULLET_SPEED,
   PLAYER_DEFAULT_Y,
   PLAYER_MAX_Y,
@@ -32,7 +35,7 @@ import {
   hasPowerup,
   removePowerupSlot
 } from './powerups.js';
-import { fireCannonShot, fireChainLightning, fireHomingMissiles, spawnArcWaveFromPlayer } from './projectiles.js';
+import { fireCannonShot, fireChainLightning, fireHomingMissiles, fireSinglePlasmaRing, spawnArcWaveFromPlayer, triggerDeathCrossLightning } from './projectiles.js';
 
 export function createPlayerState() {
   return {
@@ -51,6 +54,7 @@ export function createPlayerState() {
     alive: true,
     respawnTimer: 0,
     invulnTimer: 0,
+    plasmaShieldTimer: 0,
     fireCooldown: 0,
     laserTickCooldown: 0,
     laserFxCooldown: 0,
@@ -59,6 +63,7 @@ export function createPlayerState() {
     lightningBurstLeft: 0,
     lightningBurstTimer: 0,
     lightningBurstExclude: null,
+    lightningActiveTimer: 0,
     vibrateAmp: 0,
     missileVibTimer: 0,
     slowTimer: 0,
@@ -82,7 +87,30 @@ export function clampPlayerPosition(game) {
 export const clampPlayerX = clampPlayerPosition;
 
 /**
- * Movement speed multiplier — Cyan Field (1.5x slower) does NOT stack with Cyan Flux Thread slow.
+ * True while the temporary Plasma Rings shield is active:
+ * - While paused aiming/firing Plasma Rings (AIMING / FIRING)
+ * - Plus 0.5s of non-blinking invincibility right after firing all 3 rings!
+ */
+export function isPlasmaShieldActive(game) {
+  const p = game.player;
+  if (!p || !p.alive) return false;
+  const ps = game.plasmaRingState;
+  if (ps && (ps.phase === 'AIMING' || ps.phase === 'FIRING')) return true;
+  return (p.plasmaShieldTimer || 0) > 0;
+}
+
+/**
+ * True while the player is actively discharging Chain Lightning (enables bullet ricochet & enemy bounce-repel!).
+ */
+export function isPlayerShootingLightning(game) {
+  const p = game.player;
+  if (!p || !p.alive || p.capturedById || p.fireJamTimer > 0) return false;
+  if (!hasPowerup(game, 'YELLOW')) return false;
+  return p.lightningBurstLeft > 0 || (p.lightningActiveTimer || 0) > 0;
+}
+
+/**
+ * Movement speed multiplier — Flux Field (1.5x slower) does NOT stack with Cyan Flux Thread slow.
  */
 export function getPlayerMoveSpeedMult(game) {
   const threadSlow = game.player.slowTimer > 0 ? 0.45 : 1.0;
@@ -91,7 +119,7 @@ export function getPlayerMoveSpeedMult(game) {
 }
 
 /**
- * Fire cooldown multiplier (>1 = slower fire rate) — Cyan Field (1.5x) & Pulsar Sparks (2x).
+ * Fire cooldown multiplier (>1 = slower fire rate) — Flux Field (1.5x) & Pulsar Sparks (2x).
  */
 export function getPlayerFireCooldownMult(game) {
   const fieldSlow = (game.fieldDebuff && game.fieldDebuff.type === 'CYAN') ? 1.5 : 1.0;
@@ -100,11 +128,11 @@ export function getPlayerFireCooldownMult(game) {
 }
 
 /**
- * Outgoing damage multiplier — Red Field (2x reduction = 0.5x dmg) does NOT stack with Null Thread -20% dmg.
+ * Outgoing damage multiplier — Null Field (0.33x dmg) does NOT stack with Null Thread -20% dmg.
  */
 export function getPlayerDamageMult(game) {
   const threadDmg = game.player.dmgDebuffTimer > 0 ? 0.8 : 1.0;
-  const fieldDmg = (game.fieldDebuff && game.fieldDebuff.type === 'RED') ? 0.5 : 1.0;
+  const fieldDmg = (game.fieldDebuff && game.fieldDebuff.type === 'RED') ? NULL_FIELD_DMG_MULT : 1.0;
   return Math.min(threadDmg, fieldDmg);
 }
 
@@ -158,6 +186,7 @@ function fireSingleArcWave(game) {
 export function damagePlayer(game) {
   const p = game.player;
   if (!p.alive || p.invulnTimer > 0) return;
+  if (isPlasmaShieldActive(game)) return;
 
   const active = getActivePowerups(game);
   const lead = active[0] || null;
@@ -167,7 +196,9 @@ export function damagePlayer(game) {
       ? COLORS.purple
       : (lead === 'YELLOW'
         ? COLORS.yellow
-        : (lead === 'CLONE' ? COLORS.clonePurple : (lead === 'CYAN' ? COLORS.cyan : '#ffffff'))));
+        : (lead === 'PLASMA'
+          ? COLORS.centophageAcid
+          : (lead === 'CLONE' ? COLORS.clonePurple : (lead === 'CYAN' ? COLORS.cyan : '#ffffff')))));
 
   if (p.dual) {
     p.dual = false;
@@ -180,6 +211,11 @@ export function damagePlayer(game) {
     return;
   }
 
+  // Dying with Chain Lightning immediately unleashes full-screen Vertical + Horizontal Cross Lightning!
+  const hadChainLightning = hasPowerup(game, 'YELLOW');
+  const deathX = p.x;
+  const deathY = p.y;
+
   // Dying preserves conserved weapons, resets Master no-death streaks, AND instantly clears Fighter Clones!
   p.alive = false;
   p.respawnTimer = 1.75;
@@ -191,6 +227,7 @@ export function damagePlayer(game) {
   p.sparkSlowTimer = 0;
   p.lightningBurstLeft = 0;
   p.lightningBurstTimer = 0;
+  p.lightningActiveTimer = 0;
   game.masterFluxStreak = 0;
   game.masterNullStreak = 0;
   game.masterFluxRewardSpawned = false;
@@ -213,10 +250,13 @@ export function damagePlayer(game) {
   if (!game.sandboxMode) {
     game.lives--;
   }
-  game.shake = 0.34;
+  game.shake = hadChainLightning ? 0.46 : 0.34;
   game.hitStop = 0.05;
-  game.spawnDeleteBurst(p.x, p.y, shipCol, 30, 225, 'PLAYER');
+  game.spawnDeleteBurst(deathX, deathY, shipCol, 30, 225, 'PLAYER');
   game.synth.playDeleteBurst(true);
+  if (hadChainLightning) {
+    triggerDeathCrossLightning(game, deathX, deathY);
+  }
   game.updateHUD();
   game.updateStatusPills();
 
@@ -227,7 +267,7 @@ export function damagePlayer(game) {
 
 export function applyThreadDebuff(game, variant) {
   const p = game.player;
-  if (!p.alive) return;
+  if (!p.alive || isPlasmaShieldActive(game)) return;
   if (variant === 'FLUX') {
     if (p.slowTimer < 3.6) {
       game.synth.playDebuff(false);
@@ -266,9 +306,11 @@ export function updatePlayer(game, dt) {
       p.animClip = 'idle';
       p.bankFrame = 0;
       p.invulnTimer = 2.0;
+      p.plasmaShieldTimer = 0;
     }
   }
   if (p.invulnTimer > 0) p.invulnTimer = Math.max(0, p.invulnTimer - dt);
+  if (p.plasmaShieldTimer > 0) p.plasmaShieldTimer = Math.max(0, p.plasmaShieldTimer - dt);
   if (p.slowTimer > 0) p.slowTimer = Math.max(0, p.slowTimer - dt);
   if (p.dmgDebuffTimer > 0) p.dmgDebuffTimer = Math.max(0, p.dmgDebuffTimer - dt);
   if (p.fireJamTimer > 0) p.fireJamTimer = Math.max(0, p.fireJamTimer - dt);
@@ -277,6 +319,7 @@ export function updatePlayer(game, dt) {
   if (p.laserFxCooldown > 0) p.laserFxCooldown = Math.max(0, p.laserFxCooldown - dt);
   if (p.arcWaveCooldown > 0) p.arcWaveCooldown = Math.max(0, p.arcWaveCooldown - dt);
   if (p.lightningCooldown > 0) p.lightningCooldown = Math.max(0, p.lightningCooldown - dt);
+  if (p.lightningActiveTimer > 0) p.lightningActiveTimer = Math.max(0, p.lightningActiveTimer - dt);
   if (p.missileVibTimer > 0) p.missileVibTimer = Math.max(0, p.missileVibTimer - dt);
   if (aw.cannonTapGrace > 0) aw.cannonTapGrace = Math.max(0, aw.cannonTapGrace - dt);
   if (game.tapFireBuffer > 0) game.tapFireBuffer = Math.max(0, game.tapFireBuffer - dt);
@@ -288,6 +331,79 @@ export function updatePlayer(game, dt) {
     p.lightningBurstExclude = null;
     game.redLaserActive = false;
     game.activeLaserBeams = [];
+    game.freshFirePress = false;
+    return;
+  }
+
+  // Plasma Rings Aim & Rapid 3-Ring Burst Stasis (ship stops until all 3 Plasma Rings are fired!)
+  const ps = game.plasmaRingState;
+  if (ps && (ps.phase === 'AIMING' || ps.phase === 'FIRING')) {
+    p.vx = 0;
+    p.vy = 0;
+    p.bankAxis = 0;
+    p.thrustAxis = 0;
+    p.vibrateAmp = ps.phase === 'FIRING' ? 1.6 : 0;
+    game.redLaserActive = false;
+    game.activeLaserBeams = [];
+    if (ps.aimGrace > 0) ps.aimGrace = Math.max(0, ps.aimGrace - dt);
+
+    // Keyboard 360-degree guided-line rotation (A/Left CCW, D/Right CW, W/Up & S/Down nudge toward vertical)
+    if (!ps.randomAutoFire) {
+      const rotLeft = game.keys.has('ArrowLeft') || game.keys.has('KeyA');
+      const rotRight = game.keys.has('ArrowRight') || game.keys.has('KeyD');
+      const rotUp = game.keys.has('ArrowUp') || game.keys.has('KeyW');
+      const rotDown = game.keys.has('ArrowDown') || game.keys.has('KeyS');
+      const turnSpeed = 2.75;
+      if (rotLeft) ps.aimAngle -= turnSpeed * dt;
+      if (rotRight) ps.aimAngle += turnSpeed * dt;
+      if (!rotLeft && !rotRight && (rotUp || rotDown)) {
+        const targetAng = rotUp ? -Math.PI * 0.5 : Math.PI * 0.5;
+        let diff = Math.atan2(Math.sin(targetAng - ps.aimAngle), Math.cos(targetAng - ps.aimAngle));
+        const maxStep = turnSpeed * dt;
+        if (Math.abs(diff) <= maxStep) ps.aimAngle = targetAng;
+        else ps.aimAngle += Math.sign(diff) * maxStep;
+      }
+    }
+
+    if (ps.phase === 'AIMING') {
+      ps.aimTimer = Math.max(0, (ps.aimTimer !== undefined ? ps.aimTimer : PLASMA_AIM_TIMEOUT) - dt);
+      const fireTrigger = ps.aimGrace <= 0 && (game.freshFirePress || game.tapFireBuffer > 0);
+      if (fireTrigger) {
+        ps.phase = 'FIRING';
+        ps.randomAutoFire = false;
+        ps.shotTimer = 0;
+        game.tapFireBuffer = 0;
+        game.freshFirePress = false;
+      } else if (ps.aimTimer <= 0) {
+        // 4s aim timeout: auto-fire 3 Plasma Rings in 3 random directions!
+        ps.phase = 'FIRING';
+        ps.randomAutoFire = true;
+        ps.shotTimer = 0;
+        game.tapFireBuffer = 0;
+        game.freshFirePress = false;
+        game.spawnPopup(p.x, p.y - 34, 'AUTO-FIRE! RANDOM 3x', COLORS.yellow, 1.15);
+      }
+    }
+
+    if (ps.phase === 'FIRING') {
+      ps.shotTimer -= dt;
+      if (ps.shotTimer <= 0 && ps.shotsLeft > 0) {
+        const fireAng = ps.randomAutoFire ? (Math.random() * Math.PI * 2) : ps.aimAngle;
+        ps.aimAngle = fireAng;
+        fireSinglePlasmaRing(game, fireAng);
+        ps.shotsLeft--;
+        ps.shotTimer = PLASMA_RING_SHOT_INTERVAL;
+        if (ps.shotsLeft <= 0) {
+          // Ship unlocks with 0.5s non-blinking invincibility shield right after firing all 3 Plasma Rings!
+          ps.phase = 'ACTIVE_BORDER';
+          ps.randomAutoFire = false;
+          p.plasmaShieldTimer = 0.5;
+          p.vibrateAmp = 0;
+          game.spawnPopup(p.x, p.y - 30, 'RINGS AWAY!', COLORS.centophageAcid, 0.9);
+        }
+      }
+    }
+
     game.freshFirePress = false;
     return;
   }

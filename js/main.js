@@ -16,6 +16,7 @@ import { readLS, writeLS } from './utils.js';
 import { SynthEngine } from './audio.js';
 import {
   createArcWaveState,
+  createPlasmaRingState,
   createPowerupState,
   updatePowerupCapsules,
   updatePowerupTimers
@@ -40,6 +41,7 @@ import {
   updateEnemyBullets,
   updateFighterClonesAndBolts,
   updateHomingMissiles,
+  updatePlasmaRings,
   updatePlayerBullets,
   updatePulsarHazards
 } from './projectiles.js';
@@ -187,6 +189,7 @@ export class SzarkkGame {
     this.sandboxShowRuler = false;
     this.sandboxDrag = null;
     this.sandboxTrainingRound = false;
+    this.sandboxChallengeTest = false;
     this.sandbox = null;
     this.diveTimer = 1.1;
     this.formationShotTimer = 2.0;
@@ -227,6 +230,7 @@ export class SzarkkGame {
 
     this.powerup = createPowerupState();
     this.arcWaveState = createArcWaveState();
+    this.plasmaRingState = createPlasmaRingState();
 
     this.capsules = [];
     this.pendingCapsuleDrops = [];
@@ -242,9 +246,11 @@ export class SzarkkGame {
     this.playerBullets = [];
     this.homingMissiles = [];
     this.arcWaves = [];
+    this.plasmaRings = [];
     this.cannonShots = [];
     this.aoeBlasts = [];
     this.lightningBolts = [];
+    this.deathCrossLightnings = [];
     this.fighterClones = [];
     this.cloneTimer = 0;
     this.electroBalls = [];
@@ -551,6 +557,7 @@ export class SzarkkGame {
     updateEnforcerWingsAndThreads(this, dt);
     updateContinuousLaserBeams(this, dt);
     updateArcWavesAndCannon(this, dt);
+    updatePlasmaRings(this, dt);
     updateFighterClonesAndBolts(this, dt);
     updatePlayerBullets(this, dt);
     updateHomingMissiles(this, dt);

@@ -9,6 +9,7 @@ import {
   COLORS,
   LOGICAL_H,
   LOGICAL_W,
+  PLAYER_DEFAULT_Y,
   PLAYER_MIN_Y,
   TOUCH_HINT_DURATION,
   TRACTOR_BEAM_Y
@@ -18,6 +19,8 @@ import { getActivePowerups } from './powerups.js';
 import { renderSpriteEffects } from './animator.js';
 import { getAurexSkinMeta, getEnemySkinMeta } from './skins.js';
 import {
+  drawDeathCrossLightning,
+  drawEnemyFireDisabledSparks,
   drawPixelAoeBlast,
   drawPixelArcWave,
   drawPixelBuffWave,
@@ -26,6 +29,7 @@ import {
   drawPixelElectroBall,
   drawPixelEnemyBullet,
   drawPixelHomingMissile,
+  drawPixelPlasmaRing,
   drawPixelPlayerBullet,
   drawPixelPulsarSpark,
   drawPixelRedLaserBeam,
@@ -33,6 +37,9 @@ import {
   drawPixelShrapnelParticle,
   drawPixelThreadTrail,
   drawPixelTractorBeam,
+  drawPlasmaAimGuide,
+  drawPlasmaArenaBorder,
+  drawPlasmaShieldBubble,
   renderPixelExplosions,
   renderPowerupPickupFx
 } from './renderers/saturn_fx.js';
@@ -52,59 +59,108 @@ const FONT_ARCADE_UI = '"Silkscreen", ui-monospace, monospace';
 function drawMeasurementGridUnderlay(ctx) {
   ctx.save();
 
-  // Minor 20px, Mid 40px, Major 100px orthogonal measurement grid
-  for (let x = 20; x < LOGICAL_W; x += 20) {
-    const isMajor = x % 100 === 0;
-    const isMid = x % 40 === 0;
-    ctx.strokeStyle = isMajor
-      ? 'rgba(0, 255, 170, 0.34)'
-      : (isMid ? 'rgba(0, 246, 255, 0.17)' : 'rgba(0, 246, 255, 0.08)');
-    ctx.lineWidth = isMajor ? 1.1 : 0.8;
+  // Player-centered 1F measurement grid: 1 square box (38x38px) fits the entire player,
+  // built outward symmetrically from the player's exact original spawn position (240, 586)!
+  const cell = 38;
+  const half = cell * 0.5; // 19px
+  const originX = LOGICAL_W * 0.5; // 240
+  const originY = PLAYER_DEFAULT_Y; // 586
+  const box0Left = originX - half; // 221
+  const box0Top = originY - half;  // 567
+
+  // 1) Highlight the player's (0, 0) Origin Cell so you always see the exact home box
+  ctx.fillStyle = 'rgba(255, 212, 71, 0.08)';
+  ctx.fillRect(box0Left, box0Top, cell, cell);
+
+  // 2) Vertical grid lines tiled outward from the origin cell edges (x = 221 + k*38)
+  const kMin = Math.floor((0 - box0Left) / cell);
+  const kMax = Math.ceil((LOGICAL_W - box0Left) / cell);
+  for (let k = kMin; k <= kMax; k++) {
+    const x = box0Left + k * cell;
+    if (x < 0 || x > LOGICAL_W) continue;
+    const isOriginEdge = k === 0 || k === 1;
+    const isMajor = !isOriginEdge && (k % 4 === 0 || (k - 1) % 4 === 0) && (Math.abs(k) === 4 || Math.abs(k - 1) === 4);
+    ctx.strokeStyle = isOriginEdge
+      ? 'rgba(255, 212, 71, 0.42)'
+      : (isMajor ? 'rgba(0, 255, 170, 0.36)' : 'rgba(0, 246, 255, 0.2)');
+    ctx.lineWidth = isOriginEdge ? 1.1 : (isMajor ? 1.05 : 0.85);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, LOGICAL_H);
     ctx.stroke();
   }
-  for (let y = 20; y < LOGICAL_H; y += 20) {
-    const isMajor = y % 100 === 0;
-    const isMid = y % 40 === 0;
-    ctx.strokeStyle = isMajor
-      ? 'rgba(0, 255, 170, 0.34)'
-      : (isMid ? 'rgba(0, 246, 255, 0.17)' : 'rgba(0, 246, 255, 0.08)');
-    ctx.lineWidth = isMajor ? 1.1 : 0.8;
+
+  // 3) Horizontal grid lines tiled outward from the origin cell edges (y = 567 + m*38)
+  const mMin = Math.floor((0 - box0Top) / cell);
+  const mMax = Math.ceil((LOGICAL_H - box0Top) / cell);
+  for (let m = mMin; m <= mMax; m++) {
+    const y = box0Top + m * cell;
+    if (y < 0 || y > LOGICAL_H) continue;
+    const isOriginEdge = m === 0 || m === 1;
+    // Highlight every 4F upward from the origin box top edge (m = -4, -8, -12 -> 4F, 8F, 12F!)
+    const isMajor = m < 0 && m % 4 === 0;
+    ctx.strokeStyle = isOriginEdge
+      ? 'rgba(255, 212, 71, 0.42)'
+      : (isMajor ? 'rgba(0, 255, 170, 0.4)' : 'rgba(0, 246, 255, 0.2)');
+    ctx.lineWidth = isOriginEdge ? 1.1 : (isMajor ? 1.1 : 0.85);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(LOGICAL_W, y);
     ctx.stroke();
   }
 
-  // Centerline axis (X = 240)
-  ctx.strokeStyle = 'rgba(255, 212, 71, 0.32)';
-  ctx.setLineDash([4, 4]);
-  ctx.lineWidth = 1;
+  // 4) Subtle dashed center cross-axes passing directly through the player's original spawn point (240, 586)
+  ctx.strokeStyle = 'rgba(255, 212, 71, 0.22)';
+  ctx.setLineDash([3, 4]);
+  ctx.lineWidth = 0.9;
   ctx.beginPath();
-  ctx.moveTo(LOGICAL_W * 0.5, 0);
-  ctx.lineTo(LOGICAL_W * 0.5, LOGICAL_H);
+  ctx.moveTo(originX, 0);
+  ctx.lineTo(originX, LOGICAL_H);
+  ctx.moveTo(0, originY);
+  ctx.lineTo(LOGICAL_W, originY);
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Pixel coordinate ruler labels
-  ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
-  ctx.fillStyle = 'rgba(130, 255, 215, 0.72)';
-  ctx.textAlign = 'left';
-  for (let x = 100; x < LOGICAL_W; x += 100) {
-    ctx.fillText(`${x}`, x + 3, 44);
-  }
-  for (let y = 100; y < LOGICAL_H; y += 100) {
-    ctx.fillText(`${y}`, 4, y - 3);
+  // 5) Crisp gold frame on the (0, 0) Player Origin Box + subtle corner ticks
+  ctx.strokeStyle = 'rgba(255, 212, 71, 0.82)';
+  ctx.lineWidth = 1.4;
+  ctx.strokeRect(box0Left + 0.5, box0Top + 0.5, cell - 1, cell - 1);
+
+  // 6) Fighter-box coordinate labels (Columns: -5..0..+5 along top; Rows: 0F..14F up left margin)
+  ctx.font = `700 7.2px ${FONT_ARCADE_UI}`;
+  ctx.textAlign = 'center';
+  for (let col = -5; col <= 5; col++) {
+    const cx = originX + col * cell;
+    if (cx < 14 || cx > LOGICAL_W - 14) continue;
+    ctx.fillStyle = col === 0
+      ? 'rgba(255, 224, 96, 0.92)'
+      : (Math.abs(col) === 4 ? 'rgba(120, 255, 205, 0.86)' : 'rgba(130, 232, 255, 0.68)');
+    const label = col > 0 ? `+${col}` : `${col}`;
+    ctx.fillText(label, cx, 61);
   }
 
-  // Compact reference legend (aligned top-right under strip so bottom-left CLR PWR dock stays completely clear!)
-  ctx.fillStyle = 'rgba(2, 12, 24, 0.74)';
+  ctx.textAlign = 'left';
+  for (let rowUp = 0; rowUp <= 14; rowUp++) {
+    const cy = originY - rowUp * cell;
+    if (cy < 66 || cy > LOGICAL_H - 8) continue;
+    const isMajorRow = rowUp > 0 && rowUp % 4 === 0;
+    ctx.fillStyle = rowUp === 0
+      ? 'rgba(255, 224, 96, 0.92)'
+      : (isMajorRow ? 'rgba(120, 255, 205, 0.9)' : 'rgba(130, 232, 255, 0.68)');
+    ctx.fillText(`${rowUp}F`, 4, cy + 3);
+  }
+
+  // Subtle origin tag right below the (0, 0) home box
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(255, 224, 96, 0.82)';
+  ctx.fillText('ORIGIN (0,0)', originX, box0Top + cell + 10);
+
+  // Compact reference legend (aligned top-right under Sandbox strip)
+  ctx.fillStyle = 'rgba(2, 12, 24, 0.78)';
   ctx.fillRect(LOGICAL_W - 294, 38, 288, 15);
-  ctx.fillStyle = 'rgba(180, 255, 232, 0.88)';
+  ctx.fillStyle = 'rgba(180, 255, 232, 0.9)';
   ctx.textAlign = 'right';
-  ctx.fillText('20/100px • 1F=38px • BOLT=152px • EDGE GAP<=118px', LOGICAL_W - 10, 48);
+  ctx.fillText('1 BOX=1F (38px) • ORIGIN=(0,0) • BOLT=4F (152px)', LOGICAL_W - 10, 48);
   ctx.restore();
 }
 
@@ -195,7 +251,7 @@ function drawMeasurementGridOverlay(ctx, game) {
     ctx.fillText(`r${e.hitRadius}`, e.x, e.y + e.hitRadius + 10);
   }
 
-  // Show edge-to-edge Chain Jump reach (hitRadius + 118px) around enemies when <= 6 measured enemies (or dragged/closest!)
+  // Show edge-to-edge Chain Jump reach (hitRadius + 200px) around enemies when <= 6 measured enemies (or dragged/closest!)
   const jumpRingTargets = measured.length <= 6
     ? measured
     : (game.sandboxDrag && game.sandboxDrag.kind === 'ENEMY' ? [game.sandboxDrag.ref] : measured.slice(0, 2));
@@ -210,8 +266,8 @@ function drawMeasurementGridOverlay(ctx, game) {
     ctx.setLineDash([]);
   }
 
-  // Live EDGE-TO-EDGE gap readouts between nearby enemy pairs (edge gap <= 180px)
-  // Green = <= 118px edge gap (chains!), Red = > 118px (misses jump!)
+  // Live EDGE-TO-EDGE gap readouts between nearby enemy pairs (edge gap <= 240px)
+  // Green = <= 200px edge gap (chains!), Red = > 200px (misses jump!)
   if (measured.length >= 2 && measured.length <= 10) {
     for (let i = 0; i < measured.length; i++) {
       for (let j = i + 1; j < measured.length; j++) {
@@ -219,7 +275,7 @@ function drawMeasurementGridOverlay(ctx, game) {
         const b = measured[j];
         const centerDist = Math.hypot(b.x - a.x, b.y - a.y);
         const edgeGap = Math.max(0, centerDist - a.hitRadius - b.hitRadius);
-        if (edgeGap > 180) continue;
+        if (edgeGap > 240) continue;
         const inRange = edgeGap <= CHAIN_LIGHTNING_JUMP_RANGE;
         const ux = centerDist > 0.1 ? (b.x - a.x) / centerDist : 1;
         const uy = centerDist > 0.1 ? (b.y - a.y) / centerDist : 0;
@@ -411,7 +467,9 @@ export function renderFrame(game) {
         ? COLORS.purpleBright
         : (cap.type === 'YELLOW'
           ? COLORS.yellow
-          : (cap.type === 'CLONE' ? COLORS.clonePurple : COLORS.nullRed)));
+          : (cap.type === 'PLASMA'
+            ? COLORS.centophageAcid
+            : (cap.type === 'CLONE' ? COLORS.clonePurple : COLORS.nullRed))));
     const r = 17 + Math.sin(game.clock * 6) * 2;
     const arm = 5;
     ctx.save();
@@ -482,6 +540,33 @@ export function renderFrame(game) {
   }
 
   // 5) Enemies + Tractor Capacitor Shield ring & fixed drop-lane telegraph during BEAM_APPROACH
+  // First draw subtle predatory hunt lock-lines for any Master Centophage chasing an entity!
+  if (game.centoidChains && game.centoidChains.size > 0) {
+    for (const chain of game.centoidChains.values()) {
+      if (!chain.isCentophage || chain.chaseTargetId === null) continue;
+      const head = game.enemies.find(e => e.isCentoid && e.centoidChainId === chain.chainId && e.isCentoidHead);
+      const prey = game.enemies.find(e => e.id === chain.chaseTargetId && !e.isCentoid);
+      if (!head || !prey) continue;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(204, 255, 0, 0.45)';
+      ctx.setLineDash([4, 4]);
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(head.x, head.y);
+      ctx.lineTo(prey.x, prey.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Pulsing parasitic lock ring on targeted prey
+      const lockR = (prey.hitRadius || 16) + 4 + Math.sin(game.clock * 14) * 2;
+      ctx.strokeStyle = COLORS.centophageAcid;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(prey.x, prey.y, lockR, game.clock * 4, game.clock * 4 + Math.PI * 1.35);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // Draw Centoid heads in a second pass so weak-point heads always sit cleanly on top of body segments
   const enemyAnimTime = (game.sandboxMode && game.sandboxPauseAnim) ? 0 : game.clock;
   const centoidHeads = [];
@@ -508,6 +593,9 @@ export function renderFrame(game) {
       ctx.restore();
     }
     drawEnemySprite(ctx, e, enemyAnimTime, null, game.enemySkin);
+    if ((e.fireDisabledTimer || 0) > 0) {
+      drawEnemyFireDisabledSparks(ctx, e, game.clock, isPixelEnemyFx);
+    }
     if (e.state === 'BEAM_APPROACH' && e.beamShield > 0) {
       ctx.save();
       ctx.strokeStyle = COLORS.cyan;
@@ -523,6 +611,9 @@ export function renderFrame(game) {
   }
   for (const head of centoidHeads) {
     drawEnemySprite(ctx, head, enemyAnimTime, null, game.enemySkin);
+    if ((head.fireDisabledTimer || 0) > 0) {
+      drawEnemyFireDisabledSparks(ctx, head, game.clock, isPixelEnemyFx);
+    }
   }
 
   // 6) Enforcer Wings
@@ -737,6 +828,15 @@ export function renderFrame(game) {
       ctx.fillText('2x TAP CANNON', ix, iy);
       ctx.restore();
     }
+
+    // Plasma Rings 360-degree Guided Aim Line + Shield Bubble while aiming/firing,
+    // and smooth 0.5s fading post-fire invincibility shield (non-blinking!) right after firing!
+    if (game.plasmaRingState && (game.plasmaRingState.phase === 'AIMING' || game.plasmaRingState.phase === 'FIRING')) {
+      drawPlasmaAimGuide(ctx, game.player, game.plasmaRingState, game.clock, isPixelPlayerFx);
+    } else if ((game.player.plasmaShieldTimer || 0) > 0) {
+      const fadeRatio = clamp(game.player.plasmaShieldTimer / 0.5, 0, 1);
+      drawPlasmaShieldBubble(ctx, game.player, game.clock, isPixelPlayerFx, fadeRatio);
+    }
   }
 
   // 10) Wider Purple Arc Waves (bound to active Ship Skin!)
@@ -865,13 +965,96 @@ export function renderFrame(game) {
     }
   }
 
-  // 11) Regular White, Refracted Red Laser Bolts, Clone Dark-Purple Bolts & Purple Player Bullets (bound to Ship Skin!)
+  // 10c) Full-Screen Death Cross Lightning (copied across BOTH 32-Bit AND Alpha Test skins!)
+  if (game.deathCrossLightnings && game.deathCrossLightnings.length > 0) {
+    for (const cl of game.deathCrossLightnings) {
+      drawDeathCrossLightning(ctx, cl, game.clock);
+    }
+  }
+
+  // 10d) Piercing Ricocheting Plasma Rings (slightly larger than Pulsar electro balls; 32-Bit & Alpha Test!)
+  if (game.plasmaRings && game.plasmaRings.length > 0) {
+    for (const ring of game.plasmaRings) {
+      if (isPixelPlayerFx) {
+        drawPixelPlasmaRing(ctx, ring, game.clock);
+        continue;
+      }
+      ctx.save();
+      if (ring.trail && ring.trail.length > 1) {
+        for (let k = 0; k < ring.trail.length; k += 2) {
+          const frac = (k + 1) / ring.trail.length;
+          ctx.globalAlpha = frac * 0.34;
+          ctx.strokeStyle = k % 4 === 0 ? COLORS.centophagePurple : '#2dff7a';
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.arc(ring.trail[k].x, ring.trail[k].y, ring.radius * (0.76 + frac * 0.24), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+      // Translucent dark-purple interior aura + outer purple containment + acid green plasma ring + yellow orbit sparks
+      ctx.fillStyle = 'rgba(37, 23, 102, 0.24)';
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius - 2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = COLORS.centophagePurple;
+      ctx.shadowColor = COLORS.centophageViolet;
+      ctx.shadowBlur = 16;
+      ctx.lineWidth = 6.2;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#2dff7a';
+      ctx.shadowColor = COLORS.centophageAcid;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius - 0.5, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#f2ffaa';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(ring.x, ring.y, ring.radius - 2.2, 0, Math.PI * 2);
+      ctx.stroke();
+
+      for (let k = 0; k < 3; k++) {
+        const a = (ring.spin || game.clock * 8) * 1.4 + (k * Math.PI * 2) / 3;
+        const sx = ring.x + Math.cos(a) * ring.radius;
+        const sy = ring.y + Math.sin(a) * ring.radius;
+        ctx.fillStyle = COLORS.yellow;
+        ctx.shadowColor = COLORS.yellow;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  // 11) Regular White, Refracted Red Laser Bolts, Ricocheted Bolts, Clone Dark-Purple Bolts & Purple Player Bullets (bound to Ship Skin!)
   for (const b of game.playerBullets) {
     if (isPixelPlayerFx) {
       drawPixelPlayerBullet(ctx, b, game.clock);
       continue;
     }
     ctx.save();
+    if (b.ricochet) {
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = COLORS.yellow;
+      ctx.shadowColor = COLORS.yellow;
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 4.6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
     if (b.slowedByFlux && b.dissolveMax > 0) {
       ctx.globalAlpha = clamp(b.dissolveTimer / 0.65, 0.18, 1);
     }
@@ -1184,6 +1367,11 @@ export function renderFrame(game) {
     ctx.lineWidth = 3;
     ctx.strokeRect(1.5, 1.5, LOGICAL_W - 3, LOGICAL_H - 3);
     ctx.restore();
+  }
+
+  // 13b) Glowing Green + Dark Purple + Yellow Arena Containment Border (Plasma Rings 8s timer!)
+  if (game.plasmaRingState && game.plasmaRingState.borderActive) {
+    drawPlasmaArenaBorder(ctx, game.plasmaRingState, game.clock, isPixelPlayerFx, !!game.sandboxMode);
   }
 
   // Sandbox Measurement Grid live overlay (enemy hitboxes & edge-to-edge jump distances — NO ship yellow ruler!)
