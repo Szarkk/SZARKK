@@ -370,7 +370,7 @@ export function spawnCapsule(game, x, y, type, mode = 'DROP', glowReward = null)
       maxLife: 9999,
       hitRadius: 21
     });
-    game.spawnDeleteBurst(px, py, col, 10, 105);
+    game.spawnPowerupFx(px, py, col, 'CAPSULE_SPAWN');
   } else {
     const startX = clamp(x, 66, LOGICAL_W - 66);
     const startY = clamp(y, 130, maxY);
@@ -398,7 +398,7 @@ export function spawnCapsule(game, x, y, type, mode = 'DROP', glowReward = null)
       maxLife: glowReward ? 20.0 : 15.0,
       hitRadius: 21
     });
-    game.spawnDeleteBurst(startX, startY, col, glowReward ? 16 : 8, glowReward ? 130 : 90);
+    game.spawnPowerupFx(startX, startY, col, 'CAPSULE_SPAWN');
   }
 }
 
@@ -415,7 +415,8 @@ export function destroyAndCollectCapsule(game, capIdx) {
     game.masterNullRewardSpawned = false;
   }
   const col = capsuleColorForType(cap.type);
-  game.spawnDeleteBurst(cap.x, cap.y, col, 14, 150);
+  const distToPlayer = game.player ? Math.hypot(cap.x - game.player.x, cap.y - game.player.y) : 0;
+  game.spawnPowerupFx(cap.x, cap.y, col, 'CAPSULE_OPEN', { streamToPlayer: distToPlayer > 32 });
   collectCapsule(game, cap);
 }
 
@@ -426,7 +427,9 @@ export function collectCapsule(game, cap) {
 
   game.synth.playPowerupPickup(cap.type);
   const col = capsuleColorForType(cap.type);
-  game.spawnDeleteBurst(cap.x, cap.y, col, 16, 150);
+  const px = game.player ? game.player.x : cap.x;
+  const py = game.player ? game.player.y : cap.y;
+  game.spawnPowerupFx(px, py, col, 'SHIP_SYNC');
 
   if (!game.powerup.order.includes(cap.type)) {
     game.powerup.order.push(cap.type);
@@ -491,7 +494,7 @@ export function updatePowerupTimers(game, dt) {
       game.powerup.slots.CLONE = (game.cloneTimer / CLONE_DURATION) * POWERUP_MAX_ENERGY;
       if (game.cloneTimer <= 0.001) {
         for (const cl of game.fighterClones) {
-          game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 10, 110);
+          game.spawnPowerupFx(cl.x, cl.y, COLORS.clonePurple, 'CAPSULE_SPAWN');
         }
         removePowerupSlot(game, 'CLONE', false);
       }

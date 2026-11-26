@@ -174,7 +174,7 @@ export function damagePlayer(game) {
     p.invulnTimer = 1.6;
     game.activeLaserBeams = [];
     game.shake = 0.24;
-    game.spawnDeleteBurst(p.x + 14, p.y, shipCol, 20, 180);
+    game.spawnDeleteBurst(p.x + 14, p.y, shipCol, 20, 180, 'PLAYER');
     game.spawnPopup(p.x, p.y - 24, 'WINGMAN DELETED', COLORS.amber, 1.2);
     game.synth.playDeleteBurst(true);
     return;
@@ -197,7 +197,7 @@ export function damagePlayer(game) {
   game.masterNullRewardSpawned = false;
   if (game.fighterClones && game.fighterClones.length > 0) {
     for (const cl of game.fighterClones) {
-      game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 12, 140);
+      game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 12, 140, 'PLAYER');
     }
   }
   if (hasPowerup(game, 'CLONE')) {
@@ -215,7 +215,7 @@ export function damagePlayer(game) {
   }
   game.shake = 0.34;
   game.hitStop = 0.05;
-  game.spawnDeleteBurst(p.x, p.y, shipCol, 30, 225);
+  game.spawnDeleteBurst(p.x, p.y, shipCol, 30, 225, 'PLAYER');
   game.synth.playDeleteBurst(true);
   game.updateHUD();
   game.updateStatusPills();

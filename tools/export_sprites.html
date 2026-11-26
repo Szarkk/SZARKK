@@ -1,0 +1,938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SZARKK — PNG Sprite & Animation Exporter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap" />
+  <style>
+    :root {
+      --bg: #030a16;
+      --panel: #071428;
+      --border: #00e6ff;
+      --emerald: #00ffaa;
+      --gold: #ffd447;
+      --purple: #c44dff;
+      --red: #ff2a55;
+      --text: #e6f6ff;
+      --muted: #8ab4cf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Pixelify Sans", system-ui, sans-serif;
+    }
+    .shell {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    header {
+      background: var(--panel);
+      border: 2px solid var(--border);
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      box-shadow: 0 4px 0 rgba(0,0,0,0.6);
+    }
+    h1 {
+      margin: 0 0 6px 0;
+      font-family: "Press Start 2P", monospace;
+      font-size: 16px;
+      color: #ffffff;
+      text-shadow: 2px 2px 0 #020814, 0 0 10px rgba(0,246,255,0.7);
+    }
+    .sub {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+    select, button {
+      font-family: "Silkscreen", monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 9px 13px;
+      border: 2px solid var(--border);
+      background: #04162c;
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow: 0 3px 0 rgba(0,0,0,0.65);
+    }
+    button:hover { filter: brightness(1.15); }
+    button:active { transform: translate(1px, 1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-folder {
+      border-color: var(--emerald);
+      background: linear-gradient(180deg, #007254, #00382c);
+      color: #d6fff0;
+    }
+    .btn-zip {
+      border-color: var(--gold);
+      background: linear-gradient(180deg, #68490a, #332104);
+      color: #fff0b8;
+    }
+    .btn-back {
+      border-color: var(--purple);
+      background: #240c4a;
+      color: #ebd4ff;
+      text-decoration: none;
+      font-family: "Silkscreen", monospace;
+      font-size: 11px;
+      padding: 9px 12px;
+      display: inline-block;
+    }
+    .status-bar {
+      background: #041020;
+      border: 2px solid rgba(0, 230, 255, 0.45);
+      padding: 10px 14px;
+      margin-bottom: 18px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 13px;
+    }
+    .progress-wrap {
+      width: 260px;
+      height: 12px;
+      background: #02060d;
+      border: 1px solid rgba(0, 246, 255, 0.6);
+    }
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00c4ff, #00ffaa);
+      transition: width 0.08s linear;
+    }
+    .cat-title {
+      font-family: "Silkscreen", monospace;
+      font-size: 13px;
+      color: var(--gold);
+      margin: 22px 0 10px 0;
+      padding-bottom: 5px;
+      border-bottom: 2px solid rgba(0, 230, 255, 0.32);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+      gap: 12px;
+    }
+    .card {
+      background: var(--panel);
+      border: 2px solid rgba(0, 230, 255, 0.42);
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .card-name {
+      font-family: "Silkscreen", monospace;
+      font-size: 10px;
+      color: #ffffff;
+      word-break: break-word;
+    }
+    .card-meta {
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .preview-box {
+      height: 104px;
+      border: 1px solid rgba(0, 230, 255, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #050c1a;
+      background-image:
+        linear-gradient(45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+        linear-gradient(-45deg, rgba(255,255,255,0.04) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, rgba(255,255,255,0.04) 75%),
+        linear-gradient(-45deg, transparent 75%, rgba(255,255,255,0.04) 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      overflow: hidden;
+    }
+    canvas.pixel {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    .card-actions {
+      display: flex;
+      gap: 6px;
+    }
+    .card-actions button {
+      flex: 1;
+      padding: 5px 6px;
+      font-size: 9px;
+      border-width: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>SZARKK PNG &amp; ANIMATION EXPORTER</h1>
+        <div class="sub">Exports transparent PNG individual frames + horizontal sprite sheets + manifest.json directly from the live game renderers.</div>
+      </div>
+      <div class="controls">
+        <select id="sel-scale" title="Export PNG Pixel Scale">
+          <option value="1" selected>SCALE: 1x NATIVE</option>
+          <option value="2">SCALE: 2x CRISP</option>
+          <option value="4">SCALE: 4x CRISP</option>
+        </select>
+        <select id="sel-set" title="Skin Set to Export">
+          <option value="ALL" selected>SET: 32-BIT + ALPHA TEST</option>
+          <option value="32BIT">SET: 32-BIT ONLY</option>
+          <option value="ALPHA">SET: ALPHA TEST ONLY</option>
+        </select>
+        <button type="button" id="btn-export-folder" class="btn-folder">SAVE TO FOLDER (GOOGLE DRIVE)</button>
+        <button type="button" id="btn-export-zip" class="btn-zip">DOWNLOAD ALL (.ZIP)</button>
+        <a href="../index.html" class="btn-back">&#9664; GAME</a>
+      </div>
+    </header>
+
+    <div class="status-bar">
+      <div id="status-text">Initializing live SZARKK renderers...</div>
+      <div class="progress-wrap"><div id="progress-fill" class="progress-fill"></div></div>
+    </div>
+
+    <div id="gallery"></div>
+  </div>
+
+  <script type="module">
+    import { COLORS } from '../js/config.js';
+    import {
+      drawAurexFighter,
+      drawEnemySprite,
+      drawEnforcerWingSprite,
+      drawFighterClone,
+      drawPixelCapsule
+    } from '../js/sprites.js';
+    import {
+      createPixelExplosion,
+      createPowerupPickupFx,
+      drawPixelAoeBlast,
+      drawPixelArcWave,
+      drawPixelBuffWave,
+      drawPixelCannonShot,
+      drawPixelChainLightning,
+      drawPixelElectroBall,
+      drawPixelEnemyBullet,
+      drawPixelHomingMissile,
+      drawPixelPlayerBullet,
+      drawPixelPulsarSpark,
+      drawPixelRedLaserBeam,
+      drawPixelShipShockAura,
+      drawPixelTractorBeam,
+      renderPixelExplosions,
+      renderPowerupPickupFx
+    } from '../js/renderers/saturn_fx.js';
+
+    const statusText = document.getElementById('status-text');
+    const progressFill = document.getElementById('progress-fill');
+    const galleryEl = document.getElementById('gallery');
+    const selScale = document.getElementById('sel-scale');
+    const selSet = document.getElementById('sel-set');
+    const btnFolder = document.getElementById('btn-export-folder');
+    const btnZip = document.getElementById('btn-export-zip');
+
+    /* =====================================================================
+       COMPLETE CATALOG OF EVERY ENTITY, POWER-UP & ANIMATION IN SZARKK
+       ===================================================================== */
+    function buildCatalog() {
+      const items = [];
+      const add = (category, folder, id, label, setTag, w, h, frames, fps, drawFrame) => {
+        items.push({ category, folder, id, label, setTag, w, h, frames, fps, drawFrame });
+      };
+
+      // --- 1. PLAYER SHIPS & CLONES (32-BIT VALKYRIE MK-II + ALPHA TEST) ---
+      const ship32 = (id, label, w, h, frames, fps, fn) => add('01 — PLAYER SHIPS & CLONES', '01_ships/aurex_fighter_32bit', id, label, '32BIT', w, h, frames, fps, fn);
+      const shipAlpha = (id, label, w, h, frames, fps, fn) => add('01 — PLAYER SHIPS & CLONES', '01_ships/aurex_fighter_alpha_test', id, label, 'ALPHA', w, h, frames, fps, fn);
+
+      const draw32Ship = (ctx, w, h, f, frames, anim, opts = {}) => {
+        const t = f / 16;
+        drawAurexFighter(
+          ctx, w / 2, h / 2, !!opts.dual, false, !!opts.slow, t,
+          opts.powerups || null, !!opts.purpleAura, !!opts.purpleOvercharge,
+          'saturn_32bit', anim
+        );
+      };
+
+      ship32('idle', 'Aurex 32-Bit (Idle)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0, thrustAxis: 0 }));
+      ship32('thrust_boost', 'Aurex 32-Bit (Boost)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0, thrustAxis: 0.9 }));
+      ship32('bank_left_mild', 'Aurex 32-Bit (Bank L1)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: -0.35, thrustAxis: 0 }));
+      ship32('bank_left_hard', 'Aurex 32-Bit (Bank L2)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: -0.85, thrustAxis: 0 }));
+      ship32('bank_right_mild', 'Aurex 32-Bit (Bank R1)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0.35, thrustAxis: 0 }));
+      ship32('bank_right_hard', 'Aurex 32-Bit (Bank R2)', 48, 48, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0.85, thrustAxis: 0 }));
+      ship32('dual_fighter', 'Aurex 32-Bit (Dual)', 80, 56, 3, 16, (c, w, h, f, n) => draw32Ship(c, w, h, f, n, { bankAxis: 0, thrustAxis: 0 }, { dual: true }));
+      ship32('life_counter_icon', 'HUD Life Counter (Valkyrie)', 16, 16, 1, 1, (c) => {
+        const px = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x + 1, y + 1, w, h); };
+        const body = '#ffffff', wing = '#dfe4ee', silver = '#969fae', dark = '#181c24';
+        px(6, 0, 1, 10, body); px(5, 2, 3, 8, body); px(4, 3, 5, 1, wing); px(6, 3, 1, 2, dark);
+        px(3, 5, 7, 3, wing); px(1, 6, 11, 2, wing); px(0, 6, 1, 2, silver); px(12, 6, 1, 2, silver);
+        px(4, 8, 5, 1, body); px(3, 9, 7, 1, silver); px(5, 9, 3, 1, body);
+        px(2, 10, 2, 1, silver); px(9, 10, 2, 1, silver); px(6, 10, 1, 1, dark);
+        px(4, 11, 1, 2, body); px(8, 11, 1, 2, body);
+      });
+
+      ship32('hologram_clone', 'Hologram Clone (32-Bit)', 56, 56, 6, 12, (c, w, h, f, n) => {
+        drawFighterClone(c, { id: 1, x: w / 2, y: h / 2, invulnTimer: 0, hitFlash: 0, detached: false, hp: 4, maxHp: 4, bankAxis: 0, thrustAxis: 0 }, f / 12, 'saturn_32bit');
+      });
+
+      for (const [pKey, pName, extra] of [
+        ['CYAN', 'Glow: Cyan Homing', {}],
+        ['RED', 'Glow: Red Laser', {}],
+        ['PURPLE', 'Glow: Purple Arc', { purpleAura: true }],
+        ['YELLOW', 'Glow: Yellow Lightning', {}],
+        ['CLONE', 'Glow: Clone Violet', {}]
+      ]) {
+        ship32(`powerup_glow_${pKey.toLowerCase()}`, pName, 72, 72, 6, 12, (c, w, h, f, n) => {
+          drawAurexFighter(c, w / 2, h / 2, false, false, false, f / 12, [pKey], !!extra.purpleAura, false, 'saturn_32bit', { bankAxis: 0, thrustAxis: 0 });
+        });
+      }
+      ship32('powerup_glow_all5', 'Glow: All-5 Stacked', 72, 72, 8, 12, (c, w, h, f, n) => {
+        drawAurexFighter(c, w / 2, h / 2, false, false, false, f / 6, ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE'], true, false, 'saturn_32bit', { bankAxis: 0, thrustAxis: 0 });
+      });
+
+      // Alpha Test Legacy Ships
+      shipAlpha('idle', 'Aurex Alpha Test (Idle)', 48, 48, 3, 12, (c, w, h, f) => {
+        drawAurexFighter(c, w / 2, h / 2, false, false, false, f / 12, null, false, false, 'alpha_test');
+      });
+      shipAlpha('dual_fighter', 'Aurex Alpha Test (Dual)', 80, 56, 3, 12, (c, w, h, f) => {
+        drawAurexFighter(c, w / 2, h / 2, true, false, false, f / 12, null, false, false, 'alpha_test');
+      });
+      shipAlpha('hologram_clone', 'Hologram Clone (Alpha)', 56, 56, 6, 12, (c, w, h, f) => {
+        drawFighterClone(c, { id: 1, x: w / 2, y: h / 2, invulnTimer: 0, hitFlash: 0, detached: false, hp: 4, maxHp: 4 }, f / 12, 'alpha_test');
+      });
+      shipAlpha('powerup_all5_rgb', 'Alpha Test (All-5 RGB)', 72, 72, 6, 12, (c, w, h, f) => {
+        drawAurexFighter(c, w / 2, h / 2, false, false, false, f / 6, ['CYAN', 'RED', 'PURPLE', 'YELLOW', 'CLONE'], true, false, 'alpha_test');
+      });
+
+      // --- 2. ALL 11 ENEMIES & WINGS (32-BIT NEXUS FLEET + ALPHA TEST) ---
+      const enemySpecs = [
+        { id: 'drone', label: 'Drone', type: 'DRONE', w: 48, h: 48, frames: 4, fps: 10 },
+        { id: 'interceptor', label: 'Interceptor', type: 'INTERCEPTOR', w: 48, h: 48, frames: 3, fps: 14 },
+        { id: 'v1_enforcer', label: 'V1 Enforcer', type: 'V1_ENFORCER', w: 64, h: 64, frames: 4, fps: 10, hp: 3, maxHp: 3 },
+        { id: 'v1_enforcer_damaged', label: 'V1 Enforcer (1 HP)', type: 'V1_ENFORCER', w: 64, h: 64, frames: 4, fps: 12, hp: 1, maxHp: 3 },
+        { id: 'v1_enforcer_flux_synergy', label: 'V1 Enforcer (Flux)', type: 'V1_ENFORCER', w: 68, h: 68, frames: 6, fps: 12, hp: 3, maxHp: 3, v1Synergy: 'FLUX' },
+        { id: 'v1_enforcer_null_synergy', label: 'V1 Enforcer (Null)', type: 'V1_ENFORCER', w: 68, h: 68, frames: 6, fps: 12, hp: 3, maxHp: 3, v1Synergy: 'NULL' },
+        { id: 'elite_flux_enforcer', label: 'Elite Enforcer [Flux]', type: 'FLUX_ENFORCER', w: 72, h: 72, frames: 6, fps: 12, hp: 10, maxHp: 10 },
+        { id: 'elite_null_enforcer', label: 'Elite Enforcer [Null]', type: 'NULL_ENFORCER', w: 72, h: 72, frames: 6, fps: 12, hp: 10, maxHp: 10 },
+        { id: 'master_flux_enforcer', label: 'Master Enforcer [Flux]', type: 'MASTER_FLUX_ENFORCER', w: 96, h: 96, frames: 6, fps: 12, hp: 20, maxHp: 20 },
+        { id: 'master_null_enforcer', label: 'Master Enforcer [Null]', type: 'MASTER_NULL_ENFORCER', w: 96, h: 96, frames: 6, fps: 12, hp: 20, maxHp: 20 },
+        { id: 'centoid_head', label: 'Centoid (Head)', type: 'CENTOID', w: 48, h: 48, frames: 4, fps: 10, isCentoid: true, isCentoidHead: true },
+        { id: 'centoid_body', label: 'Centoid (Body)', type: 'CENTOID', w: 48, h: 48, frames: 4, fps: 10, isCentoid: true, isCentoidHead: false },
+        { id: 'alpha_centoid_head', label: 'Alpha Centoid (Head)', type: 'ALPHA_CENTOID', w: 56, h: 56, frames: 6, fps: 12, isCentoid: true, isCentoidHead: true },
+        { id: 'alpha_centoid_body', label: 'Alpha Centoid (Body)', type: 'ALPHA_CENTOID', w: 56, h: 56, frames: 4, fps: 10, isCentoid: true, isCentoidHead: false },
+        { id: 'pulsar', label: 'Pulsar (Electric Arc)', type: 'PULSAR', w: 64, h: 64, frames: 6, fps: 14, hp: 6, maxHp: 6 }
+      ];
+
+      for (const spec of enemySpecs) {
+        add('02 — ENEMIES (32-BIT NEXUS FLEET)', `02_enemies_32bit/${spec.id}`, spec.id, `${spec.label} (32-Bit)`, '32BIT', spec.w, spec.h, spec.frames, spec.fps, (c, w, h, f) => {
+          drawEnemySprite(c, {
+            type: spec.type, x: w / 2, y: h / 2,
+            hp: spec.hp || 4, maxHp: spec.maxHp || 4, hitFlash: 0, angle: 0, animPhase: 0,
+            v1Synergy: spec.v1Synergy || null,
+            isCentoid: !!spec.isCentoid, isCentoidHead: !!spec.isCentoidHead, centoidOrder: spec.isCentoidHead ? 0 : 1
+          }, f / spec.fps, 1, 'nexus_32bit');
+        });
+        add('03 — ENEMIES (ALPHA TEST LEGACY)', `03_enemies_alpha_test/${spec.id}`, `${spec.id}_alpha`, `${spec.label} (Alpha)`, 'ALPHA', spec.w, spec.h, spec.frames, spec.fps, (c, w, h, f) => {
+          drawEnemySprite(c, {
+            type: spec.type, x: w / 2, y: h / 2,
+            hp: spec.hp || 4, maxHp: spec.maxHp || 4, hitFlash: 0, angle: 0, animPhase: 0,
+            v1Synergy: spec.v1Synergy || null,
+            isCentoid: !!spec.isCentoid, isCentoidHead: !!spec.isCentoidHead, centoidOrder: spec.isCentoidHead ? 0 : 1
+          }, f / spec.fps, 1, 'alpha_test');
+        });
+      }
+
+      // Enforcer Wings (Flux & Null, 32-Bit + Alpha)
+      for (const variant of ['FLUX', 'NULL']) {
+        const low = variant.toLowerCase();
+        add('02 — ENEMIES (32-BIT NEXUS FLEET)', `02_enemies_32bit/wing_${low}`, `wing_${low}`, `Enforcer Wing [${variant}]`, '32BIT', 40, 40, 4, 14, (c, w, h, f) => {
+          drawEnforcerWingSprite(c, { x: w / 2, y: h / 2, angle: -Math.PI / 2, variant }, 'nexus_32bit', f / 14);
+        });
+        add('03 — ENEMIES (ALPHA TEST LEGACY)', `03_enemies_alpha_test/wing_${low}`, `wing_${low}_alpha`, `Enforcer Wing [${variant}] Alpha`, 'ALPHA', 40, 40, 4, 14, (c, w, h, f) => {
+          drawEnforcerWingSprite(c, { x: w / 2, y: h / 2, angle: -Math.PI / 2, variant }, 'alpha_test', f / 14);
+        });
+      }
+
+      // --- 3. ALL 5 POWER-UP CAPSULES (+ MASTER STREAK GLOW REWARDS!) ---
+      const capsuleDefs = [
+        { id: 'capsule_cyan_homing', label: 'Cyan Homing Capsule', type: 'CYAN', glow: false },
+        { id: 'capsule_cyan_glow_reward', label: 'Cyan Master Streak Glow', type: 'CYAN', glow: true },
+        { id: 'capsule_red_laser', label: 'Red Laser Capsule', type: 'RED', glow: false },
+        { id: 'capsule_red_glow_reward', label: 'Red Master Streak Glow', type: 'RED', glow: true },
+        { id: 'capsule_purple_arc_wave', label: 'Purple Arc Wave Capsule', type: 'PURPLE', glow: false },
+        { id: 'capsule_yellow_lightning', label: 'Yellow Lightning Capsule', type: 'YELLOW', glow: false },
+        { id: 'capsule_clone_hologram', label: 'Clone Trio Capsule', type: 'CLONE', glow: false }
+      ];
+      for (const cap of capsuleDefs) {
+        add('04 — POWER-UP CAPSULES', `04_powerup_capsules/${cap.id}`, cap.id, cap.label, '32BIT', 64, 64, 6, 10, (c, w, h, f, n) => {
+          const t = (f / n) * (Math.PI * 2 / 7);
+          if (cap.glow) {
+            const pulse = 0.8 + Math.sin(t * 10) * 0.2;
+            const rg = c.createRadialGradient(w / 2, h / 2, 4, w / 2, h / 2, 26 * pulse);
+            rg.addColorStop(0, cap.type === 'CYAN' ? 'rgba(180,255,255,0.65)' : 'rgba(255,160,180,0.65)');
+            rg.addColorStop(0.55, cap.type === 'CYAN' ? 'rgba(0,246,255,0.3)' : 'rgba(255,30,66,0.3)');
+            rg.addColorStop(1, 'rgba(0,0,0,0)');
+            c.fillStyle = rg;
+            c.beginPath();
+            c.arc(w / 2, h / 2, 26 * pulse, 0, Math.PI * 2);
+            c.fill();
+          }
+          drawPixelCapsule(c, w / 2, h / 2, cap.type, t, 1.0);
+        });
+      }
+
+      // --- 4. POWER-UP PICKUP FX, WEAPONS, HAZARDS & 32-BIT EXPLOSIONS ---
+      const addFx = (sub, id, label, setTag, w, h, frames, fps, fn) => {
+        add('05 — POWER-UP & COMBAT VFX ANIMATIONS', `05_vfx/${sub}`, id, label, setTag, w, h, frames, fps, fn);
+      };
+
+      // Subtle Power-Up Acquisition Shimmers (Ship Sync & Capsule Unlock, per color!)
+      for (const [pKey, col] of [
+        ['cyan', COLORS.cyan],
+        ['red', COLORS.nullRed],
+        ['purple', COLORS.purple],
+        ['yellow', COLORS.yellow],
+        ['clone', COLORS.clonePurple]
+      ]) {
+        const shipFxTemplate = createPowerupPickupFx(40, 40, col, 'SHIP_SYNC', true);
+        addFx('powerup_pickup', `ship_sync_32bit_${pKey}`, `Ship Sync FX (${pKey.toUpperCase()})`, '32BIT', 80, 80, 6, 12, (c, w, h, f, n) => {
+          const clone = { ...shipFxTemplate, x: w / 2, y: h / 2, age: ((f + 0.4) / n) * shipFxTemplate.maxLife };
+          renderPowerupPickupFx(c, [clone], null, f / 12);
+        });
+        const capFxTemplate = createPowerupPickupFx(32, 32, col, 'CAPSULE_OPEN', true);
+        addFx('powerup_pickup', `capsule_unlock_32bit_${pKey}`, `Capsule Unlock (${pKey.toUpperCase()})`, '32BIT', 64, 64, 6, 12, (c, w, h, f, n) => {
+          const clone = { ...capFxTemplate, x: w / 2, y: h / 2, age: ((f + 0.35) / n) * capFxTemplate.maxLife };
+          renderPowerupPickupFx(c, [clone], null, f / 12);
+        });
+      }
+
+      // Player 32-Bit Power-Up Weapons
+      addFx('weapons_32bit', 'player_bolt_standard', 'Player Bolt (32-Bit)', '32BIT', 24, 32, 2, 12, (c, w, h) => {
+        drawPixelPlayerBullet(c, { x: w / 2, y: h / 2, weakened: false, cloneBolt: false, purple: false, redLaserBullet: false });
+      });
+      addFx('weapons_32bit', 'player_bolt_clone', 'Clone Bolt (32-Bit)', '32BIT', 24, 32, 2, 12, (c, w, h) => {
+        drawPixelPlayerBullet(c, { x: w / 2, y: h / 2, weakened: false, cloneBolt: true, purple: false, redLaserBullet: false });
+      });
+      addFx('weapons_32bit', 'homing_missile_cyan', 'Cyan Homing Missile', '32BIT', 40, 56, 4, 16, (c, w, h, f) => {
+        const cx = w / 2;
+        const cy = h / 2 - 4;
+        drawPixelHomingMissile(c, {
+          x: cx, y: cy, angle: -Math.PI / 2,
+          trail: [{ x: cx, y: cy + 20 }, { x: cx, y: cy + 15 }, { x: cx, y: cy + 10 }, { x: cx, y: cy + 6 }]
+        }, f / 16);
+      });
+      addFx('weapons_32bit', 'red_laser_beam', 'Red Continuous Laser', '32BIT', 40, 128, 4, 16, (c, w, h, f) => {
+        drawPixelRedLaserBeam(c, { x: w / 2, y1: h - 10, y2: 14, weakened: false, hit: true, hitColor: COLORS.nullRed, impacts: [48] }, f / 16);
+      });
+      addFx('weapons_32bit', 'purple_arc_wave', 'Purple Arc Wave', '32BIT', 128, 72, 4, 12, (c, w, h, f) => {
+        drawPixelArcWave(c, { x: w / 2, y: 26, radius: 44 + f * 4 }, f / 12);
+      });
+      addFx('weapons_32bit', 'purple_cannon_orb', 'Purple Cannon Orb', '32BIT', 64, 80, 6, 14, (c, w, h, f) => {
+        const cx = w / 2;
+        const cy = 28;
+        drawPixelCannonShot(c, {
+          x: cx, y: cy, radius: 13,
+          trail: [{ x: cx, y: cy + 36 }, { x: cx, y: cy + 26 }, { x: cx, y: cy + 17 }, { x: cx, y: cy + 9 }]
+        }, f / 14);
+      });
+      addFx('weapons_32bit', 'purple_cannon_aoe_blast', 'Cannon AOE Shockwave', '32BIT', 144, 144, 6, 14, (c, w, h, f, n) => {
+        const t = (f + 0.5) / n;
+        drawPixelAoeBlast(c, { x: w / 2, y: h / 2, radius: 14 + t * 52, life: 1 - t * 0.85, maxLife: 1 });
+      });
+      addFx('weapons_32bit', 'yellow_chain_lightning', 'Chain Lightning Bolt', '32BIT', 96, 96, 4, 16, (c, w, h, f) => {
+        const jit = ((f % 2) * 2 - 1) * 7;
+        drawPixelChainLightning(c, {
+          life: 1 - f * 0.14, maxLife: 1, branchStartIdx: 1,
+          segments: [
+            [{ x: 14, y: 78 }, { x: 34 + jit, y: 54 }, { x: 52 - jit, y: 36 }, { x: 82, y: 16 }],
+            [{ x: 52 - jit, y: 36 }, { x: 66 + jit * 0.6, y: 58 }, { x: 80, y: 74 }]
+          ]
+        });
+      });
+
+      // Enemy 32-Bit Hazards & Explosions
+      for (const [bName, bCol] of [
+        ['red', COLORS.nullRed],
+        ['cyan', COLORS.cyan],
+        ['yellow', COLORS.yellow],
+        ['amber', COLORS.amber]
+      ]) {
+        addFx('hazards_32bit', `enemy_bullet_${bName}`, `Enemy Pellet (${bName.toUpperCase()})`, '32BIT', 24, 24, 2, 12, (c, w, h, f) => {
+          drawPixelEnemyBullet(c, { x: w / 2, y: h / 2, color: bCol }, f / 16);
+        });
+      }
+      addFx('hazards_32bit', 'tractor_beam_idle', 'Tractor Beam (Idle)', '32BIT', 128, 160, 6, 12, (c, w, h, f, n) => {
+        c.save();
+        c.scale(1, (h - 20) / 600);
+        drawPixelTractorBeam(c, { x: w / 2, y: 4 }, f / n, false);
+        c.restore();
+      });
+      addFx('hazards_32bit', 'tractor_beam_capturing', 'Tractor Beam (Capture)', '32BIT', 128, 160, 6, 12, (c, w, h, f, n) => {
+        c.save();
+        c.scale(1, (h - 20) / 600);
+        drawPixelTractorBeam(c, { x: w / 2, y: 4 }, f / n, true);
+        c.restore();
+      });
+      addFx('hazards_32bit', 'pulsar_electro_ball', 'Pulsar Electro Ball', '32BIT', 48, 48, 6, 14, (c, w, h, f) => {
+        drawPixelElectroBall(c, { x: w / 2, y: h / 2, radius: 13, phase: 0 }, f / 14);
+      });
+      addFx('hazards_32bit', 'pulsar_death_spark', 'Pulsar Death Spark', '32BIT', 48, 48, 4, 14, (c, w, h, f) => {
+        drawPixelPulsarSpark(c, {
+          x: w / 2 + 8, y: h / 2 - 8,
+          trail: [{ x: w / 2 - 12, y: h / 2 + 12 }, { x: w / 2 - 5, y: h / 2 + 5 }, { x: w / 2 + 2, y: h / 2 - 2 }]
+        });
+      });
+      addFx('hazards_32bit', 'ship_shock_aura', 'Pulsar Shock Aura', '32BIT', 72, 72, 4, 14, (c, w, h, f) => {
+        drawPixelShipShockAura(c, w / 2, h / 2, false, true, f / 14);
+      });
+      addFx('hazards_32bit', 'v1_buff_wave_flux', 'V1 Synergy Buff (Flux)', '32BIT', 96, 96, 6, 12, (c, w, h, f, n) => {
+        const t = (f + 0.4) / n;
+        drawPixelBuffWave(c, { x: w / 2, y: h / 2, radius: 12 + t * 32, color: COLORS.cyan, life: 1 - t * 0.8, maxLife: 1 });
+      });
+      addFx('hazards_32bit', 'v1_buff_wave_null', 'V1 Synergy Buff (Null)', '32BIT', 96, 96, 6, 12, (c, w, h, f, n) => {
+        const t = (f + 0.4) / n;
+        drawPixelBuffWave(c, { x: w / 2, y: h / 2, radius: 12 + t * 32, color: COLORS.nullRed, life: 1 - t * 0.8, maxLife: 1 });
+      });
+
+      // Multi-stage 32-bit Pixel Fireball Explosions
+      for (const [eId, eLabel, eCol, eTier, eSz] of [
+        ['explosion_small_cyan', 'Explosion Small (Cyan)', COLORS.cyan, 'SMALL', 56],
+        ['explosion_med_red', 'Explosion Med (Red)', COLORS.nullRed, 'MED', 72],
+        ['explosion_large_orange', 'Explosion Large (Boss)', '#ff8c24', 'LARGE', 96],
+        ['explosion_med_purple', 'Explosion Med (Purple)', COLORS.purple, 'MED', 72],
+        ['explosion_med_yellow', 'Explosion Med (Yellow)', COLORS.yellow, 'MED', 72]
+      ]) {
+        const baseEx = createPixelExplosion(eSz / 2, eSz / 2, eCol, eTier);
+        addFx('explosions_32bit', eId, eLabel, '32BIT', eSz, eSz, 6, 14, (c, w, h, f, n) => {
+          const ex = { ...baseEx, x: w / 2, y: h / 2, age: ((f + 0.35) / n) * baseEx.maxLife };
+          renderPixelExplosions(c, [ex]);
+        });
+      }
+
+      return items;
+    }
+
+    const ALL_ITEMS = buildCatalog();
+
+    function getFilteredItems() {
+      const mode = selSet.value;
+      if (mode === '32BIT') return ALL_ITEMS.filter(it => it.setTag === '32BIT');
+      if (mode === 'ALPHA') return ALL_ITEMS.filter(it => it.setTag === 'ALPHA');
+      return ALL_ITEMS;
+    }
+
+    function renderItemFrameToCanvas(item, frameIdx, scale = 1) {
+      const base = document.createElement('canvas');
+      base.width = item.w;
+      base.height = item.h;
+      const bctx = base.getContext('2d');
+      bctx.imageSmoothingEnabled = item.setTag === 'ALPHA';
+      item.drawFrame(bctx, item.w, item.h, frameIdx, item.frames);
+
+      if (scale === 1) return base;
+      const out = document.createElement('canvas');
+      out.width = item.w * scale;
+      out.height = item.h * scale;
+      const octx = out.getContext('2d');
+      octx.imageSmoothingEnabled = false;
+      octx.drawImage(base, 0, 0, out.width, out.height);
+      return out;
+    }
+
+    function renderSpriteSheetToCanvas(item, scale = 1) {
+      const out = document.createElement('canvas');
+      out.width = item.w * scale * item.frames;
+      out.height = item.h * scale;
+      const octx = out.getContext('2d');
+      octx.imageSmoothingEnabled = false;
+      for (let f = 0; f < item.frames; f++) {
+        const fc = renderItemFrameToCanvas(item, f, scale);
+        octx.drawImage(fc, f * item.w * scale, 0);
+      }
+      return out;
+    }
+
+    function canvasToUint8Array(canvas) {
+      return new Promise((resolve) => {
+        canvas.toBlob(async (blob) => {
+          const buf = await blob.arrayBuffer();
+          resolve(new Uint8Array(buf));
+        }, 'image/png');
+      });
+    }
+
+    function triggerBlobDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+
+    /* =====================================================================
+       PURE ZERO-DEPENDENCY ZIP BUILDER (CRC32 + STORE — INSTANT & LOSSLESS!)
+       ===================================================================== */
+    const CRC_TABLE = (() => {
+      const t = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+        t[i] = c >>> 0;
+      }
+      return t;
+    })();
+
+    function crc32(bytes) {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    function buildZipBlob(entries) {
+      const enc = new TextEncoder();
+      const locals = [];
+      const centrals = [];
+      let offset = 0;
+
+      for (const entry of entries) {
+        const nameBytes = enc.encode(entry.path);
+        const data = entry.bytes;
+        const crc = crc32(data);
+        const sz = data.length;
+
+        // Local file header (30 bytes + name)
+        const lh = new Uint8Array(30 + nameBytes.length);
+        const lv = new DataView(lh.buffer);
+        lv.setUint32(0, 0x04034b50, true);
+        lv.setUint16(4, 20, true);
+        lv.setUint16(6, 0x0800, true); // UTF-8 flag
+        lv.setUint16(8, 0, true);      // STORE (PNGs are already compressed!)
+        lv.setUint16(10, 0, true);
+        lv.setUint16(12, 0x5421, true);
+        lv.setUint32(14, crc, true);
+        lv.setUint32(18, sz, true);
+        lv.setUint32(22, sz, true);
+        lv.setUint16(26, nameBytes.length, true);
+        lv.setUint16(28, 0, true);
+        lh.set(nameBytes, 30);
+
+        locals.push(lh, data);
+
+        // Central directory header (46 bytes + name)
+        const ch = new Uint8Array(46 + nameBytes.length);
+        const cv = new DataView(ch.buffer);
+        cv.setUint32(0, 0x02014b50, true);
+        cv.setUint16(4, 20, true);
+        cv.setUint16(6, 20, true);
+        cv.setUint16(8, 0x0800, true);
+        cv.setUint16(10, 0, true);
+        cv.setUint16(12, 0, true);
+        cv.setUint16(14, 0x5421, true);
+        cv.setUint32(16, crc, true);
+        cv.setUint32(20, sz, true);
+        cv.setUint32(24, sz, true);
+        cv.setUint16(28, nameBytes.length, true);
+        cv.setUint16(30, 0, true);
+        cv.setUint16(32, 0, true);
+        cv.setUint16(34, 0, true);
+        cv.setUint16(36, 0, true);
+        cv.setUint32(38, 0, true);
+        cv.setUint32(42, offset, true);
+        ch.set(nameBytes, 46);
+        centrals.push(ch);
+
+        offset += lh.length + sz;
+      }
+
+      let cdSize = 0;
+      for (const c of centrals) cdSize += c.length;
+
+      const eocd = new Uint8Array(22);
+      const ev = new DataView(eocd.buffer);
+      ev.setUint32(0, 0x06054b50, true);
+      ev.setUint16(4, 0, true);
+      ev.setUint16(6, 0, true);
+      ev.setUint16(8, entries.length, true);
+      ev.setUint16(10, entries.length, true);
+      ev.setUint32(12, cdSize, true);
+      ev.setUint32(16, offset, true);
+      ev.setUint16(20, 0, true);
+
+      return new Blob([...locals, ...centrals, eocd], { type: 'application/zip' });
+    }
+
+    /* =====================================================================
+       GENERATE ALL PNG ENTRIES (INDIVIDUAL FRAMES + SPRITE SHEETS + MANIFEST)
+       ===================================================================== */
+    async function generateAllFiles(onProgress) {
+      const items = getFilteredItems();
+      const scale = parseInt(selScale.value, 10) || 1;
+      const files = [];
+      const manifest = {
+        game: 'SZARKK',
+        version: 'Alpha Test 0.1.2',
+        exportScale: `${scale}x`,
+        set: selSet.value,
+        generatedAt: new Date().toISOString(),
+        assets: []
+      };
+
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        const basePath = `SZARKK_PNG_Assets/${it.folder}`;
+        const frameFiles = [];
+
+        // Export individual frames
+        for (let f = 0; f < it.frames; f++) {
+          const fc = renderItemFrameToCanvas(it, f, scale);
+          const bytes = await canvasToUint8Array(fc);
+          const fname = `${it.id}_frame_${String(f + 1).padStart(2, '0')}.png`;
+          const fullPath = `${basePath}/frames/${fname}`;
+          files.push({ path: fullPath, bytes });
+          frameFiles.push(fullPath);
+        }
+
+        // Export combined horizontal animation sprite sheet
+        const sc = renderSpriteSheetToCanvas(it, scale);
+        const sheetBytes = await canvasToUint8Array(sc);
+        const sheetPath = `${basePath}/${it.id}_sheet_${it.frames}f.png`;
+        files.push({ path: sheetPath, bytes: sheetBytes });
+
+        manifest.assets.push({
+          id: it.id,
+          label: it.label,
+          category: it.category,
+          set: it.setTag,
+          frameWidth: it.w * scale,
+          frameHeight: it.h * scale,
+          frames: it.frames,
+          fps: it.fps,
+          spriteSheet: sheetPath,
+          frameFiles
+        });
+
+        if (onProgress) onProgress((i + 1) / items.length, it.label, files.length);
+      }
+
+      const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+      files.push({ path: 'SZARKK_PNG_Assets/manifest.json', bytes: manifestBytes });
+      return { files, manifest };
+    }
+
+    async function writeNestedFile(rootHandle, relPath, bytes) {
+      const parts = relPath.split('/').filter(Boolean);
+      let dir = rootHandle;
+      for (let i = 0; i < parts.length - 1; i++) {
+        dir = await dir.getDirectoryHandle(parts[i], { create: true });
+      }
+      const fh = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(bytes);
+      await writable.close();
+    }
+
+    btnFolder.addEventListener('click', async () => {
+      if (!window.showDirectoryPicker) {
+        statusText.textContent = 'Direct folder picker is unavailable in this browser — use DOWNLOAD ALL (.ZIP) instead!';
+        return;
+      }
+      try {
+        const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        btnFolder.disabled = true;
+        btnZip.disabled = true;
+        statusText.textContent = 'Rendering all PNG frames & sprite sheets...';
+        const { files } = await generateAllFiles((pct, label, count) => {
+          progressFill.style.width = `${Math.round(pct * 50)}%`;
+          statusText.textContent = `Rendering ${label}... (${count} PNGs)`;
+        });
+        for (let i = 0; i < files.length; i++) {
+          await writeNestedFile(dirHandle, files[i].path, files[i].bytes);
+          if (i % 10 === 0 || i === files.length - 1) {
+            progressFill.style.width = `${50 + Math.round(((i + 1) / files.length) * 50)}%`;
+            statusText.textContent = `Writing ${i + 1} / ${files.length} files to ${dirHandle.name}/SZARKK_PNG_Assets/...`;
+          }
+        }
+        statusText.textContent = `DONE! Saved ${files.length} files (PNG frames + sprite sheets + manifest.json) inside "${dirHandle.name}/SZARKK_PNG_Assets/"!`;
+      } catch (err) {
+        if (err && err.name === 'AbortError') {
+          statusText.textContent = 'Folder selection cancelled.';
+        } else {
+          statusText.textContent = `Folder export error: ${err?.message || err}`;
+        }
+      } finally {
+        btnFolder.disabled = false;
+        btnZip.disabled = false;
+      }
+    });
+
+    btnZip.addEventListener('click', async () => {
+      btnFolder.disabled = true;
+      btnZip.disabled = true;
+      progressFill.style.width = '0%';
+      try {
+        const { files } = await generateAllFiles((pct, label, count) => {
+          progressFill.style.width = `${Math.round(pct * 92)}%`;
+          statusText.textContent = `Rendering ${label}... (${count} PNGs)`;
+        });
+        statusText.textContent = `Packaging ${files.length} PNG files into ZIP...`;
+        const zipBlob = buildZipBlob(files);
+        const scaleTag = `${selScale.value}x`;
+        const setTag = selSet.value.toLowerCase();
+        const filename = `SZARKK_PNG_Assets_${setTag}_${scaleTag}.zip`;
+        triggerBlobDownload(zipBlob, filename);
+        progressFill.style.width = '100%';
+        const mb = (zipBlob.size / (1024 * 1024)).toFixed(2);
+        statusText.textContent = `DONE! Downloaded ${filename} (${files.length} files, ${mb} MB) — extract or drag straight into your SZARKK-game Google Drive folder!`;
+      } catch (err) {
+        statusText.textContent = `ZIP export error: ${err?.message || err}`;
+      } finally {
+        btnFolder.disabled = false;
+        btnZip.disabled = false;
+      }
+    });
+
+    // Expose programmatic test hook for verification
+    window.__szarkkExporter = {
+      getStats() {
+        const items = getFilteredItems();
+        const totalFrames = items.reduce((a, b) => a + b.frames, 0);
+        return { entityCount: items.length, totalFrames, totalPngs: totalFrames + items.length };
+      },
+      async testGenerateZipSummary() {
+        const { files, manifest } = await generateAllFiles();
+        const blob = buildZipBlob(files);
+        return {
+          assetCount: manifest.assets.length,
+          fileCount: files.length,
+          zipBytes: blob.size,
+          samplePaths: files.slice(0, 6).map(f => f.path)
+        };
+      }
+    };
+
+    /* =====================================================================
+       LIVE ANIMATED PREVIEW GALLERY
+       ===================================================================== */
+    let livePreviews = [];
+
+    function rebuildGallery() {
+      galleryEl.innerHTML = '';
+      livePreviews = [];
+      const items = getFilteredItems();
+      const totalFrames = items.reduce((a, b) => a + b.frames, 0);
+      statusText.textContent = `Ready: ${items.length} animated entities & power-ups (${totalFrames} individual PNG frames + ${items.length} sprite sheets = ${totalFrames + items.length} PNGs).`;
+
+      const groups = new Map();
+      for (const it of items) {
+        if (!groups.has(it.category)) groups.set(it.category, []);
+        groups.get(it.category).push(it);
+      }
+
+      for (const [catName, list] of groups.entries()) {
+        const heading = document.createElement('div');
+        heading.className = 'cat-title';
+        heading.innerHTML = `<span>${catName}</span><span>${list.length} ASSETS</span>`;
+        galleryEl.appendChild(heading);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid';
+
+        for (const it of list) {
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const head = document.createElement('div');
+          head.className = 'card-head';
+          head.innerHTML = `<span class="card-name">${it.label}</span><span class="card-meta">${it.w}x${it.h} · ${it.frames}f</span>`;
+
+          const pbox = document.createElement('div');
+          pbox.className = 'preview-box';
+          const cv = document.createElement('canvas');
+          cv.width = it.w;
+          cv.height = it.h;
+          cv.className = 'pixel';
+          const dispScale = Math.max(1, Math.min(2, Math.floor(94 / Math.max(it.w, it.h))));
+          cv.style.width = `${it.w * dispScale}px`;
+          cv.style.height = `${it.h * dispScale}px`;
+          pbox.appendChild(cv);
+
+          const actions = document.createElement('div');
+          actions.className = 'card-actions';
+
+          const btnSheet = document.createElement('button');
+          btnSheet.type = 'button';
+          btnSheet.textContent = 'SHEET PNG';
+          btnSheet.addEventListener('click', () => {
+            const scale = parseInt(selScale.value, 10) || 1;
+            const sc = renderSpriteSheetToCanvas(it, scale);
+            sc.toBlob((blob) => triggerBlobDownload(blob, `${it.id}_sheet_${it.frames}f_${scale}x.png`), 'image/png');
+          });
+
+          const btnFrame = document.createElement('button');
+          btnFrame.type = 'button';
+          btnFrame.textContent = 'FRAME 1 PNG';
+          btnFrame.addEventListener('click', () => {
+            const scale = parseInt(selScale.value, 10) || 1;
+            const fc = renderItemFrameToCanvas(it, 0, scale);
+            fc.toBlob((blob) => triggerBlobDownload(blob, `${it.id}_frame_01_${scale}x.png`), 'image/png');
+          });
+
+          actions.append(btnSheet, btnFrame);
+          card.append(head, pbox, actions);
+          grid.appendChild(card);
+          livePreviews.push({ item: it, ctx: cv.getContext('2d') });
+        }
+        galleryEl.appendChild(grid);
+      }
+    }
+
+    selSet.addEventListener('change', rebuildGallery);
+    rebuildGallery();
+
+    const t0 = performance.now();
+    function animatePreviews(now) {
+      const elapsed = (now - t0) / 1000;
+      for (const lp of livePreviews) {
+        const it = lp.item;
+        const f = Math.floor(elapsed * it.fps) % it.frames;
+        lp.ctx.clearRect(0, 0, it.w, it.h);
+        lp.ctx.imageSmoothingEnabled = it.setTag === 'ALPHA';
+        it.drawFrame(lp.ctx, it.w, it.h, f, it.frames);
+      }
+      requestAnimationFrame(animatePreviews);
+    }
+    requestAnimationFrame(animatePreviews);
+  </script>
+</body>
+</html>

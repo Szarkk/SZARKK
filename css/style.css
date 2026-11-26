@@ -188,6 +188,14 @@ button:active {
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.85));
 }
 
+.life-ship-svg.is-pixel {
+  width: 15px;
+  height: 15px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  filter: drop-shadow(1px 1px 0 rgba(0, 0, 0, 0.9));
+}
+
 .hud-right {
   display: flex;
   align-items: center;
@@ -2470,6 +2478,11 @@ body.sandbox-active #status-bar {
   text-overflow: ellipsis;
 }
 
+.skins-tabs-wrap {
+  flex: 0 0 auto;
+  padding: 9px 10px 4px 10px;
+}
+
 .skins-scroll {
   display: flex;
   flex-direction: column;
@@ -2571,10 +2584,11 @@ body.sandbox-active #status-bar {
 
 .skin-desc {
   font-family: var(--font-body);
-  font-size: 11px;
-  line-height: 1.36;
+  font-size: 11.5px;
+  line-height: 1.38;
   letter-spacing: 0.2px;
-  color: rgba(214, 236, 252, 0.86);
+  text-transform: none;
+  color: rgba(214, 236, 252, 0.88);
   font-weight: 500;
 }
 
@@ -2628,9 +2642,86 @@ body.sandbox-active #status-bar {
 .sbx-chip-grid { gap: 7px; }
 .sbx-mini-seg { gap: 6px; }
 .sbx-deploy-btns { gap: 7px; }
+.skins-tabs-wrap {
+  flex: 0 0 auto;
+  padding: 9px 10px 4px 10px;
+}
+
+/* Leaderboard anchored cleanly in the middle (extends downward only, Top 6 max before scroll, expandable nearly full-screen) */
+#overlay-leaderboard {
+  align-items: flex-start;
+  padding: clamp(68px, 17vh, 148px) 12px 14px;
+}
+
+#overlay-leaderboard .archive-shell {
+  max-height: calc(100% - 4px);
+}
+
+#overlay-leaderboard .archive-header {
+  background: transparent;
+  border-bottom: 0;
+  box-shadow: none;
+  padding-bottom: 6px;
+}
+
+.archive-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+#overlay-leaderboard .lb-expand-btn {
+  background: rgba(66, 46, 8, 0.94);
+  color: #ffe488;
+  --px-bdr: #ffd447;
+  padding: 6px 8px;
+  font-size: 8.4px;
+}
+
+#overlay-leaderboard .lb-expand-btn.is-expanded {
+  background: rgba(0, 68, 52, 0.94);
+  color: #b8ffe8;
+  --px-bdr: #00ffaa;
+}
+
+#overlay-leaderboard .lb-tabs {
+  padding: 4px 14px 10px 14px;
+  gap: 10px;
+}
+
+#overlay-leaderboard .lb-tab-btn {
+  padding: 6px 8px;
+  font-size: 8.4px;
+  letter-spacing: 0.45px;
+}
+
+#overlay-leaderboard .lb-scroll {
+  flex: 0 1 auto;
+  max-height: 236px; /* Shows Top 6 rankings at max; scroll for #7+ */
+}
+
+#overlay-leaderboard.is-expanded {
+  padding: 10px 12px 10px;
+}
+
+#overlay-leaderboard.is-expanded .archive-shell {
+  height: calc(100% - 4px);
+  max-height: calc(100% - 4px);
+}
+
+#overlay-leaderboard.is-expanded .lb-scroll {
+  flex: 1 1 auto;
+  max-height: none;
+}
+
+#overlay-leaderboard .lb-clear-wrap {
+  padding: 10px 14px 12px 14px;
+}
+
 .skins-scroll { gap: 11px; }
 .archive-scroll { gap: 11px; }
-.lb-scroll { gap: 7px; padding: 8px 6px; }
+.lb-scroll { gap: 7px; padding: 8px 10px; }
 #powerup-gauge-bar { padding: 6px 7px 8px 7px; gap: 6px; }
 #powerup-gauge-bar.pwr-multi .pwr-gauge-meta { font-size: 6.8px; letter-spacing: 0.1px; }
 

@@ -187,6 +187,7 @@ export const STORAGE_KEYS = {
   leaderboard: 'szarkk_leaderboard',
   callsign: 'szarkk_callsign',
   aurexSkin: 'szarkk_aurex_skin',
+  enemySkin: 'szarkk_enemy_skin',
   renderMode: 'szarkk_render_mode'
 };
 

@@ -16,6 +16,26 @@ import {
 import { clamp } from './utils.js';
 import { getActivePowerups } from './powerups.js';
 import { renderSpriteEffects } from './animator.js';
+import { getAurexSkinMeta, getEnemySkinMeta } from './skins.js';
+import {
+  drawPixelAoeBlast,
+  drawPixelArcWave,
+  drawPixelBuffWave,
+  drawPixelCannonShot,
+  drawPixelChainLightning,
+  drawPixelElectroBall,
+  drawPixelEnemyBullet,
+  drawPixelHomingMissile,
+  drawPixelPlayerBullet,
+  drawPixelPulsarSpark,
+  drawPixelRedLaserBeam,
+  drawPixelShipShockAura,
+  drawPixelShrapnelParticle,
+  drawPixelThreadTrail,
+  drawPixelTractorBeam,
+  renderPixelExplosions,
+  renderPowerupPickupFx
+} from './renderers/saturn_fx.js';
 import {
   drawAurexFighter,
   drawBackground,
@@ -262,7 +282,7 @@ export function renderFrame(game) {
         maxHp: 3,
         hitFlash: 0,
         angle: 0
-      }, game.clock);
+      }, game.clock, null, game.enemySkin);
     }
     const demoBank = Math.cos(game.clock * 1.25);
     drawAurexFighter(
@@ -300,17 +320,26 @@ export function renderFrame(game) {
   ctx.fillRect(LOGICAL_W - 10, dzY + 5, 3, 1);
   ctx.restore();
 
-  // 1) Thread Trails + Null Thread shield durability pips
+  const isPixelPlayerFx = getAurexSkinMeta(game.aurexSkin).renderer !== 'ALPHA_VECTOR';
+  const isPixelEnemyFx = getEnemySkinMeta(game.enemySkin).renderer !== 'ALPHA_VECTOR';
+
+  // 1) Thread Trails + Null Thread shield durability pips (bound to active Enemy Skin!)
   for (const trail of game.threadTrails) {
+    if (isPixelEnemyFx) {
+      drawPixelThreadTrail(ctx, trail);
+      continue;
+    }
     const isNull = trail.variant === 'NULL';
     for (const seg of trail.segments) {
       const alpha = clamp(seg.life / 0.55, 0, 1);
       ctx.save();
       ctx.globalAlpha = alpha;
-      const col = trail.flashTimer > 0 ? '#ffffff' : (isNull ? COLORS.nullRed : COLORS.cyan);
+      const col = trail.flashTimer > 0
+        ? (isNull ? '#ff5c7c' : '#72f9ff')
+        : (isNull ? COLORS.nullRed : COLORS.cyan);
       ctx.strokeStyle = col;
       ctx.shadowColor = col;
-      ctx.shadowBlur = 10;
+      ctx.shadowBlur = trail.flashTimer > 0 ? 12 : 10;
       ctx.lineWidth = isNull ? 4.6 : 3.2;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -318,7 +347,7 @@ export function renderFrame(game) {
       ctx.lineTo(seg.x2, seg.y2);
       ctx.stroke();
 
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = isNull ? (trail.flashTimer > 0 ? '#ffc8d6' : '#ffe6ec') : '#ffffff';
       ctx.lineWidth = 1.2;
       ctx.beginPath();
       ctx.moveTo(seg.x1, seg.y1);
@@ -398,10 +427,14 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 3) Tractor Beam cone visual (V1 Enforcer)
+  // 3) Tractor Beam cone visual (V1 Enforcer — bound to active Enemy Skin!)
   for (const e of game.enemies) {
     if (e.state === 'BEAMING') {
-      drawTractorBeam(ctx, e, game.clock, game.player.capturedById === e.id);
+      if (isPixelEnemyFx) {
+        drawPixelTractorBeam(ctx, e, game.clock, game.player.capturedById === e.id);
+      } else {
+        drawTractorBeam(ctx, e, game.clock, game.player.capturedById === e.id);
+      }
     }
   }
 
@@ -427,8 +460,12 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 4b) V1 Enforcer Synergy Death AOE Enemy Buff Shockwaves
+  // 4b) V1 Enforcer Synergy Death AOE Enemy Buff Shockwaves (bound to Enemy Skin!)
   for (const bw of game.enemyBuffWaves) {
+    if (isPixelEnemyFx) {
+      drawPixelBuffWave(ctx, bw);
+      continue;
+    }
     const alpha = clamp(bw.life / bw.maxLife, 0, 1);
     ctx.save();
     ctx.globalAlpha = alpha * 0.85;
@@ -470,7 +507,7 @@ export function renderFrame(game) {
       ctx.stroke();
       ctx.restore();
     }
-    drawEnemySprite(ctx, e, enemyAnimTime);
+    drawEnemySprite(ctx, e, enemyAnimTime, null, game.enemySkin);
     if (e.state === 'BEAM_APPROACH' && e.beamShield > 0) {
       ctx.save();
       ctx.strokeStyle = COLORS.cyan;
@@ -485,12 +522,12 @@ export function renderFrame(game) {
     }
   }
   for (const head of centoidHeads) {
-    drawEnemySprite(ctx, head, enemyAnimTime);
+    drawEnemySprite(ctx, head, enemyAnimTime, null, game.enemySkin);
   }
 
   // 6) Enforcer Wings
   for (const ew of game.enforcerWings) {
-    drawEnforcerWingSprite(ctx, ew);
+    drawEnforcerWingSprite(ctx, ew, game.enemySkin, enemyAnimTime);
   }
 
   // 7) Piercing Continuous Red Laser Beams (slices through enemies; blocked/refracted by Threads)
@@ -500,6 +537,10 @@ export function renderFrame(game) {
 
   if (game.redLaserActive && game.activeLaserBeams.length > 0 && game.player.alive && !game.player.capturedById) {
     for (const beam of game.activeLaserBeams) {
+      if (isPixelPlayerFx) {
+        drawPixelRedLaserBeam(ctx, beam, game.player.x, game.player.y, game.clock);
+        continue;
+      }
       const bx = game.player.x + beam.offsetX;
       const by1 = game.player.y - 16;
       const by2 = beam.y2;
@@ -619,38 +660,42 @@ export function renderFrame(game) {
       game.player
     );
 
-    // White Electric Shock Aura (Pulsar Electro Ball Fire Jam w/ mild vibration, OR Pulsar Death Spark 2x slow w/ NO vibration!)
+    // White Electric Shock Aura (Pulsar Electro Ball Fire Jam OR Pulsar Death Spark — bound to Enemy Skin!)
     if (game.player.fireJamTimer > 0 || game.player.sparkSlowTimer > 0) {
       const isJam = game.player.fireJamTimer > 0;
-      const shockR = game.player.dual ? 31 : 22;
-      ctx.save();
-      const grad = ctx.createRadialGradient(px, py, 3, px, py, shockR + 10);
-      grad.addColorStop(0, isJam ? 'rgba(255, 255, 255, 0.42)' : 'rgba(255, 255, 255, 0.28)');
-      grad.addColorStop(0.65, 'rgba(220, 240, 255, 0.18)');
-      grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      ctx.fillStyle = grad;
-      ctx.beginPath();
-      ctx.arc(px, py, shockR + 10, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Crackling white electric arcs dancing around ship perimeter
-      ctx.strokeStyle = '#ffffff';
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 14;
-      ctx.lineWidth = isJam ? 2.0 : 1.5;
-      const bolts = isJam ? 5 : 4;
-      for (let k = 0; k < bolts; k++) {
-        const a0 = game.clock * (isJam ? 7.5 : 4.5) + (k / bolts) * Math.PI * 2;
-        const a1 = a0 + 0.95;
-        const am = (a0 + a1) * 0.5;
-        const rMid = shockR + (Math.sin(game.clock * 48 + k * 2.7) * 5);
+      if (isPixelEnemyFx) {
+        drawPixelShipShockAura(ctx, px, py, game.player.dual, isJam, game.clock);
+      } else {
+        const shockR = game.player.dual ? 31 : 22;
+        ctx.save();
+        const grad = ctx.createRadialGradient(px, py, 3, px, py, shockR + 10);
+        grad.addColorStop(0, isJam ? 'rgba(255, 255, 255, 0.42)' : 'rgba(255, 255, 255, 0.28)');
+        grad.addColorStop(0.65, 'rgba(220, 240, 255, 0.18)');
+        grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.moveTo(px + Math.cos(a0) * shockR, py + Math.sin(a0) * shockR);
-        ctx.lineTo(px + Math.cos(am) * rMid, py + Math.sin(am) * rMid);
-        ctx.lineTo(px + Math.cos(a1) * shockR, py + Math.sin(a1) * shockR);
-        ctx.stroke();
+        ctx.arc(px, py, shockR + 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Crackling white electric arcs dancing around ship perimeter
+        ctx.strokeStyle = '#ffffff';
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur = 14;
+        ctx.lineWidth = isJam ? 2.0 : 1.5;
+        const bolts = isJam ? 5 : 4;
+        for (let k = 0; k < bolts; k++) {
+          const a0 = game.clock * (isJam ? 7.5 : 4.5) + (k / bolts) * Math.PI * 2;
+          const a1 = a0 + 0.95;
+          const am = (a0 + a1) * 0.5;
+          const rMid = shockR + (Math.sin(game.clock * 48 + k * 2.7) * 5);
+          ctx.beginPath();
+          ctx.moveTo(px + Math.cos(a0) * shockR, py + Math.sin(a0) * shockR);
+          ctx.lineTo(px + Math.cos(am) * rMid, py + Math.sin(am) * rMid);
+          ctx.lineTo(px + Math.cos(a1) * shockR, py + Math.sin(a1) * shockR);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
-      ctx.restore();
     }
 
     // Small compact on-field Cannon Shot auto-fire timer indicator during CANNON_CHARGING (or ready prompt)
@@ -694,8 +739,12 @@ export function renderFrame(game) {
     }
   }
 
-  // 10) Wider Purple Arc Waves
+  // 10) Wider Purple Arc Waves (bound to active Ship Skin!)
   for (const w of game.arcWaves) {
+    if (isPixelPlayerFx) {
+      drawPixelArcWave(ctx, w, game.clock);
+      continue;
+    }
     ctx.save();
     ctx.strokeStyle = COLORS.purple;
     ctx.shadowColor = COLORS.purple;
@@ -714,8 +763,12 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Purple Cannon Shots
+  // Purple Cannon Shots (bound to active Ship Skin!)
   for (const c of game.cannonShots) {
+    if (isPixelPlayerFx) {
+      drawPixelCannonShot(ctx, c, game.clock);
+      continue;
+    }
     ctx.save();
     if (c.trail.length > 1) {
       ctx.strokeStyle = 'rgba(196, 77, 255, 0.7)';
@@ -738,8 +791,12 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Large Purple AOE Explosion Shockwaves
+  // Large Purple AOE Explosion Shockwaves (bound to active Ship Skin!)
   for (const bl of game.aoeBlasts) {
+    if (isPixelPlayerFx) {
+      drawPixelAoeBlast(ctx, bl);
+      continue;
+    }
     const alpha = clamp(bl.life / bl.maxLife, 0, 1);
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -762,9 +819,13 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 10b) Yellow Chain Lightning Arcs (jagged white-core yellow/orange electric jumps)
+  // 10b) Yellow Chain Lightning Arcs (bound to active Ship Skin!)
   if (game.lightningBolts && game.lightningBolts.length > 0) {
     for (const bolt of game.lightningBolts) {
+      if (isPixelPlayerFx) {
+        drawPixelChainLightning(ctx, bolt);
+        continue;
+      }
       const alpha = clamp(bolt.life / Math.max(0.01, bolt.maxLife), 0, 1);
       ctx.save();
       ctx.globalAlpha = alpha;
@@ -804,8 +865,12 @@ export function renderFrame(game) {
     }
   }
 
-  // 11) Regular White, Refracted Red Laser Bolts, Clone Dark-Purple Bolts & Purple Player Bullets
+  // 11) Regular White, Refracted Red Laser Bolts, Clone Dark-Purple Bolts & Purple Player Bullets (bound to Ship Skin!)
   for (const b of game.playerBullets) {
+    if (isPixelPlayerFx) {
+      drawPixelPlayerBullet(ctx, b, game.clock);
+      continue;
+    }
     ctx.save();
     if (b.slowedByFlux && b.dissolveMax > 0) {
       ctx.globalAlpha = clamp(b.dissolveTimer / 0.65, 0.18, 1);
@@ -851,8 +916,12 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Cyan Homing Missiles — Sleek Neon Micro-Rockets with Tapered Plasma Exhaust Trails
+  // Cyan Homing Missiles (bound to active Ship Skin!)
   for (const m of game.homingMissiles) {
+    if (isPixelPlayerFx) {
+      drawPixelHomingMissile(ctx, m, game.clock);
+      continue;
+    }
     ctx.save();
     // Smooth tapered glowing contrail
     const tLen = m.trail.length;
@@ -931,9 +1000,13 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Pulsar Leaf-Falling Yellow Electro Balls (size of a Drone, jams firing 2.0s)
+  // Pulsar Leaf-Falling Yellow Electro Balls (bound to active Enemy Skin!)
   if (game.electroBalls && game.electroBalls.length > 0) {
     for (const eb of game.electroBalls) {
+      if (isPixelEnemyFx) {
+        drawPixelElectroBall(ctx, eb, game.clock);
+        continue;
+      }
       ctx.save();
       ctx.translate(eb.x, eb.y);
       const pulse = 0.88 + Math.sin(game.clock * 22 + eb.phase) * 0.12;
@@ -971,9 +1044,13 @@ export function renderFrame(game) {
     }
   }
 
-  // Pulsar Death Sparks (3-4 omnidirectional spark lines trailing downward -> 2x fire rate slow!)
+  // Pulsar Death Sparks (bound to active Enemy Skin!)
   if (game.pulsarSparks && game.pulsarSparks.length > 0) {
     for (const sp of game.pulsarSparks) {
+      if (isPixelEnemyFx) {
+        drawPixelPulsarSpark(ctx, sp);
+        continue;
+      }
       ctx.save();
       if (sp.trail.length > 1) {
         ctx.lineCap = 'round';
@@ -999,8 +1076,12 @@ export function renderFrame(game) {
     }
   }
 
-  // Enemy Bullets
+  // Enemy Bullets (bound to active Enemy Skin!)
   for (const eb of game.enemyBullets) {
+    if (isPixelEnemyFx) {
+      drawPixelEnemyBullet(ctx, eb, game.clock);
+      continue;
+    }
     ctx.save();
     ctx.fillStyle = eb.color;
     ctx.shadowColor = eb.color;
@@ -1011,9 +1092,15 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // 12) Animated PixelLab One-Shot VFX & Delete Burst Particles
+  // 12) Animated PixelLab One-Shot VFX, 32-Bit Pixel Fireballs, Subtle Power-Up Sync FX & Shrapnel
   renderSpriteEffects(ctx, game);
+  renderPixelExplosions(ctx, game.pixelExplosions);
+  renderPowerupPickupFx(ctx, game.powerupFx, game.player, game.clock);
   for (const pt of game.particles) {
+    if (pt.isPixel) {
+      drawPixelShrapnelParticle(ctx, pt);
+      continue;
+    }
     ctx.save();
     ctx.globalAlpha = clamp(pt.life / pt.maxLife, 0, 1);
     ctx.translate(pt.x, pt.y);

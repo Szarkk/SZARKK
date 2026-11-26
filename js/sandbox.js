@@ -22,7 +22,7 @@ import {
   spawnDirectEnemy
 } from './enemies.js';
 import { hideAllOverlays, openModal, resetInputs, updateHUD, updateStatusPills } from './ui.js';
-import { AUREX_SKINS, getAurexSkinMeta, RENDER_MODES } from './skins.js';
+import { getAurexSkinMeta, getEnemySkinMeta } from './skins.js';
 
 export const SANDBOX_ENEMIES = [
   { id: 'DRONE', label: 'DRONE', cls: 'sbx-c-cyan' },
@@ -487,15 +487,15 @@ export function syncSandboxUI(game) {
   const btnSkin = document.getElementById('sbx-btn-skin');
   if (btnSkin) {
     const skinMeta = getAurexSkinMeta(game.aurexSkin);
-    btnSkin.textContent = `SKIN: ${skinMeta.name}`;
+    btnSkin.textContent = `SHIP: ${skinMeta.name}`;
     btnSkin.className = `sbx-action-btn ${skinMeta.id === 'saturn_32bit' ? 'primary' : 'amber'}`;
   }
 
-  const btnRender = document.getElementById('sbx-btn-render-mode');
-  if (btnRender) {
-    const isPix = game.renderMode === RENDER_MODES.PIXEL;
-    btnRender.textContent = isPix ? 'RENDER: 32-BIT' : 'RENDER: HD VECTOR';
-    btnRender.className = `sbx-action-btn ${isPix ? 'emerald' : 'secondary'}`;
+  const btnEnemySkin = document.getElementById('sbx-btn-enemy-skin');
+  if (btnEnemySkin) {
+    const enemyMeta = getEnemySkinMeta(game.enemySkin);
+    btnEnemySkin.textContent = `ENEMIES: ${enemyMeta.name}`;
+    btnEnemySkin.className = `sbx-action-btn ${enemyMeta.id === 'saturn_fleet' ? 'emerald' : 'amber'}`;
   }
 
   const btnFieldInf = document.getElementById('sbx-field-mode-inf');
@@ -858,26 +858,15 @@ export function bindSandboxEvents(game) {
     updateHUD(game);
   });
 
-  const openSandboxSkins = (e) => {
+  const openSandboxSkins = (tab = 'SHIPS') => (e) => {
     if (e && e.currentTarget) e.currentTarget.blur();
     game.synth.unlock();
+    game.skinsTab = tab;
     openModal(game, 'SKINS', 'SANDBOX');
   };
-  document.getElementById('sbx-btn-skin')?.addEventListener('click', openSandboxSkins);
-  document.getElementById('sbx-btn-open-skins')?.addEventListener('click', openSandboxSkins);
-
-  document.getElementById('sbx-btn-render-mode')?.addEventListener('click', (e) => {
-    e.currentTarget.blur();
-    const nextMode = game.renderMode === RENDER_MODES.PIXEL ? RENDER_MODES.HD : RENDER_MODES.PIXEL;
-    game.setRenderMode(nextMode);
-    game.spawnPopup(
-      LOGICAL_W * 0.5,
-      195,
-      nextMode === RENDER_MODES.PIXEL ? 'RENDER // 32-BIT PIXEL (480x640)' : 'RENDER // HD VECTOR',
-      COLORS.emerald,
-      1.15
-    );
-  });
+  document.getElementById('sbx-btn-skin')?.addEventListener('click', openSandboxSkins('SHIPS'));
+  document.getElementById('sbx-btn-enemy-skin')?.addEventListener('click', openSandboxSkins('ENEMIES'));
+  document.getElementById('sbx-btn-open-skins')?.addEventListener('click', openSandboxSkins('SHIPS'));
 
   document.getElementById('sbx-field-mode-inf')?.addEventListener('click', (e) => {
     e.currentTarget.blur();

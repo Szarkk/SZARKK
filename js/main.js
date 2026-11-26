@@ -45,7 +45,17 @@ import {
 } from './projectiles.js';
 import { renderFrame } from './renderer.js';
 import { bindSandboxEvents, startSandboxMode, syncSandboxUI } from './sandbox.js';
-import { loadAurexSkinId, loadRenderMode, saveAurexSkinId, saveRenderMode } from './skins.js';
+import {
+  getAurexSkinMeta,
+  getEnemySkinMeta,
+  loadAurexSkinId,
+  loadEnemySkinId,
+  loadRenderMode,
+  saveAurexSkinId,
+  saveEnemySkinId,
+  saveRenderMode
+} from './skins.js';
+import { createPixelExplosion, createPowerupPickupFx } from './renderers/saturn_fx.js';
 import { spriteLoader } from './sprite_loader.js';
 import { spawnSpriteEffect, updatePlayerAnimation, updateSpriteEffects } from './animator.js';
 import {
@@ -78,7 +88,9 @@ export class SzarkkGame {
     // Persistent Settings, Skins & Per-Mode High Scores
     this.hardMode = false;
     this.lbViewMode = 'NORMAL';
+    this.skinsTab = 'SHIPS';
     this.aurexSkin = loadAurexSkinId();
+    this.enemySkin = loadEnemySkinId();
     this.renderMode = loadRenderMode();
     this.autoFire = readLS(STORAGE_KEYS.auto, '0') === '1';
     this.crtEnabled = readLS(STORAGE_KEYS.crt, '1') === '1';
@@ -243,6 +255,8 @@ export class SzarkkGame {
     this.enforcerWings = [];
     this.threadTrails = [];
     this.particles = [];
+    this.pixelExplosions = [];
+    this.powerupFx = [];
     this.spriteEffects = [];
     this.popups = [];
   }
@@ -352,6 +366,13 @@ export class SzarkkGame {
     this.aurexSkin = saveAurexSkinId(skinId);
     syncSkinsUI(this);
     syncSandboxUI(this);
+    updateHUD(this);
+  }
+
+  setEnemySkin(skinId) {
+    this.enemySkin = saveEnemySkinId(skinId);
+    syncSkinsUI(this);
+    syncSandboxUI(this);
   }
 
   setRenderMode(mode) {
@@ -397,12 +418,22 @@ export class SzarkkGame {
     this.popups.push({ x, y, text, color, life, maxLife: life });
   }
 
-  spawnDeleteBurst(x, y, color, count = 14, speed = 165) {
-    // Play PixelLab animated explosion/spark clip if installed!
-    const fxKey = count >= 20
-      ? 'FX_EXP_LARGE'
-      : (count >= 12 ? 'FX_EXP_MED' : (count >= 6 ? 'FX_EXP_SMALL' : 'FX_HIT_SPARK'));
-    spawnSpriteEffect(this, fxKey, x, y);
+  spawnDeleteBurst(x, y, color, count = 14, speed = 165, fxSide = 'ENEMY') {
+    const isPixelFx = fxSide === 'PLAYER'
+      ? (getAurexSkinMeta(this.aurexSkin).renderer !== 'ALPHA_VECTOR')
+      : (getEnemySkinMeta(this.enemySkin).renderer !== 'ALPHA_VECTOR');
+
+    if (isPixelFx) {
+      // Play PixelLab animated explosion/spark clip if installed; otherwise 32-bit pixel fireball!
+      const fxKey = count >= 20
+        ? 'FX_EXP_LARGE'
+        : (count >= 12 ? 'FX_EXP_MED' : (count >= 6 ? 'FX_EXP_SMALL' : 'FX_HIT_SPARK'));
+      const playedClip = spawnSpriteEffect(this, fxKey, x, y);
+      if (!playedClip && count >= 7) {
+        const tier = count >= 22 ? 'LARGE' : (count >= 13 ? 'MED' : 'SMALL');
+        this.pixelExplosions.push(createPixelExplosion(x, y, color, tier));
+      }
+    }
 
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2;
@@ -417,12 +448,33 @@ export class SzarkkGame {
         size: 2 + Math.random() * 4,
         color,
         rot: Math.random() * Math.PI,
-        vrot: (Math.random() - 0.5) * 9
+        vrot: (Math.random() - 0.5) * 9,
+        isPixel: isPixelFx
       });
     }
   }
 
+  spawnPowerupFx(x, y, color, kind = 'SHIP_SYNC', extra = {}) {
+    const isPixel = getAurexSkinMeta(this.aurexSkin).renderer !== 'ALPHA_VECTOR';
+    if (!this.powerupFx) this.powerupFx = [];
+    this.powerupFx.push(createPowerupPickupFx(x, y, color, kind, isPixel, extra));
+  }
+
   updateParticlesAndPopups(dt) {
+    if (this.pixelExplosions && this.pixelExplosions.length > 0) {
+      for (let i = this.pixelExplosions.length - 1; i >= 0; i--) {
+        const ex = this.pixelExplosions[i];
+        ex.age += dt;
+        if (ex.age >= ex.maxLife) this.pixelExplosions.splice(i, 1);
+      }
+    }
+    if (this.powerupFx && this.powerupFx.length > 0) {
+      for (let i = this.powerupFx.length - 1; i >= 0; i--) {
+        const fx = this.powerupFx[i];
+        fx.age += dt;
+        if (fx.age >= fx.maxLife) this.powerupFx.splice(i, 1);
+      }
+    }
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const pt = this.particles[i];
       pt.x += pt.vx * dt;

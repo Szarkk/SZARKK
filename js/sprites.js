@@ -4,13 +4,17 @@
 
 import { COLORS, LOGICAL_W, LOGICAL_H } from './config.js';
 import { clamp } from './utils.js';
-import { getAurexSkinMeta } from './skins.js';
+import { getAurexSkinMeta, getEnemySkinMeta } from './skins.js';
 import { spriteLoader } from './sprite_loader.js';
 import {
   drawPixelLabAurexFighter,
   drawSaturnAurexFighter,
   drawSkinMatchedFighterClone
 } from './renderers/saturn_pixel_sprites.js';
+import {
+  drawSaturnEnemySprite,
+  drawSaturnEnforcerWing
+} from './renderers/saturn_enemy_sprites.js';
 
 let _saturnBgCache = null;
 
@@ -558,7 +562,7 @@ export function drawFighterClone(ctx, cl, time = 0, skinId = 'alpha_test') {
   }
 }
 
-export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
+export function drawEnemySprite(ctx, e, time = 0, overrideScale = null, enemySkinId = 'alpha_test') {
   const isMaster = e.type === 'MASTER_FLUX_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER';
   const isPulsar = e.type === 'PULSAR';
   const isElite = isMaster || e.type === 'FLUX_ENFORCER' || e.type === 'NULL_ENFORCER' || isPulsar;
@@ -567,37 +571,87 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
     : (isMaster ? 1.45 : (isPulsar ? 1.25 : (isElite ? 1.3 : 1.0)));
   const flash = (e.hitFlash || 0) > 0;
   const damaged = e.hp < e.maxHp;
+  const skinMeta = getEnemySkinMeta(enemySkinId);
 
-  // Drop-in PixelLab PNG sprite hook (automatically activates whenever a clip PNG is installed!)
-  let desiredClip = 'idle';
-  if (e.isCentoid) {
-    desiredClip = e.isCentoidHead ? 'head' : 'body';
-  } else if (e.type === 'V1_ENFORCER') {
-    if (e.v1Synergy === 'FLUX') desiredClip = 'synergy_flux';
-    else if (e.v1Synergy === 'NULL') desiredClip = 'synergy_null';
-    else if (e.hp === 1) desiredClip = 'cracked';
-  } else if (damaged && e.hp <= e.maxHp * 0.5) {
-    desiredClip = 'damaged';
-  }
-  const loadedEnemyClip = spriteLoader.getClip(e.type, desiredClip);
-  if (loadedEnemyClip) {
-    const frameIdx = Math.floor((time + (e.animPhase || 0)) * loadedEnemyClip.fps);
-    spriteLoader.drawFrame(ctx, loadedEnemyClip, frameIdx, e.x, e.y, {
-      angle: e.angle || 0,
-      scale: overrideScale !== null ? overrideScale : 1,
-      flash
-    });
-    // Still render upright mini HP bar above damaged / Master / Challenge Elite enemies
-    if (overrideScale === null && (damaged || e.isChallengeElite || isMaster || e.hpBuffed) && e.hp > 0) {
+  // Shared upright overlays (V1 buff indicators + mini HP bar) drawn cleanly over any enemy skin
+  const drawEnemyOverlays = () => {
+    if (overrideScale === null && (e.speedBuffed || e.hpBuffed)) {
+      const buffR = isMaster ? 32 : (isElite ? 27 : 20);
+      ctx.save();
+      if (e.hpBuffed) {
+        ctx.strokeStyle = 'rgba(255, 48, 86, 0.82)';
+        ctx.shadowColor = COLORS.nullRed;
+        ctx.shadowBlur = 8;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, buffR, -time * 2.2, -time * 2.2 + Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (e.speedBuffed) {
+        ctx.strokeStyle = COLORS.cyan;
+        ctx.shadowColor = COLORS.cyan;
+        ctx.shadowBlur = 8;
+        ctx.lineWidth = 1.6;
+        const sx = buffR - 2;
+        ctx.beginPath();
+        ctx.moveTo(e.x - sx - 4, e.y - 4); ctx.lineTo(e.x - sx, e.y); ctx.lineTo(e.x - sx - 4, e.y + 4);
+        ctx.moveTo(e.x + sx + 4, e.y - 4); ctx.lineTo(e.x + sx, e.y); ctx.lineTo(e.x + sx + 4, e.y + 4);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    if (overrideScale === null && (damaged || e.isChallengeElite || e.hpBuffed) && e.hp > 0) {
       const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
       const bx = Math.round(e.x - bw / 2);
       const by = Math.round(e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18))));
       const ratio = clamp(e.hp / e.maxHp, 0, 1);
-      ctx.fillStyle = 'rgba(2, 10, 20, 0.85)';
+      ctx.save();
+      ctx.fillStyle = 'rgba(2, 8, 18, 0.92)';
       ctx.fillRect(bx - 1, by - 1, bw + 2, 5);
-      ctx.fillStyle = e.type.includes('NULL') ? COLORS.nullRed : (e.type === 'PULSAR' ? COLORS.yellow : COLORS.cyan);
+      ctx.fillStyle = (e.type === 'NULL_ENFORCER' || e.type === 'MASTER_NULL_ENFORCER')
+        ? COLORS.nullRed
+        : ((e.type === 'FLUX_ENFORCER' || e.type === 'MASTER_FLUX_ENFORCER')
+          ? COLORS.cyan
+          : (e.type === 'PULSAR'
+            ? COLORS.yellow
+            : (e.type === 'ALPHA_CENTOID'
+              ? COLORS.alphaPink
+              : (e.type === 'CENTOID' ? COLORS.centoidGreen : COLORS.gold))));
       ctx.fillRect(bx, by, Math.round(bw * ratio), 3);
+      ctx.restore();
     }
+  };
+
+  // Non-Alpha skins: check installed PixelLab PNG pack first, else built-in 32-bit Nexus Fleet pixel art!
+  if (skinMeta.renderer !== 'ALPHA_VECTOR') {
+    let desiredClip = 'idle';
+    if (e.isCentoid) {
+      desiredClip = e.isCentoidHead ? 'head' : 'body';
+    } else if (e.type === 'V1_ENFORCER') {
+      if (e.v1Synergy === 'FLUX') desiredClip = 'synergy_flux';
+      else if (e.v1Synergy === 'NULL') desiredClip = 'synergy_null';
+      else if (e.hp === 1) desiredClip = 'cracked';
+    } else if (damaged && e.hp <= e.maxHp * 0.5) {
+      desiredClip = 'damaged';
+    }
+    const loadedEnemyClip = skinMeta.renderer === 'PIXELLAB_SPRITE'
+      ? spriteLoader.getClip(e.type, desiredClip)
+      : null;
+
+    if (loadedEnemyClip) {
+      const frameIdx = Math.floor((time + (e.animPhase || 0)) * loadedEnemyClip.fps);
+      spriteLoader.drawFrame(ctx, loadedEnemyClip, frameIdx, e.x, e.y, {
+        angle: e.angle || 0,
+        scale: overrideScale !== null ? overrideScale : 1,
+        flash
+      });
+    } else {
+      drawSaturnEnemySprite(ctx, e, time, overrideScale);
+    }
+    drawEnemyOverlays();
     return;
   }
 
@@ -1093,7 +1147,7 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
   }
 
   // Upright Mini HP Bar above damaged enemies (crisp integer-snapped arcade bar)
-  if (overrideScale === null && (damaged || e.isChallengeElite || isMaster || e.hpBuffed) && e.hp > 0) {
+  if (overrideScale === null && (damaged || e.isChallengeElite || e.hpBuffed) && e.hp > 0) {
     const bw = isMaster ? 48 : (e.isChallengeElite ? 44 : (isElite ? 38 : (e.maxHp >= 2 ? 26 : 18)));
     const bx = Math.round(e.x - bw / 2);
     const by = Math.round(e.y - (isMaster ? 36 : (isElite ? 30 : (e.maxHp >= 2 ? 23 : 18))));
@@ -1115,7 +1169,13 @@ export function drawEnemySprite(ctx, e, time = 0, overrideScale = null) {
   }
 }
 
-export function drawEnforcerWingSprite(ctx, ew) {
+export function drawEnforcerWingSprite(ctx, ew, enemySkinId = 'alpha_test', time = 0) {
+  const skinMeta = getEnemySkinMeta(enemySkinId);
+  if (skinMeta.renderer !== 'ALPHA_VECTOR') {
+    drawSaturnEnforcerWing(ctx, ew, time);
+    return;
+  }
+
   ctx.save();
   ctx.translate(ew.x, ew.y);
   ctx.rotate(ew.angle + Math.PI / 2);

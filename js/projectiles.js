@@ -94,8 +94,8 @@ export function detonateCannonShot(game, x, y, dmg, aoeRadius) {
   game.shake = 0.34;
   game.hitStop = 0.04;
   game.synth.playCannonBoom();
-  game.spawnDeleteBurst(x, y, COLORS.purpleBright, 34, 260);
-  game.spawnDeleteBurst(x, y, COLORS.purple, 22, 195);
+  game.spawnDeleteBurst(x, y, COLORS.purpleBright, 34, 260, 'PLAYER');
+  game.spawnDeleteBurst(x, y, COLORS.purple, 22, 195, 'PLAYER');
 
   // Void all enemy projectiles inside the AOE blast
   for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
@@ -403,7 +403,8 @@ export function updateArcWavesAndCannon(game, dt) {
         game.player.y + (Math.random() - 0.5) * 20,
         COLORS.purpleBright,
         1,
-        55
+        55,
+        'PLAYER'
       );
     }
     if (aw.cannonTimer <= 0) {
@@ -1100,7 +1101,7 @@ export function updateFighterClonesAndBolts(game, dt) {
         if (cl.tetherTimer <= 0) {
           cl.detached = true;
           cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off!
-          game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 8, 95);
+          game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 8, 95, 'PLAYER');
         }
       }
     } else {
@@ -1179,14 +1180,14 @@ export function damageFighterClone(game, cloneIdx) {
   cl.hitFlash = 0.16;
   cl.invulnTimer = 0.28;
   if (cl.hp <= 0) {
-    game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 14, 145);
+    game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 14, 145, 'PLAYER');
     game.synth.playDeleteBurst(false);
     game.fighterClones.splice(cloneIdx, 1);
     if (game.fighterClones.length === 0 && hasPowerup(game, 'CLONE')) {
       removePowerupSlot(game, 'CLONE', false);
     }
   } else {
-    game.spawnDeleteBurst(cl.x, cl.y, COLORS.cloneBlue, 6, 85);
+    game.spawnDeleteBurst(cl.x, cl.y, COLORS.cloneBlue, 6, 85, 'PLAYER');
     game.synth.playArmorPing();
   }
   return true;

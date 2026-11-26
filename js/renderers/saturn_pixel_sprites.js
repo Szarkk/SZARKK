@@ -156,17 +156,109 @@ function drawBuiltInSaturnAurexShip(ctx, cx, cy, opts = {}) {
   const rightWingBody = bankStep > 0 ? dippedWhite : (bankStep < 0 ? s5 : s4);
   const rightWingEdge = bankStep > 0 ? s4 : s5;
 
-  const wL = -13 + leftCompress - leftExtend;
-  const wR = 13 - rightCompress + rightExtend;
-  const lx = -6 + Math.floor(leftCompress * 0.5);
-  const rx = 4 - Math.floor(rightCompress * 0.5);
+  // Strict Dual-Safe Valkyrie Mk-II swept wing spans (9px level = 26px total, max 10px raised = 28px -> ZERO Dual overlap even mid-bank!)
+  const spanL = Math.min(10, Math.max(5, 9 - leftCompress + leftExtend));
+  const spanR = Math.min(10, Math.max(5, 9 - rightCompress + rightExtend));
+  const lx = -5 + Math.floor(leftCompress * 0.4);
+  const rx = 3 - Math.floor(rightCompress * 0.4);
 
-  // 1) Pure WHITE animated dual + center plasma thruster flames (shooting directly from silver nozzles!)
+  // Computes the aerodynamic swept-back Valkyrie Mk-II main wing profile for column index i (0 = root -> span-1 = tip)
+  const getMainWingProfile = (i, span) => {
+    const u = i / Math.max(1, span - 1);
+    const topY = Math.round(-2 + u * 8); // Swept mid-fuselage delta leading edge (-2 -> +6)
+    const botY = Math.round(5 + u * 4);  // Sleek parallel swept jet trailing edge (+5 -> +9)
+    return { topY, botY, u };
+  };
+
+  // Draws one mirrored wing assembly: forward mini-canard + swept horizontal tail + swept main wing + subtle wingtip laser rod
+  const drawValkyrieSide = (side, span, wingBody, wingEdge) => {
+    // 1) Forward mini-canard winglets flanking the nose/cockpit
+    const canSpan = Math.max(2, Math.round(span * 0.36));
+    for (let i = 0; i < canSpan; i++) {
+      const colX = side < 0 ? (-3 - i) : (2 + i);
+      const ty = -8 + i;
+      const by = -5 + Math.floor(i * 0.6);
+      px(colX, ty - 1, 1, (by - ty) + 3, s0);
+    }
+    const canTipX = side < 0 ? (-3 - canSpan) : (2 + canSpan);
+    px(canTipX, -8 + canSpan - 1, 1, 3, s0);
+    for (let i = 0; i < canSpan; i++) {
+      const colX = side < 0 ? (-3 - i) : (2 + i);
+      const ty = -8 + i;
+      const by = -5 + Math.floor(i * 0.6);
+      px(colX, ty, 1, (by - ty) + 1, wingBody);
+      px(colX, ty, 1, 1, wingEdge);
+      px(colX, by, 1, 1, s3);
+    }
+
+    // 2) Angled swept rear horizontal tail stabilizers flanking the twin engines
+    const tailSpan = Math.max(3, Math.round(span * 0.46));
+    for (let i = 0; i < tailSpan; i++) {
+      const colX = side < 0 ? (-4 - i) : (3 + i);
+      const ty = 8 + Math.floor(i * 0.55);
+      const by = 11 + Math.floor(i * 0.45);
+      px(colX, ty - 1, 1, (by - ty) + 3, s0);
+    }
+    const tailTipX = side < 0 ? (-4 - tailSpan) : (3 + tailSpan);
+    px(tailTipX, 8 + Math.floor((tailSpan - 1) * 0.55), 1, 3, s0);
+    for (let i = 0; i < tailSpan; i++) {
+      const colX = side < 0 ? (-4 - i) : (3 + i);
+      const ty = 8 + Math.floor(i * 0.55);
+      const by = 11 + Math.floor(i * 0.45);
+      px(colX, ty, 1, (by - ty) + 1, s3);
+      px(colX, ty, 1, 1, wingBody);
+      px(colX, by, 1, 1, s2);
+    }
+
+    // 3) Swept-back main fighter jet wings + subtle pointy wingtip laser rods
+    const outerColX = side < 0 ? (-4 - (span - 1)) : (3 + (span - 1));
+    const innerAdjX = side < 0 ? (-4 - (span - 2)) : (3 + (span - 2));
+    const tipX = side < 0 ? (-4 - span) : (3 + span);
+    const tipProf = getMainWingProfile(span - 1, span);
+    const rodLen = 3; // Crisp subtle starfighter wingtip barrel/rod
+    const rodTopY = tipProf.topY - rodLen;
+
+    // Pass A: Crisp 1px jet-black outer silhouette around diagonal wing + wingtip rod
+    for (let i = 0; i < span; i++) {
+      const colX = side < 0 ? (-4 - i) : (3 + i);
+      const { topY, botY } = getMainWingProfile(i, span);
+      px(colX, topY - 1, 1, (botY - topY) + 3, s0);
+    }
+    px(tipX, rodTopY, 1, (tipProf.botY - rodTopY) + 1, s0);
+    px(outerColX, rodTopY - 1, 1, rodLen + 1, s0);
+    px(innerAdjX, rodTopY, 1, Math.max(1, rodLen - 1), s0);
+
+    // Pass B: Sculpted 32-bit monochrome titanium-white & silver swept wing armor
+    for (let i = 0; i < span; i++) {
+      const colX = side < 0 ? (-4 - i) : (3 + i);
+      const { topY, botY } = getMainWingProfile(i, span);
+      const chord = (botY - topY) + 1;
+      px(colX, topY, 1, chord, wingBody);
+      px(colX, topY, 1, Math.min(2, chord), wingEdge);
+      if (i === Math.floor(span * 0.48) && chord >= 4) {
+        px(colX, topY + 2, 1, Math.max(1, chord - 3), s3);
+      }
+      if (i < span - 1) {
+        px(colX, botY - 1, 1, 1, s3); // brushed silver trailing bevel
+        px(colX, botY, 1, 1, s2);     // dark steel trailing flap edge
+      } else {
+        // Sleek wingtip stabilizer cap + pure white strobe beacon
+        px(colX, topY, 1, chord, s2);
+        px(colX, topY + 1, 1, Math.max(1, chord - 2), s5);
+      }
+    }
+
+    // Pass C: Subtle starfighter wingtip pointy rod (steel mount -> silver shaft -> pure-white needle tip)
+    px(outerColX, tipProf.topY - 1, 1, 1, s2);
+    px(outerColX, tipProf.topY - 2, 1, 1, s3);
+    px(outerColX, tipProf.topY - 3, 1, 1, s5);
+  };
+
+  // 1) Pure WHITE animated twin afterburner plasma plumes (anchored seamlessly at y=11 inside silver bells!)
   const thrFrame = Math.floor(time * 16) % 3;
   const boostLen = thrustAxis > 0.25 ? 3 : (thrustAxis < -0.25 ? -1 : 0);
   const flameH = Math.max(3, 4 + thrFrame + boostLen);
 
-  // Left & right side thruster plumes (anchored seamlessly at y=11 inside silver exhaust bells)
   px(lx, 11, 2, flameH, t3);
   px(lx, 11, 2, Math.max(2, flameH - 1), t4);
   px(lx, 11, 2, Math.max(1, flameH - 3), t5);
@@ -175,91 +267,49 @@ function drawBuiltInSaturnAurexShip(ctx, cx, cy, opts = {}) {
   px(rx, 11, 2, Math.max(2, flameH - 1), t4);
   px(rx, 11, 2, Math.max(1, flameH - 3), t5);
 
-  // Center main white afterburner plume (anchored seamlessly at y=12 inside center silver bell)
-  const centerFlame = Math.max(3, 5 + ((thrFrame + 1) % 3) + boostLen);
-  px(-2, 12, 4, centerFlame - 1, t2);
-  px(-1, 12, 2, centerFlame, t4);
-  px(-1, 12, 2, Math.max(2, centerFlame - 2), '#ffffff');
+  // 2) Valkyrie Mk-II Canards, Twin Tails & Swept Main Wings
+  drawValkyrieSide(-1, spanL, leftWingBody, leftWingEdge);
+  drawValkyrieSide(1, spanR, rightWingBody, rightWingEdge);
 
-  // 2) Crisp jet-black outer 1px silhouette outline (s0)
-  px(-2, -15, 4, 3, s0);
-  px(-4, -12, 8, 5, s0);
-  px(-6, -7, 12, 6, s0);
-  px(wL, -1, (wR - wL), 11, s0);
-  px(-8, 8, 16, 4, s0);
-  px(-3, 10, 6, 3, s0);
+  // 3) Razor-Slim Supersonic Fuselage Outline (s0)
+  px(-1, -17, 2, 4, s0);   // extended needle nose tip
+  px(-2, -14, 4, 5, s0);   // slender upper nose cone
+  px(-3, -10, 6, 20, s0);  // slim central fuselage hull
+  px(-6, 7, 12, 4, s0);    // rear twin-engine housing
 
-  // 3) Swept Left & Right Armored Wings (mostly bright white with crisp silver panel definition!)
-  const lwSpan = Math.max(4, -wL - 5);
-  const rwSpan = Math.max(4, wR - 5);
+  // 4) Central Fuselage Spine (predominantly crisp white with brushed-silver nose bevels & jet intakes)
+  px(-2, -13, 4, 22, s4);         // bright ceramic white sleek fuselage
+  px(-1, -16, 2, 25, s5);         // razor-sharp pure white needle nose & dorsal spine
+  px(-3, -4, 6, 13, s4);          // mid/aft engine fuselage blend
+  // Silver nose-cheek bevels for supersonic taper
+  px(-2, -12, 1, 4, s3);
+  px(1, -12, 1, 4, s3);
+  // Dark gunmetal + silver side air-intake scoops right behind the canards (shift slightly with banking)
+  px(bankStep < 0 ? -3 : -4, -3, 2, 7, s1);
+  px(bankStep < 0 ? -3 : -4, -3, 1, 6, s2);
+  px(bankStep > 0 ? 1 : 2, -3, 2, 7, s1);
+  px(bankStep > 0 ? 2 : 3, -3, 1, 6, s2);
+  // Crisp twin dorsal vertical tail-fin stripes
+  px(-3, 4, 1, 6, s0);
+  px(2, 4, 1, 6, s0);
+  px(-2, 5, 1, 4, s3);
+  px(1, 5, 1, 4, s3);
 
-  // Left wing
-  px(wL + 1, 1, lwSpan, 8, leftWingBody);
-  px(wL + 2, -1, Math.max(2, lwSpan - 1), 3, leftWingEdge);
-  // Crisp silver upper-wing panel groove & steel trailing flap lip
-  if (lwSpan >= 5) px(wL + 4, 1, 1, 6, s3);
-  px(wL + 1, 7, lwSpan, 1, s3); // brushed silver trailing bevel
-  px(wL + 1, 8, lwSpan, 1, s2); // dark steel flap edge (reads cleanly against dark space!)
-  // Left wingtip silver mount + black trim + pure white strobe node
-  px(wL + 1, 2, 2, 7, s2);
-  px(wL + 1, 3, 2, 5, s0);
-  px(wL + 1, 4, 2, 3, s5);
-
-  // Right wing
-  px(4, 1, rwSpan, 8, rightWingBody);
-  px(4, -1, Math.max(2, rwSpan - 1), 3, rightWingEdge);
-  // Crisp silver upper-wing panel groove & steel trailing flap lip
-  if (rwSpan >= 5) px(wR - 5, 1, 1, 6, s3);
-  px(4, 7, rwSpan, 1, s3);
-  px(4, 8, rwSpan, 1, s2);
-  // Right wingtip silver mount + black trim + pure white strobe node
-  px(wR - 3, 2, 2, 7, s2);
-  px(wR - 3, 3, 2, 5, s0);
-  px(wR - 3, 4, 2, 3, s5);
-
-  // 4) Central Fuselage Spine (predominantly crisp white with brushed-silver armor bevels & black vents)
-  px(-5, -5, 10, 14, s3);        // brushed silver fuselage base shadow & wing-root fillet
-  px(-4, -6, 8, 15, s4);         // bright ceramic white main hull
-  px(-3, -11, 6, 20, s4);
-  px(-2, -12, 4, 21, s5);        // pure white raised dorsal spine
-  px(-1, -14, 2, 23, s5);        // razor-sharp pure white nose cone
-  // Silver nose-cheek bevels for crisp forward definition
-  px(-3, -10, 1, 4, s3);
-  px(2, -10, 1, 4, s3);
-  // Dark gunmetal + silver side air-intake cowlings (shift slightly with banking)
-  px(bankStep < 0 ? -4 : -5, -3, 2, 10, s2);
-  px(bankStep < 0 ? -4 : -5, -2, 1, 8, s1);
-  px(bankStep > 0 ? 2 : 3, -3, 2, 10, s2);
-  px(bankStep > 0 ? 3 : 4, -2, 1, 8, s1);
-  // Crisp silver engine deck cowling bridges connecting fuselage straight into the rear thrusters!
-  px(-6, 7, 12, 3, s3);
-  px(-4, 7, 8, 3, s4);
-  // Sharp black mechanical vent slits along the dorsal cowlings
-  px(-3, 2, 1, 5, s0);
-  px(2, 2, 1, 5, s0);
-
-  // 5) Smoked Black Armored Cockpit Canopy with brushed-silver bezel & pure white glint (zero cyan!)
+  // 5) Smoked Black Armored Bubble Canopy with brushed-silver bezel & pure white glint (zero cyan!)
   const canopyX = bankStep < 0 ? -2 : (bankStep > 0 ? 0 : -1);
-  px(canopyX - 1, -8, 4, 1, s3); // silver canopy brow frame
-  px(canopyX - 1, -7, 4, 7, s0); // obsidian frame
-  px(canopyX, -6, 2, 5, s1);     // smoked armored glass
-  px(canopyX, -6, 1, 2, s5);     // crisp white glass highlight
-  px(canopyX + 1, -6, 1, 1, s3); // secondary silver glint
+  px(canopyX - 1, -10, 4, 1, s3); // silver canopy brow frame
+  px(canopyX - 1, -9, 4, 7, s0);  // obsidian frame
+  px(canopyX, -8, 2, 5, s1);      // smoked armored glass
+  px(canopyX, -8, 1, 2, s5);      // crisp white glass highlight
 
-  // 6) Sculpted Brushed-Silver & Dark-Steel Thruster Bells (physically fuse ship body -> white jets!)
-  // Left engine bell
+  // 6) Twin Sculpted Brushed-Silver & Dark-Steel Afterburner Bells + Center Tail Sting
   px(lx - 1, 9, 4, 2, s2);
   px(lx, 9, 2, 2, s3);
   px(lx, 10, 2, 1, s4);
-  // Right engine bell
   px(rx - 1, 9, 4, 2, s2);
   px(rx, 9, 2, 2, s3);
   px(rx, 10, 2, 1, s4);
-  // Center main afterburner bell
-  px(-3, 9, 6, 3, s2);
-  px(-2, 9, 4, 3, s3);
-  px(-1, 9, 2, 2, s4);
-  px(-2, 11, 4, 1, s4); // bright silver nozzle lip directly touching center white jet!
+  px(-1, 9, 2, 2, s1);            // sleek dark center tail sting between twin engines
 }
 
 function drawPixelDashedRing(ctx, cx, cy, radius, color, time, speed = 2.6, dots = 16) {
