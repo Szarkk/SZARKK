@@ -1333,7 +1333,7 @@ export function drawEnforcerWingSprite(ctx, ew, enemySkinId = 'alpha_test', time
  * Renders a retro Square Pixelated Power-Up Capsule (Cyan = Homing, Red = Laser, Purple = Arc Wave)
  * Built on an explicit blocky 9x9 pixel grid for crisp pixelated SZARKK arcade appeal.
  */
-export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
+export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0, crisp = false) {
   const isCyan = type === 'CYAN';
   const isPurple = type === 'PURPLE';
   const isYellow = type === 'YELLOW';
@@ -1366,14 +1366,18 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
         : (isPlasma
           ? '#160b34'
           : (isClone ? '#0b0c2e' : '#26040b'))));
-  const px = 2.6 * scale;
+  const px = crisp ? Math.max(1, Math.round(scale)) : (2.6 * scale);
   const half = 4.5 * px;
   const pulse = 0.8 + Math.sin(time * 7) * 0.2;
 
   ctx.save();
-  ctx.translate(Math.round(x), Math.round(y));
-  ctx.shadowColor = isClone ? COLORS.clonePurple : mainCol;
-  ctx.shadowBlur = 12 * pulse;
+  ctx.translate(crisp ? x : Math.round(x), crisp ? y : Math.round(y));
+  if (crisp) {
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.shadowColor = isClone ? COLORS.clonePurple : mainCol;
+    ctx.shadowBlur = 12 * pulse;
+  }
 
   // Inner dark square fill
   ctx.fillStyle = fillCol;
@@ -1452,10 +1456,17 @@ export function drawPixelCapsule(ctx, x, y, type, time = 0, scale = 1.0) {
     ctx.fillRect(-px * 0.5, -px * 0.5, px, px);
   } else {
     // Continuous Vertical Laser Beam Pixel Icon
-    ctx.fillRect(-px * 0.5, -px * 3, px, px * 6);
-    ctx.fillStyle = glowCol;
-    ctx.fillRect(-px * 1.5, -px * 2, px, px * 4);
-    ctx.fillRect(px * 0.5, -px * 2, px, px * 4);
+    if (crisp) {
+      ctx.fillRect(-px * 0.5, -px * 2.5, px, px * 5);
+      ctx.fillStyle = glowCol;
+      ctx.fillRect(-px * 1.5, -px * 1.5, px, px * 3);
+      ctx.fillRect(px * 0.5, -px * 1.5, px, px * 3);
+    } else {
+      ctx.fillRect(-px * 0.5, -px * 3, px, px * 6);
+      ctx.fillStyle = glowCol;
+      ctx.fillRect(-px * 1.5, -px * 2, px, px * 4);
+      ctx.fillRect(px * 0.5, -px * 2, px, px * 4);
+    }
   }
   ctx.restore();
 }

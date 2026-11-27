@@ -132,6 +132,7 @@ export function clearActivePowerup(game) {
   game.powerup.slots.CLONE = 0;
   game.powerup.slots.PLASMA = 0;
   game.powerup.order = [];
+  game.readyPowerups = [];
   resetArcWaveState(game);
   game.arcWaveState.auraFade = 0;
   resetPlasmaRingState(game);
@@ -587,6 +588,48 @@ export function collectCapsule(game, cap) {
   game.updateStatusPills();
 }
 
+export function getPowerupDisplayName(type, compact = false) {
+  if (type === 'CYAN') return compact ? 'HOMING' : 'HOMING MISSILES';
+  if (type === 'RED') return compact ? 'LASER' : 'CONTINUOUS LASER';
+  if (type === 'PURPLE') return 'ARC WAVE';
+  if (type === 'YELLOW') return compact ? 'LIGHTNING' : 'CHAIN LIGHTNING';
+  if (type === 'CLONE') return compact ? 'CLONES' : 'FIGHTER CLONES';
+  if (type === 'PLASMA') return compact ? 'PLASMA' : 'PLASMA RINGS';
+  return 'POWER-UP';
+}
+
+export function queueReadyPowerup(game, type) {
+  if (!game || !type) return null;
+  if (!Array.isArray(game.readyPowerups)) game.readyPowerups = [];
+  const id = (game.readyIdSeq = (game.readyIdSeq || 0) + 1);
+  const entry = { id, type };
+  game.readyPowerups.push(entry);
+  return entry;
+}
+
+export function activateReadyPowerup(game, readyId = null) {
+  if (!game || game.state !== 'PLAYING') return false;
+  if (!game.player || !game.player.alive || game.player.capturedById) return false;
+  if (!Array.isArray(game.readyPowerups) || game.readyPowerups.length === 0) return false;
+
+  const idx = readyId !== null
+    ? game.readyPowerups.findIndex(r => r && r.id === readyId)
+    : 0;
+  if (idx < 0) return false;
+
+  const [entry] = game.readyPowerups.splice(idx, 1);
+  const type = typeof entry === 'string' ? entry : entry.type;
+  collectCapsule(game, {
+    type,
+    x: game.player.x,
+    y: game.player.y
+  });
+  if (game.sandboxMode && game.syncSandboxUI) {
+    game.syncSandboxUI();
+  }
+  return true;
+}
+
 export function updatePowerupTimers(game, dt) {
   // Conserved weapons (Cyan/Red/Purple/Yellow) never passively decay;
   // Fighter Clones run a 20.0s timer that PAUSES between sectors, waves, and challenge banners!
@@ -594,6 +637,7 @@ export function updatePowerupTimers(game, dt) {
     const inPauseWindow =
       game.sectorPhase === 'BANNER' ||
       game.sectorPhase === 'CHALLENGE_BANNER' ||
+      game.sectorPhase === 'CHALLENGE_REWARD' ||
       game.sectorPhase === 'CLEARED' ||
       game.sectorPhase === 'WAVE_GAP';
 
@@ -619,6 +663,7 @@ export function updatePowerupCapsules(game, dt) {
   const inTransition =
     game.sectorPhase === 'BANNER' ||
     game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CHALLENGE_REWARD' ||
     game.sectorPhase === 'CLEARED';
 
   // 1) Process 50% per-wave Floating Capsule spawn (Sec 02 W3+: Cyan; Sec 03: Cyan/Red; Sec 04+/Hard: All 3)

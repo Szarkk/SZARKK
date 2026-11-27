@@ -278,10 +278,31 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
       popCol,
       1.3
     );
-    // Roll capsule drop once on clean headshot kill if no other split of this root remains
+    // Roll capsule drop & record challenge chain kill once when no other split of this root remains
     const anyLeftForRoot = game.enemies.some(o => o.isCentoid && o.centoidRootId === rootId);
     if (scored && !anyLeftForRoot) {
       rollEnemyCapsuleDrop(game, e);
+      if (
+        game.isChallengeStage &&
+        (game.sectorPhase === 'CHALLENGE' || game.sectorPhase === 'CHALLENGE_BANNER')
+      ) {
+        if (!game.challengeRewardedRoots) game.challengeRewardedRoots = new Set();
+        if (!game.challengeRewardedRoots.has(rootId)) {
+          game.challengeRewardedRoots.add(rootId);
+          game.challengeHits = (game.challengeHits || 0) + 1;
+          if (game.challengeInExtra) {
+            game.challengeExtraHits = (game.challengeExtraHits || 0) + 1;
+            if (e.type === 'CENTOPHAGE') {
+              game.challengeExtraMastersKilled = (game.challengeExtraMastersKilled || 0) + 1;
+            }
+          } else {
+            game.challengeRegHits = (game.challengeRegHits || 0) + 1;
+            if (e.type === 'CENTOPHAGE') {
+              game.challengeRegMastersKilled = (game.challengeRegMastersKilled || 0) + 1;
+            }
+          }
+        }
+      }
     }
     return;
   }
@@ -296,6 +317,27 @@ export function handleCentoidSegmentDestroyed(game, e, idx, scored = true) {
     const anyLeftForRoot = game.enemies.some(o => o.isCentoid && o.centoidRootId === rootId);
     if (scored && !anyLeftForRoot) {
       rollEnemyCapsuleDrop(game, e);
+      if (
+        game.isChallengeStage &&
+        (game.sectorPhase === 'CHALLENGE' || game.sectorPhase === 'CHALLENGE_BANNER')
+      ) {
+        if (!game.challengeRewardedRoots) game.challengeRewardedRoots = new Set();
+        if (!game.challengeRewardedRoots.has(rootId)) {
+          game.challengeRewardedRoots.add(rootId);
+          game.challengeHits = (game.challengeHits || 0) + 1;
+          if (game.challengeInExtra) {
+            game.challengeExtraHits = (game.challengeExtraHits || 0) + 1;
+            if (e.type === 'CENTOPHAGE') {
+              game.challengeExtraMastersKilled = (game.challengeExtraMastersKilled || 0) + 1;
+            }
+          } else {
+            game.challengeRegHits = (game.challengeRegHits || 0) + 1;
+            if (e.type === 'CENTOPHAGE') {
+              game.challengeRegMastersKilled = (game.challengeRegMastersKilled || 0) + 1;
+            }
+          }
+        }
+      }
     }
     return;
   }

@@ -7,6 +7,7 @@ import {
   ARC_WAVE_MAX,
   CANNON_AUTO_FIRE_DELAY,
   CHAIN_LIGHTNING_MAX_SHOTS,
+  COLORS,
   CYAN_SHOT_ENERGY_COST,
   GAME_VERSION,
   LOGICAL_H,
@@ -23,7 +24,7 @@ import {
   YELLOW_SHOT_ENERGY_COST
 } from './config.js';
 import { clamp, writeLS } from './utils.js';
-import { getActivePowerups } from './powerups.js';
+import { activateReadyPowerup, getActivePowerups, getPowerupDisplayName } from './powerups.js';
 import { getPlayerMoveSpeedMult } from './player.js';
 import {
   disarmSandboxDeploy,
@@ -70,8 +71,10 @@ export function cacheDomElements(game) {
   game.elMenuCtrlChip = document.getElementById('menu-ctrl-chip');
 
   game.pwrGaugeBar = document.getElementById('powerup-gauge-bar');
+  game.floatingGaugeOverlay = document.getElementById('floating-gauge-overlay');
   game._pwrGaugeKey = '';
   game._pwrSlotEls = {};
+  game._fltSlotEls = {};
 
   game.pillSlow = document.getElementById('pill-slow');
   game.pillSlowTime = document.getElementById('pill-slow-time');
@@ -705,12 +708,130 @@ export function updateHUD(game) {
   game.elLives.innerHTML = html;
 }
 
-function buildPowerupGaugeSlots(game, activeTypes) {
+function buildReadySlot(game, entry, barClsFor) {
+  const type = typeof entry === 'string' ? entry : entry.type;
+  const readyId = typeof entry === 'string' ? null : entry.id;
+  const cls = barClsFor(type);
+
+  const slot = document.createElement('div');
+  slot.className = `pwr-slot is-ready-slot ${cls}`;
+
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = `pwr-ready-btn ${cls}`;
+  btn.dataset.readyType = type;
+  if (readyId !== null) btn.dataset.readyId = String(readyId);
+  const fullName = getPowerupDisplayName(type, false);
+  btn.setAttribute('aria-label', `Activate ${fullName}`);
+  btn.title = `Activate ${fullName}`;
+
+  const cv = document.createElement('canvas');
+  cv.width = 47;
+  cv.height = 47;
+  cv.className = 'pwr-ready-canvas';
+  cv.setAttribute('aria-hidden', 'true');
+  btn.appendChild(cv);
+
+  btn.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+  });
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.blur();
+    game.synth.unlock();
+    activateReadyPowerup(game, readyId);
+  });
+
+  slot.appendChild(btn);
+  const ctx = cv.getContext('2d');
+  if (ctx) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 47, 47);
+    // Razor-sharp integer-snapped capsule (px = 5 on 47x47 -> 23x23 CSS px, zero blur, zero floating!)
+    drawPixelCapsule(ctx, 23.5, 23.5, type, 0, 5, true);
+  }
+  return slot;
+}
+
+export function renderReadyCapsuleButtons() {
+  // Ready button capsules are stationary integer-snapped pixel sprites rendered once on build.
+}
+
+function buildFloatingGaugeSlots(game, activeTypes, slotClsFor) {
+  const flt = game.floatingGaugeOverlay;
+  if (!flt) return;
+  flt.innerHTML = '';
+  game._fltSlotEls = {};
+
+  if (activeTypes.length === 0) {
+    flt.classList.add('hidden');
+    return;
+  }
+
+  flt.classList.remove('hidden');
+  for (const type of activeTypes) {
+    const slot = document.createElement('div');
+    slot.className = `flt-pwr-slot ${slotClsFor(type)}`;
+
+    const elVal = document.createElement('span');
+    elVal.className = 'flt-pwr-val';
+
+    const track = document.createElement('div');
+    track.className = 'flt-pwr-track';
+    const fill = document.createElement('div');
+    fill.className = 'flt-pwr-fill';
+    const ticks = document.createElement('div');
+    ticks.className = 'flt-pwr-ticks';
+    ticks.setAttribute('aria-hidden', 'true');
+    track.append(fill, ticks);
+
+    slot.append(elVal, track);
+    flt.appendChild(slot);
+    game._fltSlotEls[type] = { elVal, fill };
+  }
+}
+
+function buildPowerupGaugeSlots(game, activeTypes, readyList) {
   const bar = game.pwrGaugeBar;
   bar.innerHTML = '';
   game._pwrSlotEls = {};
+  game._readyCapsuleCanvases = [];
 
-  if (activeTypes.length === 0) {
+  const barClsFor = (t) =>
+    t === 'CYAN' ? 'pwr-cyan'
+      : (t === 'RED' ? 'pwr-red'
+        : (t === 'YELLOW' ? 'pwr-yellow'
+          : (t === 'PLASMA' ? 'pwr-plasma'
+            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple'))));
+  const slotClsFor = (t) =>
+    t === 'CYAN' ? 'pwr-cyan'
+      : (t === 'RED' ? 'pwr-red'
+        : (t === 'YELLOW' ? 'pwr-yellow seg-24'
+          : (t === 'PLASMA' ? 'pwr-plasma'
+            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6'))));
+
+  const readyEntries = Array.isArray(readyList) ? readyList : [];
+  const splitFloating = activeTypes.length > 0 && readyEntries.length > 0;
+
+  // When BOTH active power-ups and Ready buttons exist, shift active gauges up as a thin
+  // transparent-backdrop bar above the gauge UI so Ready buttons stay clean and uncramped!
+  if (splitFloating) {
+    buildFloatingGaugeSlots(game, activeTypes, slotClsFor);
+    bar.className = readyEntries.length === 1
+      ? barClsFor(typeof readyEntries[0] === 'string' ? readyEntries[0] : readyEntries[0].type)
+      : 'pwr-multi';
+    for (const entry of readyEntries) {
+      bar.appendChild(buildReadySlot(game, entry, barClsFor));
+    }
+    return;
+  }
+
+  // Hide transparent floating bar whenever only gauges, only buttons, or neither are present
+  buildFloatingGaugeSlots(game, [], slotClsFor);
+
+  const totalSlots = activeTypes.length + readyEntries.length;
+  if (totalSlots === 0) {
     bar.className = 'pwr-empty';
     const slot = document.createElement('div');
     slot.className = 'pwr-slot pwr-empty';
@@ -728,20 +849,14 @@ function buildPowerupGaugeSlots(game, activeTypes) {
     return;
   }
 
-  const barClsFor = (t) =>
-    t === 'CYAN' ? 'pwr-cyan'
-      : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow'
-          : (t === 'PLASMA' ? 'pwr-plasma'
-            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple'))));
-  const slotClsFor = (t) =>
-    t === 'CYAN' ? 'pwr-cyan'
-      : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow seg-24'
-          : (t === 'PLASMA' ? 'pwr-plasma'
-            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6'))));
-
-  bar.className = activeTypes.length > 1 ? 'pwr-multi' : barClsFor(activeTypes[0]);
+  if (totalSlots === 1) {
+    const soleType = activeTypes.length === 1
+      ? activeTypes[0]
+      : (typeof readyEntries[0] === 'string' ? readyEntries[0] : readyEntries[0].type);
+    bar.className = barClsFor(soleType);
+  } else {
+    bar.className = 'pwr-multi';
+  }
 
   for (const type of activeTypes) {
     const slot = document.createElement('div');
@@ -768,6 +883,10 @@ function buildPowerupGaugeSlots(game, activeTypes) {
     bar.appendChild(slot);
     game._pwrSlotEls[type] = { elName, elVal, fill };
   }
+
+  for (const entry of readyEntries) {
+    bar.appendChild(buildReadySlot(game, entry, barClsFor));
+  }
 }
 
 export function updateStatusPills(game) {
@@ -775,16 +894,22 @@ export function updateStatusPills(game) {
 
   if (game.pwrGaugeBar) {
     const activeTypes = getActivePowerups(game);
-    const key = activeTypes.length > 0 ? activeTypes.join('|') : 'EMPTY';
+    const readyList = Array.isArray(game.readyPowerups) ? game.readyPowerups : [];
+    const activeKey = activeTypes.length > 0 ? activeTypes.join('|') : 'EMPTY';
+    const readyKey = readyList.length > 0
+      ? `R:${readyList.map(r => (typeof r === 'string' ? r : `${r.id}:${r.type}`)).join(',')}`
+      : 'R:NONE';
+    const key = `${activeKey}#${readyKey}`;
     if (key !== game._pwrGaugeKey) {
       game._pwrGaugeKey = key;
-      buildPowerupGaugeSlots(game, activeTypes);
+      buildPowerupGaugeSlots(game, activeTypes, readyList);
       if (game.sandboxMode) syncSandboxPowerupTray(game);
     }
 
-    const compact = activeTypes.length >= 2;
+    const splitFloating = activeTypes.length > 0 && readyList.length > 0;
+    const compact = splitFloating || activeTypes.length >= 2;
     for (const type of activeTypes) {
-      const refs = game._pwrSlotEls[type];
+      const refs = splitFloating ? (game._fltSlotEls && game._fltSlotEls[type]) : game._pwrSlotEls[type];
       if (!refs) continue;
       const energy = game.powerup.slots[type] || 0;
       const pct = clamp((energy / POWERUP_MAX_ENERGY) * 100, 0, 100);
@@ -792,35 +917,37 @@ export function updateStatusPills(game) {
       if (type === 'PURPLE') {
         const aw = game.arcWaveState;
         if (aw.phase === 'CANNON_CHARGING') {
-          refs.elName.textContent = compact ? 'TAP FIRE!' : 'OVERCHARGE // TAP TO FIRE';
+          if (refs.elName) refs.elName.textContent = compact ? 'TAP FIRE!' : 'OVERCHARGE // TAP TO FIRE';
           refs.elVal.textContent = `${aw.cannonTimer.toFixed(1)}s`;
           refs.fill.style.width = `${clamp((aw.cannonTimer / CANNON_AUTO_FIRE_DELAY) * 100, 4, 100)}%`;
         } else if (aw.phase === 'CANNON_READY') {
-          refs.elName.textContent = compact ? 'CANNON 2x' : 'CANNON PRIMED // 2x TAP';
+          if (refs.elName) refs.elName.textContent = compact ? 'CANNON 2x' : 'CANNON PRIMED // 2x TAP';
           refs.elVal.textContent = 'READY';
           refs.fill.style.width = '100%';
         } else {
           const left = Math.max(0, ARC_WAVE_MAX - aw.wavesFired);
-          refs.elName.textContent = compact
-            ? 'ARC WAVE'
-            : (game.autoFire ? 'ARC WAVE // AUTO' : 'ARC WAVE // CONSERVE');
+          if (refs.elName) {
+            refs.elName.textContent = compact
+              ? 'ARC WAVE'
+              : (game.autoFire ? 'ARC WAVE // AUTO' : 'ARC WAVE // CONSERVE');
+          }
           refs.elVal.textContent = compact ? `${left}/${ARC_WAVE_MAX}` : `${left}/${ARC_WAVE_MAX} WAVES`;
           refs.fill.style.width = `${pct}%`;
         }
       } else if (type === 'CYAN') {
         const maxShots = Math.round(POWERUP_MAX_ENERGY / CYAN_SHOT_ENERGY_COST);
         const shotsLeft = Math.ceil(energy / CYAN_SHOT_ENERGY_COST);
-        refs.elName.textContent = compact ? 'HOMING' : 'HOMING MISSILES';
+        if (refs.elName) refs.elName.textContent = compact ? 'HOMING' : 'HOMING MISSILES';
         refs.elVal.textContent = compact ? `${shotsLeft}/${maxShots}` : `${shotsLeft}/${maxShots} SHOTS`;
         refs.fill.style.width = `${pct}%`;
       } else if (type === 'RED') {
         const secLeft = energy / RED_LASER_DRAIN_PER_SEC;
-        refs.elName.textContent = compact ? 'LASER' : 'CONTINUOUS LASER';
+        if (refs.elName) refs.elName.textContent = compact ? 'LASER' : 'CONTINUOUS LASER';
         refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
         refs.fill.style.width = `${pct}%`;
       } else if (type === 'YELLOW') {
         const shotsLeft = Math.max(0, Math.min(CHAIN_LIGHTNING_MAX_SHOTS, Math.ceil((energy - 0.01) / YELLOW_SHOT_ENERGY_COST)));
-        refs.elName.textContent = compact ? 'LIGHTNING' : 'CHAIN LIGHTNING';
+        if (refs.elName) refs.elName.textContent = compact ? 'LIGHTNING' : 'CHAIN LIGHTNING';
         refs.elVal.textContent = compact
           ? `${shotsLeft}/${CHAIN_LIGHTNING_MAX_SHOTS}`
           : `${shotsLeft}/${CHAIN_LIGHTNING_MAX_SHOTS} SHOTS`;
@@ -828,7 +955,7 @@ export function updateStatusPills(game) {
       } else if (type === 'CLONE') {
         const secLeft = Math.max(0, game.cloneTimer || 0);
         const cnt = (game.fighterClones || []).length;
-        refs.elName.textContent = compact ? `CLONES x${cnt}` : `FIGHTER CLONES (x${cnt})`;
+        if (refs.elName) refs.elName.textContent = compact ? `CLONES x${cnt}` : `FIGHTER CLONES (x${cnt})`;
         refs.elVal.textContent = `${secLeft.toFixed(1)}s`;
         refs.fill.style.width = `${pct}%`;
       } else if (type === 'PLASMA') {
@@ -836,22 +963,24 @@ export function updateStatusPills(game) {
         if (ps && ps.phase === 'AIMING') {
           const aimLeft = Math.max(0, ps.aimTimer !== undefined ? ps.aimTimer : PLASMA_AIM_TIMEOUT);
           const aimMax = Math.max(0.1, ps.aimMax || PLASMA_AIM_TIMEOUT);
-          refs.elName.textContent = compact ? 'PLASMA AIM' : 'PLASMA RINGS // AIM & FIRE';
+          if (refs.elName) refs.elName.textContent = compact ? 'PLASMA AIM' : 'PLASMA RINGS // AIM & FIRE';
           refs.elVal.textContent = `${aimLeft.toFixed(1)}s`;
           refs.fill.style.width = `${clamp((aimLeft / aimMax) * 100, 0, 100)}%`;
         } else if (ps && ps.phase === 'FIRING') {
-          refs.elName.textContent = compact
-            ? 'PLASMA FIRE'
-            : (ps.randomAutoFire ? 'PLASMA RINGS // RANDOM AUTO' : 'PLASMA RINGS // FIRING');
+          if (refs.elName) {
+            refs.elName.textContent = compact
+              ? 'PLASMA FIRE'
+              : (ps.randomAutoFire ? 'PLASMA RINGS // RANDOM AUTO' : 'PLASMA RINGS // FIRING');
+          }
           refs.elVal.textContent = `${ps.shotsLeft}/${PLASMA_RING_COUNT}`;
           refs.fill.style.width = '100%';
         } else if (ps && ps.borderActive) {
           const secLeft = Math.max(0, ps.borderTimer || 0);
-          refs.elName.textContent = compact ? 'PLASMA BDR' : 'PLASMA BORDER';
+          if (refs.elName) refs.elName.textContent = compact ? 'PLASMA BDR' : 'PLASMA BORDER';
           refs.elVal.textContent = ps.borderTimerStarted ? `${secLeft.toFixed(1)}s` : 'ARMED';
           refs.fill.style.width = `${clamp((secLeft / Math.max(0.1, ps.borderMax || PLASMA_BORDER_DUR)) * 100, 0, 100)}%`;
         } else {
-          refs.elName.textContent = 'PLASMA RINGS';
+          if (refs.elName) refs.elName.textContent = 'PLASMA RINGS';
           refs.elVal.textContent = '0.0s';
           refs.fill.style.width = '0%';
         }
@@ -1441,6 +1570,10 @@ export function bindEvents(game) {
     if (c === 'KeyF') {
       game.autoFire = !game.autoFire;
       syncControlsUI(game);
+      return;
+    }
+    if (c === 'KeyE' && game.state === 'PLAYING' && !e.repeat) {
+      activateReadyPowerup(game);
       return;
     }
     if ((c === 'Space' || c === 'KeyZ' || c === 'KeyJ') && !game.keys.has(c)) {

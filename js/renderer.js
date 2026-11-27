@@ -56,6 +56,106 @@ import {
 const FONT_ARCADE_DISPLAY = '"Press Start 2P", "Silkscreen", ui-monospace, monospace';
 const FONT_ARCADE_UI = '"Silkscreen", ui-monospace, monospace';
 
+/**
+ * Word-wraps arcade banner text cleanly within maxWidth so intro & reward cards
+ * expand vertically instead of clipping on left/right frame edges.
+ */
+function wrapBannerSegment(ctx, segment, maxWidth) {
+  const trimmed = segment.trim();
+  if (!trimmed) return [];
+  if (ctx.measureText(trimmed).width <= maxWidth) return [trimmed];
+
+  const words = trimmed.split(/\s+/);
+  const lines = [];
+  let current = '';
+
+  const pushOversizedWord = (word) => {
+    let chunk = '';
+    for (const ch of word) {
+      const next = chunk + ch;
+      if (chunk && ctx.measureText(next).width > maxWidth) {
+        lines.push(chunk);
+        chunk = ch;
+      } else {
+        chunk = next;
+      }
+    }
+    if (chunk) current = chunk;
+  };
+
+  for (const word of words) {
+    if (!current) {
+      if (ctx.measureText(word).width <= maxWidth) {
+        current = word;
+      } else {
+        pushOversizedWord(word);
+      }
+    } else {
+      const candidate = `${current} ${word}`;
+      if (ctx.measureText(candidate).width <= maxWidth) {
+        current = candidate;
+      } else {
+        lines.push(current);
+        current = '';
+        if (ctx.measureText(word).width <= maxWidth) {
+          current = word;
+        } else {
+          pushOversizedWord(word);
+        }
+      }
+    }
+  }
+  if (current) lines.push(current);
+
+  // If greedy wrap produced exactly 2 unbalanced lines, balance word split cleanly near midpoint
+  if (lines.length === 2 && words.length >= 3) {
+    let bestSplit = -1;
+    let bestDiff = Infinity;
+    for (let k = 1; k < words.length; k++) {
+      const left = words.slice(0, k).join(' ');
+      const right = words.slice(k).join(' ');
+      const lw = ctx.measureText(left).width;
+      const rw = ctx.measureText(right).width;
+      if (lw <= maxWidth && rw <= maxWidth) {
+        const diff = Math.abs(lw - rw);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestSplit = k;
+        }
+      }
+    }
+    if (bestSplit > 0) {
+      return [words.slice(0, bestSplit).join(' '), words.slice(bestSplit).join(' ')];
+    }
+  }
+
+  return lines;
+}
+
+function wrapBannerLines(ctx, text, maxWidth) {
+  if (!text) return [];
+  const raw = String(text);
+  const result = [];
+  for (const para of raw.split('\n')) {
+    const trimmed = para.trim();
+    if (!trimmed) continue;
+    if (ctx.measureText(trimmed).width <= maxWidth) {
+      result.push(trimmed);
+      continue;
+    }
+    // Prefer splitting cleanly at " // " dividers so marquees stack symmetrically without orphan slashes
+    if (trimmed.includes(' // ')) {
+      const parts = trimmed.split(' // ');
+      for (const part of parts) {
+        result.push(...wrapBannerSegment(ctx, part, maxWidth));
+      }
+    } else {
+      result.push(...wrapBannerSegment(ctx, trimmed, maxWidth));
+    }
+  }
+  return result;
+}
+
 function drawMeasurementGridUnderlay(ctx) {
   ctx.save();
 
@@ -1416,13 +1516,43 @@ export function renderFrame(game) {
     ctx.restore();
   }
 
-  // Sector / Challenge / Extra Round Banner (32-bit Sega Saturn double-rail arcade marquee!)
-  if (game.sectorPhase === 'BANNER' || game.sectorPhase === 'CHALLENGE_BANNER' || game.sectorPhase === 'CLEARED') {
+  // Sector / Challenge / Extra Round / Reward Banner (32-bit Sega Saturn double-rail arcade marquee!)
+  if (
+    game.sectorPhase === 'BANNER' ||
+    game.sectorPhase === 'CHALLENGE_BANNER' ||
+    game.sectorPhase === 'CHALLENGE_REWARD' ||
+    game.sectorPhase === 'CLEARED'
+  ) {
     ctx.save();
-    const topY = Math.round(LOGICAL_H * 0.41);
-    const banH = 68;
+    const maxTextW = LOGICAL_W - 48; // 432px safe inner width (24px clear margin inside 480px frame)
+    const titleFont = `400 13.5px ${FONT_ARCADE_DISPLAY}`;
+    const subFont = `700 9.5px ${FONT_ARCADE_UI}`;
+    const noteFont = `700 9px ${FONT_ARCADE_UI}`;
+    const titleLineH = 21;
+    const subLineH = 14;
+    const noteLineH = 14;
+
+    ctx.font = titleFont;
+    const titleLines = wrapBannerLines(ctx, game.bannerTitle, maxTextW);
+    ctx.font = subFont;
+    const subLines = game.bannerSub ? wrapBannerLines(ctx, game.bannerSub, maxTextW) : [];
+    ctx.font = noteFont;
+    const noteLines = game.bannerNote ? wrapBannerLines(ctx, game.bannerNote, maxTextW) : [];
+
+    const topPad = 14;
+    const botPad = 14;
+    const titleBlockH = Math.max(1, titleLines.length) * titleLineH;
+    const subGap = subLines.length > 0 ? 7 : 0;
+    const subBlockH = subLines.length * subLineH;
+    const noteGap = noteLines.length > 0 ? 7 : 0;
+    const noteBlockH = noteLines.length * noteLineH;
+    const contentH = titleBlockH + subGap + subBlockH + noteGap + noteBlockH;
+    const banH = Math.max(68, Math.ceil(topPad + contentH + botPad));
+    const centerY = Math.round(LOGICAL_H * 0.41 + 34);
+    const topY = clamp(Math.round(centerY - banH * 0.5), 74, PLAYER_MIN_Y - banH - 14);
+
     // Dark CRT backing + subtle horizontal arcade scanlines
-    ctx.fillStyle = 'rgba(2, 8, 20, 0.90)';
+    ctx.fillStyle = 'rgba(2, 8, 20, 0.92)';
     ctx.fillRect(0, topY, LOGICAL_W, banH);
     ctx.fillStyle = 'rgba(0, 0, 0, 0.30)';
     for (let sy = topY + 2; sy < topY + banH - 2; sy += 3) {
@@ -1445,35 +1575,63 @@ export function renderFrame(game) {
     ctx.fillRect(LOGICAL_W - 10, topY + banH - 11, 4, 4);
 
     ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
-    const titleY = topY + 32;
-    ctx.font = `400 14.5px ${FONT_ARCADE_DISPLAY}`;
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = '#02060d';
-    ctx.shadowBlur = 0;
-    ctx.strokeText(game.bannerTitle, LOGICAL_W * 0.5, titleY);
 
-    // Classic 32-bit arcade vertical metallic highlight fill on Sector Banner title
-    const titleGrad = ctx.createLinearGradient(0, titleY - 14, 0, titleY + 2);
-    titleGrad.addColorStop(0, '#ffffff');
-    titleGrad.addColorStop(0.55, '#e8fbff');
-    titleGrad.addColorStop(1, game.bannerColor);
-    ctx.fillStyle = titleGrad;
-    ctx.shadowColor = game.bannerColor;
-    ctx.shadowBlur = 10;
-    ctx.fillText(game.bannerTitle, LOGICAL_W * 0.5, titleY);
+    let cursorY = topY + Math.round((banH - contentH) * 0.5);
 
-    if (game.bannerSub) {
-      const subY = topY + 53;
-      ctx.font = `700 9px ${FONT_ARCADE_UI}`;
-      ctx.lineWidth = 2.6;
+    // Multi-line 32-bit arcade vertical metallic title
+    ctx.font = titleFont;
+    for (let i = 0; i < titleLines.length; i++) {
+      const lineY = cursorY + i * titleLineH + titleLineH * 0.5;
+      ctx.lineWidth = 4;
       ctx.strokeStyle = '#02060d';
       ctx.shadowBlur = 0;
-      ctx.strokeText(game.bannerSub, LOGICAL_W * 0.5, subY);
-      ctx.fillStyle = game.bannerColor;
+      ctx.strokeText(titleLines[i], LOGICAL_W * 0.5, lineY);
+
+      const titleGrad = ctx.createLinearGradient(0, lineY - 8, 0, lineY + 8);
+      titleGrad.addColorStop(0, '#ffffff');
+      titleGrad.addColorStop(0.55, '#e8fbff');
+      titleGrad.addColorStop(1, game.bannerColor);
+      ctx.fillStyle = titleGrad;
       ctx.shadowColor = game.bannerColor;
-      ctx.shadowBlur = 5;
-      ctx.fillText(game.bannerSub, LOGICAL_W * 0.5, subY);
+      ctx.shadowBlur = 10;
+      ctx.fillText(titleLines[i], LOGICAL_W * 0.5, lineY);
+    }
+    cursorY += titleBlockH;
+
+    if (subLines.length > 0) {
+      cursorY += subGap;
+      ctx.font = subFont;
+      for (let i = 0; i < subLines.length; i++) {
+        const lineY = cursorY + i * subLineH + subLineH * 0.5;
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = '#02060d';
+        ctx.shadowBlur = 0;
+        ctx.strokeText(subLines[i], LOGICAL_W * 0.5, lineY);
+        ctx.fillStyle = game.bannerColor;
+        ctx.shadowColor = game.bannerColor;
+        ctx.shadowBlur = 5;
+        ctx.fillText(subLines[i], LOGICAL_W * 0.5, lineY);
+      }
+      cursorY += subBlockH;
+    }
+
+    if (noteLines.length > 0) {
+      cursorY += noteGap;
+      const noteCol = game.bannerNoteColor || game.bannerColor;
+      ctx.font = noteFont;
+      for (let i = 0; i < noteLines.length; i++) {
+        const lineY = cursorY + i * noteLineH + noteLineH * 0.5;
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = '#02060d';
+        ctx.shadowBlur = 0;
+        ctx.strokeText(noteLines[i], LOGICAL_W * 0.5, lineY);
+        ctx.fillStyle = noteCol;
+        ctx.shadowColor = noteCol;
+        ctx.shadowBlur = 6;
+        ctx.fillText(noteLines[i], LOGICAL_W * 0.5, lineY);
+      }
     }
     ctx.restore();
   }

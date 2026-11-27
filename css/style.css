@@ -1492,6 +1492,241 @@ body.pixel-mode #game-canvas {
   box-shadow: 0 0 12px rgba(204, 255, 0, 0.92);
 }
 
+/* =========================================================================
+   1UP RESERVE POWER-UP CAPSULE READY SLOTS (CONSISTENT PIXELATED + GLOW)
+   ========================================================================= */
+#powerup-gauge-bar {
+  min-height: 44px;
+  align-items: center;
+}
+
+.pwr-slot.is-ready-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.pwr-ready-btn {
+  --px-bg: #041e30;
+  --px-pip: #00f6ff;
+  position: relative;
+  flex: 0 1 auto;
+  width: min(92%, 156px);
+  min-width: 44px;
+  height: 34px;
+  padding: 0 6px;
+  background: var(--px-bg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.08s ease, filter 0.1s ease, width 0.12s ease;
+}
+
+/* Consistent crisp 2x2 pixelated inner corner L-brackets */
+.pwr-ready-btn::before,
+.pwr-ready-btn::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  width: 2px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--px-pip);
+  pointer-events: none;
+}
+
+.pwr-ready-btn::before {
+  left: 4px;
+  box-shadow:
+    0 24px 0 0 var(--px-pip),
+    2px 0 0 0 var(--px-pip),
+    0 2px 0 0 var(--px-pip),
+    2px 24px 0 0 var(--px-pip),
+    0 22px 0 0 var(--px-pip);
+}
+
+.pwr-ready-btn::after {
+  right: 4px;
+  box-shadow:
+    0 24px 0 0 var(--px-pip),
+    -2px 0 0 0 var(--px-pip),
+    0 2px 0 0 var(--px-pip),
+    -2px 24px 0 0 var(--px-pip),
+    0 22px 0 0 var(--px-pip);
+}
+
+.pwr-ready-canvas {
+  position: relative;
+  z-index: 1;
+  width: 23px;
+  height: 23px;
+  display: block;
+  pointer-events: none;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.pwr-ready-btn:hover {
+  filter: brightness(1.18);
+}
+
+.pwr-ready-btn:active {
+  transform: translate(1px, 1px);
+}
+
+/* Consistent Solid Dark Capsule-Tinted Interiors & Pixel Corner Studs */
+.pwr-ready-btn.pwr-cyan {
+  --px-bg: #041d2e;
+  --px-pip: #00f6ff;
+}
+
+.pwr-ready-btn.pwr-red {
+  --px-bg: #26040b;
+  --px-pip: #ff4769;
+}
+
+.pwr-ready-btn.pwr-purple {
+  --px-bg: #1e0532;
+  --px-pip: #d67bff;
+}
+
+.pwr-ready-btn.pwr-yellow {
+  --px-bg: #291b02;
+  --px-pip: #ffe640;
+}
+
+.pwr-ready-btn.pwr-clone {
+  --px-bg: #100c36;
+  --px-pip: #8a66ff;
+}
+
+.pwr-ready-btn.pwr-plasma {
+  --px-bg: #151232;
+  --px-pip: #ccff00;
+}
+
+/* =========================================================================
+   TRANSPARENT FLOATING THIN GAUGE OVERLAY (NO BACKDROP UI, NO POWER-UP NAME)
+   Shown directly above #powerup-gauge-bar when active power-ups & READY buttons coexist
+   ========================================================================= */
+.floating-gauge-overlay {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 5px;
+  z-index: 16;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.flt-pwr-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.flt-pwr-val {
+  align-self: flex-end;
+  font-size: 7.4px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  line-height: 1;
+  white-space: nowrap;
+  color: #ecffff;
+  text-shadow:
+    1px 1px 0 #02060d,
+    -1px -1px 0 #02060d,
+    1px -1px 0 #02060d,
+    -1px 1px 0 #02060d,
+    0 0 6px rgba(0, 246, 255, 0.75);
+}
+
+.flt-pwr-track {
+  position: relative;
+  width: 100%;
+  height: 5px;
+  background: rgba(2, 7, 16, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  overflow: hidden;
+}
+
+.flt-pwr-fill {
+  height: 100%;
+  width: 0%;
+  background: #ffffff;
+  transition: width 0.06s linear;
+}
+
+.flt-pwr-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.flt-pwr-slot.seg-6 .flt-pwr-ticks {
+  opacity: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent calc(16.6667% - 1px),
+    rgba(2, 8, 18, 0.85) calc(16.6667% - 1px),
+    rgba(2, 8, 18, 0.85) 16.6667%
+  );
+}
+
+.flt-pwr-slot.seg-24 .flt-pwr-ticks {
+  opacity: 1;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent calc(4.1667% - 1px),
+    rgba(2, 8, 18, 0.85) calc(4.1667% - 1px),
+    rgba(2, 8, 18, 0.85) 4.1667%
+  );
+}
+
+.flt-pwr-slot.pwr-cyan .flt-pwr-val { color: #9efcff; }
+.flt-pwr-slot.pwr-cyan .flt-pwr-track { border-color: rgba(0, 246, 255, 0.72); }
+.flt-pwr-slot.pwr-cyan .flt-pwr-fill { background: linear-gradient(90deg, #00b8e6, #00f6ff, #d4ffff); }
+
+.flt-pwr-slot.pwr-red .flt-pwr-val { color: #ff98ab; }
+.flt-pwr-slot.pwr-red .flt-pwr-track { border-color: rgba(255, 30, 66, 0.78); }
+.flt-pwr-slot.pwr-red .flt-pwr-fill { background: linear-gradient(90deg, #c80e2e, #ff1e42, #ff99ac); }
+
+.flt-pwr-slot.pwr-purple .flt-pwr-val { color: #ebbdff; }
+.flt-pwr-slot.pwr-purple .flt-pwr-track { border-color: rgba(196, 77, 255, 0.8); }
+.flt-pwr-slot.pwr-purple .flt-pwr-fill { background: linear-gradient(90deg, #9824e8, #c44dff, #f2d4ff); }
+
+.flt-pwr-slot.pwr-yellow .flt-pwr-val { color: #fff39e; }
+.flt-pwr-slot.pwr-yellow .flt-pwr-track { border-color: rgba(255, 230, 64, 0.82); }
+.flt-pwr-slot.pwr-yellow .flt-pwr-fill { background: linear-gradient(90deg, #ff9e1b, #ffe640, #ffffff); }
+
+.flt-pwr-slot.pwr-clone .flt-pwr-val { color: #c2b8ff; }
+.flt-pwr-slot.pwr-clone .flt-pwr-track { border-color: rgba(114, 92, 255, 0.82); }
+.flt-pwr-slot.pwr-clone .flt-pwr-fill { background: linear-gradient(90deg, #2846e8, #783bff, #d4a8ff); }
+
+.flt-pwr-slot.pwr-plasma .flt-pwr-val { color: #e2ff66; }
+.flt-pwr-slot.pwr-plasma .flt-pwr-track { border-color: rgba(45, 255, 122, 0.85); }
+.flt-pwr-slot.pwr-plasma .flt-pwr-fill { background: linear-gradient(90deg, #4e30b8, #2dff7a, #ffe640); }
+
 .dock-inner {
   width: 100%;
   max-width: 580px;
@@ -1909,12 +2144,20 @@ body.sandbox-active #status-bar {
   border-color: rgba(180, 130, 255, 0.6);
 }
 
-/* Bottom-Right Quick Power-Up Tray (expands upward), Standalone Ship Ruler & Clear Power-Ups Button */
+/* Bottom-Right Quick Power-Up Tray (shifted above floating gauge + collapsible) */
 .sandbox-pwr-corner {
   position: absolute;
-  bottom: 8px;
+  bottom: 30px;
   right: 8px;
   z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.sbx-corner-body {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -2043,10 +2286,24 @@ body.sandbox-active #status-bar {
   box-shadow: 0 0 8px rgba(255, 30, 66, 0.32);
 }
 
+.sbx-corner-btn.is-collapse {
+  min-height: 22px;
+  padding: 3px 6px;
+  font-size: 7.2px;
+  background: rgba(4, 14, 28, 0.94);
+  color: rgba(174, 232, 255, 0.92);
+  border: 1.3px solid rgba(0, 246, 255, 0.55);
+}
+
+.sbx-corner-btn.is-collapse.is-collapsed {
+  background: rgba(0, 56, 82, 0.94);
+  color: #ffffff;
+}
+
 /* Bottom Deploy / Drag / Stop Action Bar inside Stage (sits cleanly left of bottom-right PWR stack) */
 .sandbox-deploy-bar {
   position: absolute;
-  bottom: 8px;
+  bottom: 30px;
   left: 8px;
   right: 106px;
   z-index: 12;
@@ -2679,7 +2936,9 @@ body.sandbox-active #status-bar {
 .btn-pair { gap: 11px; }
 .mode-toggle-row, .lb-tabs { gap: 9px; }
 .sbx-strip-group { gap: 6px; }
-.sandbox-pwr-corner { bottom: 10px; right: 10px; gap: 7px; }
+.sandbox-pwr-corner { bottom: 32px; right: 10px; gap: 7px; }
+.sbx-corner-body { gap: 7px; }
+.sandbox-deploy-bar { bottom: 32px; }
 .sbx-pwr-tray { gap: 6px; padding: 8px; }
 .sbx-pwr-tray-list { gap: 6px; }
 .sbx-chip-grid { gap: 7px; }
@@ -2878,6 +3137,8 @@ button:active,
 .sbx-corner-btn.is-ruler.is-on { --px-bdr: #ffd447; }
 .sbx-corner-btn.is-reset { --px-bdr: #00ffaa; }
 .sbx-corner-btn.is-clr { --px-bdr: #ff3e62; }
+.sbx-corner-btn.is-collapse { --px-bdr: rgba(0, 246, 255, 0.62); }
+.sbx-corner-btn.is-collapse.is-collapsed { --px-bdr: #00ffaa; }
 
 .sbx-pwr-item.is-all { --px-bdr: #ffd447; }
 .sbx-pwr-item.sbx-c-cyan, .sbx-chip.sbx-c-cyan { --px-bdr: #00f6ff; }
@@ -3270,4 +3531,97 @@ button:active,
   background-size: 14px 14px;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 7' shape-rendering='crispEdges'%3E%3Crect x='3' y='0' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='1' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='1' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='2' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='2' width='2' height='1' fill='%237efaff'/%3E%3Crect x='5' y='2' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='0' y='3' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='3' width='1' height='1' fill='%237efaff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='3' width='1' height='1' fill='%237efaff'/%3E%3Crect x='5' y='3' width='1' height='1' fill='%230088cc'/%3E%3Crect x='6' y='3' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='1' y='4' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='4' width='2' height='1' fill='%237efaff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%230088cc'/%3E%3Crect x='5' y='4' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='2' y='5' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='5' width='1' height='1' fill='%230088cc'/%3E%3Crect x='4' y='5' width='1' height='1' fill='%2300f6ff'/%3E%3Crect x='3' y='6' width='1' height='1' fill='%2300f6ff'/%3E%3C/svg%3E");
   filter: drop-shadow(0 0 4px rgba(0, 246, 255, 0.85));
+}
+
+/* 8) Capsule-Matched Multi-Color Pixel-Curved Bezels for 1UP Reserve READY Buttons */
+#powerup-gauge-bar.pwr-cyan { border-top-color: rgba(0, 246, 255, 0.78); }
+#powerup-gauge-bar.pwr-red { border-top-color: rgba(255, 30, 66, 0.82); }
+#powerup-gauge-bar.pwr-purple { border-top-color: rgba(196, 77, 255, 0.84); }
+#powerup-gauge-bar.pwr-yellow { border-top-color: rgba(255, 230, 64, 0.86); }
+#powerup-gauge-bar.pwr-clone { border-top-color: rgba(124, 92, 255, 0.86); }
+#powerup-gauge-bar.pwr-plasma { border-top-color: rgba(45, 255, 122, 0.88); }
+
+button.pwr-ready-btn {
+  --px-top: #c4ffff;
+  --px-bot: #147aff;
+  --px-sides: #00f6ff;
+  --px-in: rgba(0, 246, 255, 0.28);
+  --px-halo: rgba(0, 246, 255, 0.50);
+  border: 0 !important;
+  border-radius: 0 !important;
+  margin: 2px 2px;
+  box-shadow:
+    0 -2px 0 0 var(--px-top),
+    0  2px 0 0 var(--px-bot),
+   -2px 0 0 0 var(--px-sides),
+    2px 0 0 0 var(--px-sides),
+    inset 0  2px 0 0 var(--px-in),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.56),
+    inset  2px 0 0 0 var(--px-in),
+    inset -2px 0 0 0 var(--px-in),
+    0 0 11px 0 var(--px-halo),
+    0 4px 0 0 rgba(0, 0, 0, 0.65) !important;
+}
+
+button.pwr-ready-btn:hover {
+  filter: brightness(1.18);
+  box-shadow:
+    0 -2px 0 0 #ffffff,
+    0  2px 0 0 var(--px-bot),
+   -2px 0 0 0 var(--px-sides),
+    2px 0 0 0 var(--px-sides),
+    inset 0  2px 0 0 rgba(255, 255, 255, 0.42),
+    inset 0 -2px 0 0 rgba(0, 0, 0, 0.52),
+    inset  2px 0 0 0 var(--px-in),
+    inset -2px 0 0 0 var(--px-in),
+    0 0 16px 1px var(--px-halo),
+    0 4px 0 0 rgba(0, 0, 0, 0.65) !important;
+}
+
+button.pwr-ready-btn.pwr-cyan {
+  --px-top: #c4ffff;
+  --px-sides: #00f6ff;
+  --px-bot: #147aff;
+  --px-in: rgba(0, 246, 255, 0.28);
+  --px-halo: rgba(0, 246, 255, 0.52);
+}
+
+button.pwr-ready-btn.pwr-red {
+  --px-top: #ffafc2;
+  --px-sides: #ff1e42;
+  --px-bot: #c40e2c;
+  --px-in: rgba(255, 42, 82, 0.30);
+  --px-halo: rgba(255, 30, 66, 0.54);
+}
+
+button.pwr-ready-btn.pwr-purple {
+  --px-top: #f2ccff;
+  --px-sides: #c44dff;
+  --px-bot: #7c24e8;
+  --px-in: rgba(196, 77, 255, 0.30);
+  --px-halo: rgba(196, 77, 255, 0.54);
+}
+
+button.pwr-ready-btn.pwr-yellow {
+  --px-top: #fff7b2;
+  --px-sides: #ffe640;
+  --px-bot: #ff9e1b;
+  --px-in: rgba(255, 230, 64, 0.30);
+  --px-halo: rgba(255, 224, 48, 0.54);
+}
+
+button.pwr-ready-btn.pwr-clone {
+  --px-top: #d4c8ff;
+  --px-sides: #6c44ff;
+  --px-bot: #2f5bff;
+  --px-in: rgba(114, 82, 255, 0.32);
+  --px-halo: rgba(118, 72, 255, 0.58);
+}
+
+button.pwr-ready-btn.pwr-plasma {
+  --px-top: #ccff00;
+  --px-sides: #2dff7a;
+  --px-bot: #6e3ef2;
+  --px-in: rgba(45, 255, 122, 0.28);
+  --px-halo: rgba(52, 255, 122, 0.54);
 }

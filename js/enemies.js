@@ -4,6 +4,7 @@
 
 import {
   ALPHA_CENTOID_START_SECTOR,
+  CAPSULE_BOUNDS,
   CENTOID_START_SECTOR,
   CENTOPHAGE_START_SECTOR,
   CHAIN_LIGHTNING_DISABLE_DUR,
@@ -42,7 +43,13 @@ import {
   V1_SYNERGY_RADIUS
 } from './config.js';
 import { clamp, evalCubic, lerp } from './utils.js';
-import { getActivePowerups, getUnlockedCapsuleTypes, rollEnemyCapsuleDrop } from './powerups.js';
+import {
+  getActivePowerups,
+  getUnlockedCapsuleTypes,
+  pickRandomCapsuleType,
+  rollEnemyCapsuleDrop,
+  spawnCapsule
+} from './powerups.js';
 import { isPlasmaShieldActive, isPlayerShootingLightning } from './player.js';
 import {
   handleEnforcerDestroyed,
@@ -327,6 +334,8 @@ export function beginSector(game, num) {
   game.bannerColor = (game.hardMode || effSec >= MASTER_START_SECTOR)
     ? COLORS.nullRed
     : (effSec === ELITE_NULL_START_SECTOR ? COLORS.nullRed : (effSec === 4 ? COLORS.purple : COLORS.cyan));
+  game.bannerNote = '';
+  game.bannerNoteColor = null;
 
   game.synth.playSectorStart(false);
   game.updateHUD();
@@ -358,6 +367,17 @@ export function beginChallengeStage(game, challengeNum) {
   game.formationClock = 0;
 
   game.challengeHits = 0;
+  game.challengeTotal = 0;
+  game.challengeRegHits = 0;
+  game.challengeRegTotal = 0;
+  game.challengeRegMastersSpawned = 0;
+  game.challengeRegMastersKilled = 0;
+  game.challengeExtraHits = 0;
+  game.challengeExtraTotal = 0;
+  game.challengeExtraMastersSpawned = 0;
+  game.challengeExtraMastersKilled = 0;
+  game.challengeRewardedRoots = new Set();
+  game.challengeInExtra = false;
   game.challengeSubRound = 0;
   game.challengeExtraRounds = effChallenge >= 4
     ? 3
@@ -378,6 +398,8 @@ export function beginChallengeStage(game, challengeNum) {
   game.bannerColor = effChallenge >= CHALLENGE_MASTER_START
     ? COLORS.nullRed
     : (effChallenge >= CHALLENGE_EXTRA_ROUND_START ? COLORS.purpleBright : COLORS.gold);
+  game.bannerNote = '';
+  game.bannerNoteColor = null;
 
   buildChallengeWaveQueue(game, effChallenge);
   game.synth.playSectorStart(true);
@@ -1033,6 +1055,10 @@ export function buildChallengeWaveQueue(game, challengeNum) {
     game.waveQueue.sort((a, b) => a.delay - b.delay);
   }
 
+  game.challengeRegTotal = game.waveQueue.length;
+  game.challengeTotal = game.waveQueue.length;
+  game.challengeRegMastersSpawned = game.waveQueue.filter(it => isMasterEnemyType(it.type)).length;
+  game.challengeInExtra = false;
   game.waveSpawnTimer = 0;
 }
 
@@ -1053,6 +1079,7 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound, forced
   }
   const hardEscalated = !forcedModeId && effChallengeNum >= 4;
 
+  game.challengeInExtra = true;
   game.waveQueue = [];
   game.waveSpawnTimer = 0;
   game.sectorPhase = 'CHALLENGE_BANNER';
@@ -1065,6 +1092,8 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound, forced
     : `${chPrefix} // EXTRA ROUND ${subRound}/${game.challengeExtraRounds}`;
   game.bannerSub = hardEscalated ? `${mode.title} [MASTER ESCORT]` : mode.title;
   game.bannerColor = mode.color;
+  game.bannerNote = '';
+  game.bannerNoteColor = null;
   game.synth.playSectorStart(true);
 
   const items = [];
@@ -1413,6 +1442,9 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound, forced
 
   items.sort((a, b) => a.delay - b.delay);
   game.challengeTotal += items.length;
+  game.challengeExtraTotal = (game.challengeExtraTotal || 0) + items.length;
+  game.challengeExtraMastersSpawned =
+    (game.challengeExtraMastersSpawned || 0) + items.filter(it => isMasterEnemyType(it.type)).length;
   game.waveQueue = items;
 }
 
@@ -1631,23 +1663,144 @@ export function spawnDirectEnemy(game, type, x, y) {
   game.spawnDeleteBurst(cx, cy, COLORS.cyan, 10, 95);
 }
 
+function isMasterEnemyType(type) {
+  return type === 'MASTER_FLUX_ENFORCER' || type === 'MASTER_NULL_ENFORCER' || type === 'CENTOPHAGE';
+}
+
+/**
+ * Evaluates & spawns Challenge performance capsule rewards in CAPSULE_BOUNDS:
+ * - MASTER RULE: If >=1 Master spawned in the evaluated phase and 0 Masters were killed,
+ *   the kill-% reward is voided (returns masterVoided: true when player met kill-% threshold).
+ * - Regular challenge round (isExtra = false):
+ *     >50% killed -> 75% chance for 1 random unlocked capsule
+ *     100% killed (Perfect) -> guaranteed 1 random unlocked capsule
+ * - Extra challenge rounds combined (isExtra = true):
+ *     >75% killed -> guaranteed 1 random unlocked capsule
+ *     100% killed (Perfect) -> guaranteed 2 random unlocked capsules
+ */
+export function evaluateChallengeCapsuleReward(game, isExtra = false) {
+  const hits = isExtra ? (game.challengeExtraHits || 0) : (game.challengeRegHits || 0);
+  const total = isExtra ? (game.challengeExtraTotal || 0) : (game.challengeRegTotal || 0);
+  const mastersSpawned = isExtra
+    ? (game.challengeExtraMastersSpawned || 0)
+    : (game.challengeRegMastersSpawned || 0);
+  const mastersKilled = isExtra
+    ? (game.challengeExtraMastersKilled || 0)
+    : (game.challengeRegMastersKilled || 0);
+
+  if (total <= 0) {
+    return { capsuleCount: 0, perfect: false, masterVoided: false, qualified: false, hits: 0, total: 0, pct: 0, types: [] };
+  }
+
+  const perfect = hits >= total;
+  const pct = Math.min(100, Math.round((hits / total) * 100));
+  const qualified = isExtra ? (hits > total * 0.75) : (hits > total * 0.5);
+
+  if (mastersSpawned > 0 && mastersKilled < 1) {
+    return {
+      capsuleCount: 0,
+      perfect: false,
+      masterVoided: qualified,
+      qualified,
+      hits,
+      total,
+      pct,
+      types: []
+    };
+  }
+
+  let capsuleCount = 0;
+  if (isExtra) {
+    if (perfect) capsuleCount = 2;
+    else if (hits > total * 0.75) capsuleCount = 1;
+  } else {
+    if (perfect) capsuleCount = 1;
+    else if (hits > total * 0.5 && Math.random() < 0.75) capsuleCount = 1;
+  }
+
+  const types = [];
+  if (capsuleCount > 0) {
+    const effSec = game.getEffectiveSector ? game.getEffectiveSector() : game.sector;
+    const { minX, maxX, minY, maxY } = CAPSULE_BOUNDS;
+    for (let i = 0; i < capsuleCount; i++) {
+      const capType = pickRandomCapsuleType(effSec, 4, game.hardMode, true);
+      if (!capType) continue;
+      types.push(capType);
+      const rx = capsuleCount >= 2
+        ? (i === 0 ? minX + 36 + Math.random() * 96 : maxX - 36 - Math.random() * 96)
+        : (minX + 44 + Math.random() * (maxX - minX - 88));
+      const ry = minY + 26 + Math.random() * (maxY - minY - 52);
+      spawnCapsule(game, rx, ry, capType, 'DROP');
+    }
+  }
+
+  return {
+    capsuleCount: types.length,
+    perfect,
+    masterVoided: false,
+    qualified,
+    hits,
+    total,
+    pct,
+    types
+  };
+}
+
 export function finishChallengeStage(game) {
   const hits = game.challengeHits;
   const total = Math.max(1, game.challengeTotal);
-  if (hits >= total) {
-    game.addScore(10000);
+  const allPerfect = hits >= total;
+  const bonus = allPerfect ? 10000 : hits * 100;
+  if (bonus > 0) game.addScore(bonus);
+
+  const isExtraEval = game.challengeExtraRounds > 0;
+  const reward = evaluateChallengeCapsuleReward(game, isExtraEval);
+
+  if (reward.capsuleCount > 0 && reward.perfect) {
+    game.bannerTitle = 'PERFECT!';
+    game.bannerSub = reward.capsuleCount >= 2
+      ? 'EXTRA ROUNDS 100% // 2x BONUS CAPSULES!'
+      : '100% ACCURACY // BONUS CAPSULE!';
+    game.bannerNote = allPerfect
+      ? 'PERFECT DATA STREAM // BONUS +10000'
+      : `TOTAL HITS ${hits}/${total} // BONUS +${bonus}`;
+    game.bannerColor = COLORS.gold;
+    game.bannerNoteColor = COLORS.emerald;
+    game.synth.playRescue();
+  } else if (reward.capsuleCount > 0) {
+    game.bannerTitle = 'BONUS CAPSULE!';
+    game.bannerSub = isExtraEval
+      ? `EXTRA ROUNDS ${reward.hits}/${reward.total} (${reward.pct}%)`
+      : `HITS ${hits}/${total} (${reward.pct}%)`;
+    game.bannerNote = `REWARD CAPSULE DEPLOYED // BONUS +${bonus}`;
+    game.bannerColor = COLORS.emerald;
+    game.bannerNoteColor = COLORS.gold;
+    game.synth.playRescue();
+  } else if (reward.masterVoided) {
+    game.bannerTitle = 'MASTER ESCAPED – NO BONUS';
+    game.bannerSub = isExtraEval
+      ? `EXTRA ROUNDS ${reward.hits}/${reward.total} (${reward.pct}%)`
+      : `HITS ${hits}/${total} (${reward.pct}%)`;
+    game.bannerNote = `CHALLENGE COMPLETE // BONUS +${bonus}`;
+    game.bannerColor = COLORS.nullRed;
+    game.bannerNoteColor = COLORS.amber;
+    game.synth.playSectorStart(false);
+  } else if (allPerfect) {
     game.bannerTitle = 'PERFECT DATA STREAM!';
     game.bannerSub = '100% ACCURACY // BONUS +10000';
+    game.bannerNote = '';
     game.bannerColor = COLORS.gold;
+    game.bannerNoteColor = null;
     game.synth.playRescue();
   } else {
-    const bonus = hits * 100;
-    if (bonus > 0) game.addScore(bonus);
     game.bannerTitle = 'CHALLENGE COMPLETE';
     game.bannerSub = `HITS ${hits}/${total} // BONUS +${bonus}`;
+    game.bannerNote = '';
     game.bannerColor = COLORS.emerald;
+    game.bannerNoteColor = null;
     game.synth.playSectorStart(false);
   }
+
   game.justFinishedChallenge = true;
   game.sectorPhase = 'CLEARED';
   game.phaseTimer = 2.4;
@@ -1799,6 +1952,16 @@ export function updateSectorPhase(game, dt) {
     return;
   }
 
+  if (game.sectorPhase === 'CHALLENGE_REWARD') {
+    game.phaseTimer -= dt;
+    if (game.phaseTimer <= 0) {
+      game.challengeSubRound++;
+      const effCh = game.getEffectiveChallengeNum ? game.getEffectiveChallengeNum() : game.challengeNum;
+      startChallengeExtraRound(game, effCh, game.challengeSubRound);
+    }
+    return;
+  }
+
   // Seamless unannounced breather between Waves 1 -> 2 -> 3 -> 4 inside a Standard Sector
   if (game.sectorPhase === 'WAVE_GAP') {
     game.phaseTimer -= dt;
@@ -1829,6 +1992,36 @@ export function updateSectorPhase(game, dt) {
         }
       } else if (game.sectorPhase === 'CHALLENGE' && game.enemies.length === 0 && game.enforcerWings.length === 0) {
         if (game.challengeSubRound < game.challengeExtraRounds) {
+          // Regular challenge round finished before Extra Round 1 -> evaluate Regular round capsule reward!
+          if (game.challengeSubRound === 0) {
+            const reward = evaluateChallengeCapsuleReward(game, false);
+            if (reward.capsuleCount > 0 || reward.masterVoided) {
+              game.sectorPhase = 'CHALLENGE_REWARD';
+              game.phaseTimer = 2.0;
+              if (reward.capsuleCount > 0 && reward.perfect) {
+                game.bannerTitle = 'PERFECT!';
+                game.bannerSub = 'ROUND 1 CLEAR // 100% ACCURACY';
+                game.bannerNote = 'BONUS CAPSULE DEPLOYED!';
+                game.bannerColor = COLORS.gold;
+                game.bannerNoteColor = COLORS.emerald;
+                game.synth.playRescue();
+              } else if (reward.capsuleCount > 0) {
+                game.bannerTitle = 'BONUS CAPSULE!';
+                game.bannerSub = `ROUND 1: ${reward.hits}/${reward.total} (${reward.pct}%)`;
+                game.bannerNote = 'REWARD CAPSULE DEPLOYED!';
+                game.bannerColor = COLORS.emerald;
+                game.bannerNoteColor = COLORS.gold;
+                game.synth.playRescue();
+              } else {
+                game.bannerTitle = 'MASTER ESCAPED – NO BONUS';
+                game.bannerSub = `ROUND 1: ${reward.hits}/${reward.total} (${reward.pct}%)`;
+                game.bannerNote = 'ELIMINATE A MASTER TO EARN BONUS';
+                game.bannerColor = COLORS.nullRed;
+                game.bannerNoteColor = COLORS.amber;
+              }
+              return;
+            }
+          }
           game.challengeSubRound++;
           const effCh = game.getEffectiveChallengeNum ? game.getEffectiveChallengeNum() : game.challengeNum;
           startChallengeExtraRound(game, effCh, game.challengeSubRound);
@@ -1916,6 +2109,8 @@ export function updateSectorPhase(game, dt) {
           : 'ADVANCING SECTOR...';
       }
       game.bannerColor = COLORS.emerald;
+      game.bannerNote = '';
+      game.bannerNoteColor = null;
       return;
     }
 
@@ -2170,6 +2365,17 @@ export function destroyEnemy(game, idx, scored = true) {
 
     if (game.sectorPhase === 'CHALLENGE' || game.sectorPhase === 'CHALLENGE_BANNER') {
       game.challengeHits++;
+      if (game.challengeInExtra) {
+        game.challengeExtraHits = (game.challengeExtraHits || 0) + 1;
+        if (e.isMaster) {
+          game.challengeExtraMastersKilled = (game.challengeExtraMastersKilled || 0) + 1;
+        }
+      } else {
+        game.challengeRegHits = (game.challengeRegHits || 0) + 1;
+        if (e.isMaster) {
+          game.challengeRegMastersKilled = (game.challengeRegMastersKilled || 0) + 1;
+        }
+      }
       const chPts = e.isMaster ? 2500 : (e.isChallengeElite ? 1500 : ((e.isChallengeExtra || e.isChallengeGuard) ? e.ptsForm : 100));
       game.addScore(chPts, e.x, e.y, (e.isChallengeElite || e.isChallengeExtra || e.isChallengeGuard) ? col : COLORS.gold);
     } else {
@@ -2349,7 +2555,7 @@ function updateChallengeExtraEnemy(game, e, dt) {
     if (d.shotTimer <= 0 && !(e.fireDisabledTimer > 0) && e.y > 35 && e.y < LOGICAL_H - 150 && p.alive) {
       fireDirectedBullet(game, e.x - 10, e.y + 14, Math.PI * 0.5, bulletSpd * 0.95, bCol);
       fireDirectedBullet(game, e.x + 10, e.y + 14, Math.PI * 0.5, bulletSpd * 0.95, bCol);
-      d.shotTimer = 1.3;
+      d.shotTimer = 2.6; // Nerfed double-shot fire rate by 50% (1.3s -> 2.6s)
     }
     return e.y > LOGICAL_H + 56;
   }

@@ -18,6 +18,9 @@ import {
   createArcWaveState,
   createPlasmaRingState,
   createPowerupState,
+  getPowerupDisplayName,
+  pickRandomCapsuleType,
+  queueReadyPowerup,
   updatePowerupCapsules,
   updatePowerupTimers
 } from './powerups.js';
@@ -67,6 +70,7 @@ import {
   cacheDomElements,
   hideAllOverlays,
   renderArchivePreviews,
+  renderReadyCapsuleButtons,
   renderSkinPreviews,
   resetInputs,
   resizeCanvas,
@@ -213,8 +217,18 @@ export class SzarkkGame {
     this.sectorTotalWaves = STANDARD_WAVES_PER_SECTOR;
     this.challengeSubRound = 0;
     this.challengeExtraRounds = 0;
+    this.challengeInExtra = false;
     this.challengeHits = 0;
     this.challengeTotal = 0;
+    this.challengeRegHits = 0;
+    this.challengeRegTotal = 0;
+    this.challengeRegMastersSpawned = 0;
+    this.challengeRegMastersKilled = 0;
+    this.challengeExtraHits = 0;
+    this.challengeExtraTotal = 0;
+    this.challengeExtraMastersSpawned = 0;
+    this.challengeExtraMastersKilled = 0;
+    this.challengeRewardedRoots = new Set();
     this.lastFormationStyle = null;
     this.lastEntryPattern = null;
     this.formationStyle = 'PHALANX';
@@ -223,13 +237,17 @@ export class SzarkkGame {
     this.shake = 0;
     this.hitStop = 0;
     this.formationClock = 0;
-    this.sectorPhase = 'BANNER'; // BANNER | ENTRY | COMBAT | CHALLENGE | CLEARED
+    this.sectorPhase = 'BANNER'; // BANNER | ENTRY | COMBAT | CHALLENGE | CHALLENGE_BANNER | CHALLENGE_REWARD | CLEARED
     this.phaseTimer = 0;
     this.bannerTitle = '';
     this.bannerSub = '';
+    this.bannerNote = '';
     this.bannerColor = COLORS.cyan;
+    this.bannerNoteColor = null;
 
     this.powerup = createPowerupState();
+    this.readyPowerups = []; // Unstacked reserve power-ups earned from 1UP ({ id, type })
+    this.readyIdSeq = 0;
     this.arcWaveState = createArcWaveState();
     this.plasmaRingState = createPlasmaRingState();
 
@@ -390,6 +408,36 @@ export class SzarkkGame {
     resizeCanvas(this);
   }
 
+  grantExtraLife() {
+    const prevLives = this.lives;
+    const hasDual = !!(this.player && this.player.dual);
+    this.lives = Math.min(5, this.lives + 1);
+    this.nextExtraLife += 35000;
+
+    // Reserve READY power-up trigger:
+    // - Dual Fighter active on ANY life gain, OR
+    // - Single Fighter with > 3 lives when gaining a life
+    // Only picks from currently unlocked power-up types!
+    let grantedType = null;
+    if (hasDual || prevLives > 3) {
+      const effSec = this.getEffectiveSector ? this.getEffectiveSector() : this.sector;
+      const waveForUnlock = this.isChallengeStage ? 4 : (this.sectorWave || 1);
+      grantedType = pickRandomCapsuleType(effSec, waveForUnlock, this.hardMode, this.isChallengeStage);
+      if (grantedType) {
+        queueReadyPowerup(this, grantedType);
+      }
+    }
+
+    if (grantedType) {
+      const shortName = getPowerupDisplayName(grantedType, true);
+      this.spawnPopup(this.player.x, this.player.y - 38, `1UP + ${shortName} READY!`, COLORS.gold, 1.65);
+    } else {
+      this.spawnPopup(this.player.x, this.player.y - 38, '1UP // EXTRA FIGHTER', COLORS.emerald, 1.5);
+    }
+    this.synth.playRescue();
+    updateStatusPills(this);
+  }
+
   addScore(pts, x, y, color = COLORS.cyan) {
     if (this.sandboxMode) {
       if (x !== undefined && y !== undefined) {
@@ -410,10 +458,7 @@ export class SzarkkGame {
       }
     }
     if (this.score >= this.nextExtraLife) {
-      this.lives = Math.min(5, this.lives + 1);
-      this.nextExtraLife += 35000;
-      this.spawnPopup(this.player.x, this.player.y - 38, '1UP // EXTRA FIGHTER', COLORS.emerald, 1.5);
-      this.synth.playRescue();
+      this.grantExtraLife();
     }
     if (x !== undefined && y !== undefined) {
       this.spawnPopup(x, y, `+${pts}`, color, 0.9);
@@ -539,6 +584,7 @@ export class SzarkkGame {
       const inTransition =
         this.sectorPhase === 'BANNER' ||
         this.sectorPhase === 'CHALLENGE_BANNER' ||
+        this.sectorPhase === 'CHALLENGE_REWARD' ||
         this.sectorPhase === 'CLEARED';
       if (!inTransition) {
         this.fieldDebuff.timer -= dt;
@@ -578,6 +624,7 @@ export class SzarkkGame {
     this.lastFrame = now;
     this.update(dt);
     this.render();
+    renderReadyCapsuleButtons(this);
     renderArchivePreviews(this);
     renderSkinPreviews(this);
     requestAnimationFrame((t) => this.loop(t));

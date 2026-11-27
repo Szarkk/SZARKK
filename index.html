@@ -7,31 +7,31 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=0.1.3">
+  <link rel="stylesheet" href="css/style.css?v=0.1.3l">
   <script type="importmap">
     {
       "imports": {
         "./js/animator.js": "./js/animator.js?v=0.1.3",
         "./js/audio.js": "./js/audio.js?v=0.1.3",
         "./js/config.js": "./js/config.js?v=0.1.3a",
-        "./js/enemies.js": "./js/enemies.js?v=0.1.3d",
+        "./js/enemies.js": "./js/enemies.js?v=0.1.3f",
         "./js/enforcers.js": "./js/enforcers.js?v=0.1.3",
         "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.3",
-        "./js/main.js": "./js/main.js?v=0.1.3a",
+        "./js/main.js": "./js/main.js?v=0.1.3g",
         "./js/player.js": "./js/player.js?v=0.1.3",
-        "./js/powerups.js": "./js/powerups.js?v=0.1.3b",
+        "./js/powerups.js": "./js/powerups.js?v=0.1.3g",
         "./js/projectiles.js": "./js/projectiles.js?v=0.1.3",
-        "./js/renderer.js": "./js/renderer.js?v=0.1.3",
+        "./js/renderer.js": "./js/renderer.js?v=0.1.3e",
         "./js/renderers/saturn_enemy_sprites.js": "./js/renderers/saturn_enemy_sprites.js?v=0.1.3",
         "./js/renderers/saturn_fx.js": "./js/renderers/saturn_fx.js?v=0.1.3",
         "./js/renderers/saturn_pixel_sprites.js": "./js/renderers/saturn_pixel_sprites.js?v=0.1.3",
-        "./js/sandbox.js": "./js/sandbox.js?v=0.1.3a",
+        "./js/sandbox.js": "./js/sandbox.js?v=0.1.3k",
         "./js/skins.js": "./js/skins.js?v=0.1.3",
-        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.3a",
+        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.3e",
         "./js/sprite_loader.js": "./js/sprite_loader.js?v=0.1.3",
         "./js/sprite_manifest.js": "./js/sprite_manifest.js?v=0.1.3",
-        "./js/sprites.js": "./js/sprites.js?v=0.1.3",
-        "./js/ui.js": "./js/ui.js?v=0.1.3",
+        "./js/sprites.js": "./js/sprites.js?v=0.1.3j",
+        "./js/ui.js": "./js/ui.js?v=0.1.3k",
         "./js/utils.js": "./js/utils.js?v=0.1.3"
       }
     }
@@ -119,16 +119,22 @@
       </div>
 
       <div id="sandbox-pwr-corner" class="sandbox-pwr-corner hidden" aria-label="Quick Power-Up &amp; Ruler Controls">
-        <div id="sbx-pwr-tray" class="sbx-pwr-tray hidden">
-          <button type="button" id="sbx-pwr-all" class="sbx-pwr-item is-all">ALL 6</button>
-          <div id="sbx-pwr-tray-list" class="sbx-pwr-tray-list"></div>
+        <div id="sbx-corner-body" class="sbx-corner-body">
+          <div id="sbx-pwr-tray" class="sbx-pwr-tray hidden">
+            <button type="button" id="sbx-pwr-all" class="sbx-pwr-item is-all">ALL 6</button>
+            <div id="sbx-pwr-tray-list" class="sbx-pwr-tray-list"></div>
+          </div>
+          <button type="button" id="sbx-btn-pwr-tray" class="sbx-corner-btn is-tray" title="Expand Power-Up Selector">PWR &#9650;</button>
+          <button type="button" id="sbx-btn-open-skins" class="sbx-corner-btn is-skins" title="Switch Aurex Fighter Skins">SKINS</button>
+          <button type="button" id="sbx-btn-ruler" class="sbx-corner-btn is-ruler" title="Toggle Ship Chain Lightning Ruler">RULER</button>
+          <button type="button" id="sbx-btn-reset-pos" class="sbx-corner-btn is-reset" title="Reset Player to Original Spawn Position">RESET POS</button>
+          <button type="button" id="sbx-btn-quick-clear-pwr" class="sbx-corner-btn is-clr" title="Clear Active Power-Ups">CLR PWR</button>
         </div>
-        <button type="button" id="sbx-btn-pwr-tray" class="sbx-corner-btn is-tray" title="Expand Power-Up Selector">PWR &#9650;</button>
-        <button type="button" id="sbx-btn-open-skins" class="sbx-corner-btn is-skins" title="Switch Aurex Fighter Skins">SKINS</button>
-        <button type="button" id="sbx-btn-ruler" class="sbx-corner-btn is-ruler" title="Toggle Ship Chain Lightning Ruler">RULER</button>
-        <button type="button" id="sbx-btn-reset-pos" class="sbx-corner-btn is-reset" title="Reset Player to Original Spawn Position">RESET POS</button>
-        <button type="button" id="sbx-btn-quick-clear-pwr" class="sbx-corner-btn is-clr" title="Clear Active Power-Ups">CLR PWR</button>
+        <button type="button" id="sbx-btn-collapse-corner" class="sbx-corner-btn is-collapse" title="Collapse / Expand Quick Controls">HIDE &#9660;</button>
       </div>
+
+      <!-- TRANSPARENT THIN FLOATING POWER-UP GAUGE (WHEN ACTIVE POWER-UPS COEXIST WITH READY BUTTONS) -->
+      <div id="floating-gauge-overlay" class="floating-gauge-overlay hidden" aria-live="polite"></div>
 
       <div id="sandbox-deploy-bar" class="sandbox-deploy-bar hidden" aria-label="Deploy &amp; Drag Controls">
         <span id="sbx-deploy-entity-tag" class="sbx-deploy-tag">DRONE</span>
@@ -191,8 +197,9 @@
               <div class="sbx-sec-head">
                 <span class="sbx-sec-title">POWER-UP CAPSULES</span>
                 <div class="sbx-mini-seg">
-                  <button type="button" id="sbx-cap-mode-touch" class="sbx-seg-btn selected">TAP DEPLOY</button>
-                  <button type="button" id="sbx-cap-mode-float" class="sbx-seg-btn">FLOAT IN</button>
+                  <button type="button" id="sbx-cap-mode-touch" class="sbx-seg-btn selected">TAP</button>
+                  <button type="button" id="sbx-cap-mode-float" class="sbx-seg-btn">FLOAT</button>
+                  <button type="button" id="sbx-cap-mode-ready" class="sbx-seg-btn">READY</button>
                 </div>
               </div>
               <div id="sbx-capsule-grid" class="sbx-chip-grid caps-grid"></div>
@@ -583,6 +590,6 @@
     </nav>
   </div>
 
-  <script type="module" src="js/main.js?v=0.1.3a"></script>
+  <script type="module" src="js/main.js?v=0.1.3g"></script>
 </body>
 </html>

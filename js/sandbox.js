@@ -8,6 +8,7 @@ import {
   clearActivePowerup,
   collectCapsule,
   hasPowerup,
+  queueReadyPowerup,
   removePowerupSlot,
   resetPlasmaRingState,
   spawnCapsule
@@ -75,7 +76,8 @@ function createDefaultSandboxConfig() {
     trainingHard: false,
     challengeKey: 'EXTRA:TESLA_SURGE_TRIAL',
     drawerOpen: false,
-    pwrTrayOpen: false
+    pwrTrayOpen: false,
+    cornerCollapsed: false
   };
 }
 
@@ -133,6 +135,7 @@ export function clearSandboxArena(game, keepCapsules = false) {
   if (!keepCapsules) {
     game.capsules = [];
     game.pendingCapsuleDrops = [];
+    game.readyPowerups = [];
   }
   game.floatingCapsulePlan = null;
   game.activeBeamBoss = null;
@@ -229,13 +232,25 @@ export function startSandboxChallengeTest(game) {
   if (key.startsWith('STD:')) {
     const chNum = clamp(parseInt(key.slice(4), 10) || 1, 1, 6);
     game.hardMode = false;
+    game.sector = chNum * 2; // Match the sector just cleared (CH.01->Sec 02, CH.02->Sec 04, CH.03->Sec 06, CH.04->Sec 08)
     beginChallengeStage(game, chNum);
   } else {
     const modeId = key.startsWith('EXTRA:') ? key.slice(6) : key;
     game.isChallengeStage = true;
+    game.sector = 8; // All capsule types unlocked when testing specialist/extra challenges in Sandbox
     game.challengeNum = 4;
     game.challengeHits = 0;
     game.challengeTotal = 0;
+    game.challengeRegHits = 0;
+    game.challengeRegTotal = 0;
+    game.challengeRegMastersSpawned = 0;
+    game.challengeRegMastersKilled = 0;
+    game.challengeExtraHits = 0;
+    game.challengeExtraTotal = 0;
+    game.challengeExtraMastersSpawned = 0;
+    game.challengeExtraMastersKilled = 0;
+    game.challengeRewardedRoots = new Set();
+    game.challengeInExtra = true;
     game.challengeSubRound = 1;
     game.challengeExtraRounds = 1;
     startChallengeExtraRound(game, 4, 1, modeId);
@@ -401,8 +416,10 @@ export function disarmSandboxDeploy(game) {
 
 export function syncSandboxPowerupTray(game) {
   const corner = document.getElementById('sandbox-pwr-corner');
+  const body = document.getElementById('sbx-corner-body');
   const tray = document.getElementById('sbx-pwr-tray');
   const btnTray = document.getElementById('sbx-btn-pwr-tray');
+  const btnCollapse = document.getElementById('sbx-btn-collapse-corner');
   if (!corner || !tray || !btnTray) return;
 
   const active = !!game.sandboxMode && game.state === 'PLAYING' && !!game.sandbox;
@@ -413,7 +430,15 @@ export function syncSandboxPowerupTray(game) {
     return;
   }
 
-  const open = !!game.sandbox.pwrTrayOpen;
+  const collapsed = !!game.sandbox.cornerCollapsed;
+  corner.classList.toggle('is-collapsed', collapsed);
+  if (body) body.classList.toggle('hidden', collapsed);
+  if (btnCollapse) {
+    btnCollapse.textContent = collapsed ? 'SHOW ▲' : 'HIDE ▼';
+    btnCollapse.classList.toggle('is-collapsed', collapsed);
+  }
+
+  const open = !collapsed && !!game.sandbox.pwrTrayOpen;
   tray.classList.toggle('hidden', !open);
   btnTray.textContent = open ? 'PWR ▼' : 'PWR ▲';
   btnTray.classList.toggle('is-open', open);
@@ -561,8 +586,10 @@ export function syncSandboxUI(game) {
 
   const btnCapTouch = document.getElementById('sbx-cap-mode-touch');
   const btnCapFloat = document.getElementById('sbx-cap-mode-float');
+  const btnCapReady = document.getElementById('sbx-cap-mode-ready');
   if (btnCapTouch) btnCapTouch.classList.toggle('selected', sb.capsuleDeployMode === 'TOUCH');
   if (btnCapFloat) btnCapFloat.classList.toggle('selected', sb.capsuleDeployMode === 'FLOAT');
+  if (btnCapReady) btnCapReady.classList.toggle('selected', sb.capsuleDeployMode === 'READY');
 
   const btnTrainNorm = document.getElementById('sbx-train-normal');
   const btnTrainHard = document.getElementById('sbx-train-hard');
@@ -749,6 +776,13 @@ function populateSandboxDom(game) {
         if (game.sandbox.capsuleDeployMode === 'FLOAT') {
           spawnCapsule(game, 0, 0, cap.id, 'FLOAT');
           game.sandbox.drawerOpen = false;
+          syncSandboxUI(game);
+        } else if (game.sandbox.capsuleDeployMode === 'READY') {
+          queueReadyPowerup(game, cap.id);
+          game.sandbox.drawerOpen = false;
+          game.synth.playRescue();
+          game.spawnPopup(LOGICAL_W * 0.5, 190, `${cap.label} READY!`, COLORS.gold, 1.2);
+          updateStatusPills(game);
           syncSandboxUI(game);
         } else {
           game.sandbox.deployKind = 'CAPSULE';
@@ -1012,6 +1046,16 @@ export function bindSandboxEvents(game) {
     syncSandboxPowerupTray(game);
   });
 
+  document.getElementById('sbx-btn-collapse-corner')?.addEventListener('click', (e) => {
+    e.currentTarget.blur();
+    if (!game.sandbox) return;
+    game.sandbox.cornerCollapsed = !game.sandbox.cornerCollapsed;
+    if (game.sandbox.cornerCollapsed) {
+      game.sandbox.pwrTrayOpen = false;
+    }
+    syncSandboxPowerupTray(game);
+  });
+
   document.getElementById('sbx-btn-ruler')?.addEventListener('click', (e) => {
     e.currentTarget.blur();
     game.sandboxShowRuler = !game.sandboxShowRuler;
@@ -1094,6 +1138,13 @@ export function bindSandboxEvents(game) {
   document.getElementById('sbx-cap-mode-float')?.addEventListener('click', () => {
     if (game.sandbox) {
       game.sandbox.capsuleDeployMode = 'FLOAT';
+      if (game.sandbox.deployKind === 'CAPSULE') disarmSandboxDeploy(game);
+      else syncSandboxUI(game);
+    }
+  });
+  document.getElementById('sbx-cap-mode-ready')?.addEventListener('click', () => {
+    if (game.sandbox) {
+      game.sandbox.capsuleDeployMode = 'READY';
       if (game.sandbox.deployKind === 'CAPSULE') disarmSandboxDeploy(game);
       else syncSandboxUI(game);
     }
