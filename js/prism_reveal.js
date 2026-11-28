@@ -230,6 +230,16 @@ function getCapsuleSpriteBuffer(type) {
   return _capBuf;
 }
 
+// Shared timing beat sheet so ALL prism animations (current & future) last the exact same time:
+// 0.00s -> 0.48s: Luminous Light Prism showcase (gives eyes time to lock onto the gauge bar)
+// 0.48s -> 1.44s: Full 0.96s glitch / dissolve / roulette transformation
+// 1.44s -> 1.85s: 0.41s lock-in flash + revealed capsule hold right before Round 1 title card
+export const PRISM_TIMING = {
+  introEnd: 0.48,
+  revealEnd: 1.44,
+  duration: 1.85
+};
+
 // =========================================================================
 // EXTENSIBLE ANIMATION REGISTRY (Add / reorder / tweak entries freely!)
 // =========================================================================
@@ -237,11 +247,13 @@ export const PRISM_ANIMATIONS = [
   {
     id: 'GLITCH',
     label: 'Chromatic Scanline Glitch',
-    duration: 1.55,
-    midSfxAt: 0.45,
-    lockAt: 1.15,
+    duration: PRISM_TIMING.duration,
+    midSfxAt: PRISM_TIMING.introEnd,
+    lockAt: PRISM_TIMING.revealEnd,
     render(ctx, W, H, pr, now) {
       const t = pr.elapsed;
+      const { introEnd, revealEnd } = PRISM_TIMING;
+      const transDur = revealEnd - introEnd; // 0.96s
       const capStyle = getCapsulePrismStyle(pr.targetType);
       const pBuf = getPrismSpriteBuffer(now, 1);
       const cBuf = getCapsuleSpriteBuffer(pr.targetType);
@@ -253,19 +265,21 @@ export const PRISM_ANIMATIONS = [
       let bezel = getPrismBezel(now);
       let flash = 0;
 
-      if (t >= 0.45 && t < 1.15) {
-        const g = (t - 0.45) / 0.70;
+      if (t >= introEnd && t < revealEnd) {
+        const g = (t - introEnd) / transDur;
         const flip = Math.sin(now * 58 + pr.seed) > (0.35 - g * 0.7);
         bezel = flip ? { ...capStyle, barTop: capStyle.main } : getPrismBezel(now * 3);
-      } else if (t >= 1.15) {
+      } else if (t >= revealEnd) {
         bezel = { ...capStyle, barTop: capStyle.main };
-        if (t < 1.38) flash = (1 - (t - 1.15) / 0.23) * 0.85;
+        if (t < revealEnd + 0.24) flash = (1 - (t - revealEnd) / 0.24) * 0.88;
       }
 
-      if (t < 0.45) {
-        ctx.drawImage(pBuf, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
-      } else if (t < 1.15) {
-        const g = (t - 0.45) / 0.70;
+      if (t < introEnd) {
+        const pulse = 1 + Math.sin((t / introEnd) * Math.PI) * 0.08;
+        const pIdle = getPrismSpriteBuffer(now, pulse);
+        ctx.drawImage(pIdle, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
+      } else if (t < revealEnd) {
+        const g = (t - introEnd) / transDur;
         const intensity = Math.sin(g * Math.PI);
         const sliceH = 2;
         const tick = Math.floor(t * 28);
@@ -306,11 +320,13 @@ export const PRISM_ANIMATIONS = [
   {
     id: 'BAYER',
     label: 'Bayer Pixel Dissolve',
-    duration: 1.55,
-    midSfxAt: 0.48,
-    lockAt: 1.16,
+    duration: PRISM_TIMING.duration,
+    midSfxAt: PRISM_TIMING.introEnd,
+    lockAt: PRISM_TIMING.revealEnd,
     render(ctx, W, H, pr, now) {
       const t = pr.elapsed;
+      const { introEnd, revealEnd } = PRISM_TIMING;
+      const transDur = revealEnd - introEnd; // 0.96s
       const capStyle = getCapsulePrismStyle(pr.targetType);
       const pBuf = getPrismSpriteBuffer(now, 1);
       const cBuf = getCapsuleSpriteBuffer(pr.targetType);
@@ -322,24 +338,24 @@ export const PRISM_ANIMATIONS = [
       let bezel = getPrismBezel(now);
       let flash = 0;
 
-      if (t >= 0.48 && t < 1.16) {
-        const d = (t - 0.48) / 0.68;
-        bezel = d > 0.55 ? { ...capStyle, barTop: capStyle.main } : getPrismBezel(now * 2);
-      } else if (t >= 1.16) {
+      if (t >= introEnd && t < revealEnd) {
+        const d = (t - introEnd) / transDur;
+        bezel = d > 0.52 ? { ...capStyle, barTop: capStyle.main } : getPrismBezel(now * 2);
+      } else if (t >= revealEnd) {
         bezel = { ...capStyle, barTop: capStyle.main };
-        if (t < 1.35) flash = (1 - (t - 1.16) / 0.19) * 0.62;
+        if (t < revealEnd + 0.22) flash = (1 - (t - revealEnd) / 0.22) * 0.65;
       }
 
-      if (t < 0.48) {
-        const p = Math.sin((t / 0.48) * Math.PI);
+      if (t < introEnd) {
+        const p = Math.sin((t / introEnd) * Math.PI);
         ctx.fillStyle = spectralColor(now * 6);
         ctx.globalAlpha = 0.35 + p * 0.45;
         ctx.fillRect(Math.round(cx - 42), Math.round(cy - 1), 14, 2);
         ctx.fillRect(Math.round(cx + 28), Math.round(cy - 1), 14, 2);
         ctx.globalAlpha = 1;
         ctx.drawImage(pBuf, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
-      } else if (t < 1.16) {
-        const d = (t - 0.48) / 0.68;
+      } else if (t < revealEnd) {
+        const d = (t - introEnd) / transDur;
         const cell = 2;
         for (let py = 0; py < SPRITE_H; py += cell) {
           const by4 = (py / cell) & 3;
@@ -366,8 +382,8 @@ export const PRISM_ANIMATIONS = [
         ctx.globalAlpha = 1;
       } else {
         ctx.drawImage(cBuf, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
-        if (t < 1.50) {
-          const sp = (t - 1.16) / 0.34;
+        if (t < revealEnd + 0.36) {
+          const sp = (t - revealEnd) / 0.36;
           const shineX = Math.round(sp * W);
           ctx.fillStyle = 'rgba(255, 255, 255, 0.55)';
           ctx.fillRect(shineX - 6, 0, 6, H);
@@ -387,11 +403,13 @@ export const PRISM_ANIMATIONS = [
   {
     id: 'ROULETTE',
     label: 'Prism Glitch Roulette',
-    duration: 1.75,
-    midSfxAt: 0.38,
-    lockAt: 1.36,
+    duration: PRISM_TIMING.duration,
+    midSfxAt: PRISM_TIMING.introEnd,
+    lockAt: PRISM_TIMING.revealEnd,
     render(ctx, W, H, pr, now) {
       const t = pr.elapsed;
+      const { introEnd, revealEnd } = PRISM_TIMING;
+      const transDur = revealEnd - introEnd; // 0.96s
       const pool = (pr.pool && pr.pool.length > 0) ? pr.pool : [pr.targetType];
       const targetIdx = Math.max(0, pool.indexOf(pr.targetType));
       const capStyle = getCapsulePrismStyle(pr.targetType);
@@ -407,8 +425,8 @@ export const PRISM_ANIMATIONS = [
       let stepIdx = 0;
       let justTicked = false;
 
-      if (t >= 0.38 && t < 1.36) {
-        const u = (t - 0.38) / 0.98;
+      if (t >= introEnd && t < revealEnd) {
+        const u = (t - introEnd) / transDur;
         const eased = 1 - Math.pow(1 - u, 2.6);
         const totalSteps = Math.max(10, pool.length * 2);
         stepIdx = Math.min(totalSteps, Math.floor(eased * totalSteps));
@@ -419,18 +437,18 @@ export const PRISM_ANIMATIONS = [
         const shownStyle = getCapsulePrismStyle(shownType);
         bezel = { ...shownStyle, barTop: shownStyle.main };
         pr._currentRouletteStep = stepIdx;
-      } else if (t >= 1.36) {
-        const k = clamp((t - 1.36) / 0.24, 0, 1);
-        scale = t < 1.60 ? (1 + Math.sin(k * Math.PI) * 0.045) : 1;
+      } else if (t >= revealEnd) {
+        const k = clamp((t - revealEnd) / 0.24, 0, 1);
+        scale = t < revealEnd + 0.24 ? (1 + Math.sin(k * Math.PI) * 0.045) : 1;
         bezel = { ...capStyle, barTop: capStyle.main };
-        if (t < 1.60) flash = (1 - k) * 0.92;
+        if (t < revealEnd + 0.24) flash = (1 - k) * 0.92;
       }
 
-      if (t < 0.38) {
-        const expand = 1 + Math.sin((t / 0.38) * Math.PI) * 0.14;
+      if (t < introEnd) {
+        const expand = 1 + Math.sin((t / introEnd) * Math.PI) * 0.14;
         const pBuf = getPrismSpriteBuffer(now * 1.4, expand);
         ctx.drawImage(pBuf, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
-      } else if (t < 1.36) {
+      } else if (t < revealEnd) {
         const cBuf = getCapsuleSpriteBuffer(shownType);
         const jitterX = justTicked ? ((stepIdx % 2 === 0 ? 1 : -1) * 7) : 0;
         if (justTicked) {
@@ -446,8 +464,8 @@ export const PRISM_ANIMATIONS = [
       } else {
         const cBuf = getCapsuleSpriteBuffer(pr.targetType);
         ctx.drawImage(cBuf, 0, 0, SPRITE_W * 2, SPRITE_H * 2, sx, sy, SPRITE_W, SPRITE_H);
-        if (t < 1.70) {
-          const sp = (t - 1.36) / 0.34;
+        if (t < revealEnd + 0.36) {
+          const sp = (t - revealEnd) / 0.36;
           const spread = sp * 22;
           ctx.fillStyle = '#ffffff';
           ctx.globalAlpha = 1 - sp;
@@ -538,7 +556,13 @@ export function updatePrismReveal(game, dt, onComplete) {
   const pr = game.prismReveal;
   if (!pr || !pr.active) return false;
 
-  pr.elapsed += dt;
+  // Always show frame 0 (t=0) cleanly before ticking so the opening prism never skips on a lag spike
+  if (!pr.started) {
+    pr.started = true;
+    return false;
+  }
+
+  pr.elapsed += Math.min(dt, 0.033);
 
   if (!pr.midSoundPlayed && pr.elapsed >= pr.midSfxAt) {
     pr.midSoundPlayed = true;

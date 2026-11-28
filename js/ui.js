@@ -881,13 +881,23 @@ function buildReadySlot(game, group, barClsFor) {
     btn.appendChild(stackBadge);
   }
 
+  let activatedByPointer = false;
   btn.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
     e.stopPropagation();
-  });
+    activatedByPointer = true;
+    game.synth.unlock();
+    activateReadyPowerup(game, type);
+  }, { passive: false });
   btn.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     e.currentTarget.blur();
+    if (activatedByPointer) {
+      activatedByPointer = false;
+      return;
+    }
     game.synth.unlock();
     activateReadyPowerup(game, type);
   });
@@ -1549,9 +1559,15 @@ export function bindEvents(game) {
     syncControlsUI(game);
   });
 
-  // Independent Mobile Hold-to-Fire Button (only bottom button remaining!)
+  // Independent Multi-Touch Mobile Hold-to-Fire Button (supports simultaneous drag + fire + capsule taps!)
   if (game.touchFire) {
+    const releaseFirePtr = (e) => {
+      if (game.firePointerIds.delete(e.pointerId)) {
+        updateControlPressVisuals(game);
+      }
+    };
     game.touchFire.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       game.synth.unlock();
@@ -1561,6 +1577,14 @@ export function bindEvents(game) {
       try { game.touchFire.setPointerCapture(e.pointerId); } catch {}
       updateControlPressVisuals(game);
     }, { passive: false });
+    game.touchFire.addEventListener('pointerup', releaseFirePtr);
+    game.touchFire.addEventListener('pointercancel', releaseFirePtr);
+    game.touchFire.addEventListener('lostpointercapture', releaseFirePtr);
+    game.touchFire.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+  }
+
+  if (game.pwrGaugeBar) {
+    game.pwrGaugeBar.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
   }
 
   // Touch anywhere inside the playable bottom 2/5ths of the arena (no need to touch on/near the plane!)
@@ -1718,6 +1742,7 @@ export function bindEvents(game) {
   };
   window.addEventListener('pointerup', releasePointer);
   window.addEventListener('pointercancel', releasePointer);
+  window.addEventListener('blur', () => resetInputs(game));
 
   game.canvas.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 

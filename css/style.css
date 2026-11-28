@@ -1502,6 +1502,7 @@ body.pixel-mode #game-canvas {
   max-height: 46px;
   align-items: center;
   box-sizing: border-box;
+  touch-action: none;
 }
 
 .pwr-slot.is-ready-slot {
@@ -1511,6 +1512,7 @@ body.pixel-mode #game-canvas {
   flex-direction: row;
   align-items: center;
   justify-content: center;
+  touch-action: none;
 }
 
 .pwr-ready-btn {
@@ -1529,7 +1531,7 @@ body.pixel-mode #game-canvas {
   line-height: 0;
   overflow: hidden;
   cursor: pointer;
-  touch-action: manipulation;
+  touch-action: none;
   transition: transform 0.08s ease, filter 0.1s ease, width 0.12s ease;
 }
 
@@ -1897,6 +1899,10 @@ body.desktop-mode .dock-inner {
   width: 100%;
   flex: none !important;
   min-height: 54px;
+}
+
+#touch-fire > span {
+  pointer-events: none;
 }
 
 .fire-sub {
