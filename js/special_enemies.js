@@ -20,6 +20,7 @@ import {
   HARD_MODE_MAX_UNLOCK_SECTOR,
   LOGICAL_H,
   LOGICAL_W,
+  PLAYER_MAX_Y,
   PULSAR_FIRE_INTERVAL,
   SUPER_CENTOID_HEAD_HP,
   SUPER_CENTOID_SEGMENTS,
@@ -482,7 +483,7 @@ function devourPreyAndGrowCentophage(game, chain, segs, prey) {
     for (let d = 4; d <= extraDist; d += 4) {
       chain.history.push({
         x: clamp(tailEnd.x + backX * d, 18, LOGICAL_W - 18),
-        y: clamp(tailEnd.y + backY * d, 48, LOGICAL_H - 64),
+        y: clamp(tailEnd.y + backY * d, 48, PLAYER_MAX_Y),
         angle: tailEnd.angle || 0
       });
     }
@@ -604,8 +605,15 @@ export function updateCentoids(game, dt) {
     let angle = head.angle;
     let chasingPrey = null;
 
+    // Challenge Extra Round 20s time limit: surviving serpents bolt cleanly off the nearest edge!
+    const challengeEscaping = !!(
+      game.isChallengeStage &&
+      game.sectorPhase === 'CHALLENGE' &&
+      game.challengeSerpentEscaping
+    );
+
     // Master Centophage Parasitic Hunt Scheduler (every 2s -> 80% chase non-centoid, else 6s cooldown!)
-    if (chain.isCentophage) {
+    if (chain.isCentophage && !challengeEscaping) {
       if (chain.chaseTargetId !== null) {
         chasingPrey = game.enemies.find(o => o.id === chain.chaseTargetId && !o.isCentoid) || null;
         if (!chasingPrey) {
@@ -638,7 +646,16 @@ export function updateCentoids(game, dt) {
       }
     }
 
-    if (chain.isCentophage && chasingPrey) {
+    if (challengeEscaping) {
+      if (!chain.escaping) {
+        chain.escaping = true;
+        chain.chaseTargetId = null;
+        chain.escapeDirX = hx < LOGICAL_W * 0.5 ? -1 : 1;
+      }
+      const escSpd = Math.max(255, chain.speed * 1.65) * spdMult;
+      hx += chain.escapeDirX * escSpd * dt;
+      angle = chain.escapeDirX > 0 ? 0 : Math.PI;
+    } else if (chain.isCentophage && chasingPrey) {
       // Predatory direct chase at 1.8x speed toward target entity!
       const dx = chasingPrey.x - hx;
       const dy = chasingPrey.y - hy;
@@ -647,7 +664,7 @@ export function updateCentoids(game, dt) {
         angle = Math.atan2(dy, dx);
         const move = Math.min(step, dist);
         hx = clamp(hx + (dx / dist) * move, 24, LOGICAL_W - 24);
-        hy = clamp(hy + (dy / dist) * move, 48, LOGICAL_H - 64);
+        hy = clamp(hy + (dy / dist) * move, 48, PLAYER_MAX_Y);
       }
       if (Math.hypot(chasingPrey.x - hx, chasingPrey.y - hy) <= head.hitRadius + chasingPrey.hitRadius + 4) {
         devourPreyAndGrowCentophage(game, chain, segs, chasingPrey);
@@ -673,13 +690,13 @@ export function updateCentoids(game, dt) {
           chain.dirX = 1;
         }
       } else {
-        // Pure 90-degree vertical step down (or up after reaching bottom!)
+        // Pure 90-degree vertical step down (or up after reaching the player's bottom floor!)
         const dy = Math.min(step, chain.stepRemaining);
         hy += chain.dirY * dy;
         angle = chain.dirY > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
         chain.stepRemaining -= dy;
-        if (hy >= LOGICAL_H - 96) {
-          hy = LOGICAL_H - 96;
+        if (hy >= PLAYER_MAX_Y) {
+          hy = PLAYER_MAX_Y;
           chain.dirY = -1;
           chain.stepRemaining = 0;
         } else if (hy <= 78) {
@@ -704,7 +721,7 @@ export function updateCentoids(game, dt) {
         }
         if (hitEdge || chain.corridorDistLeft <= 0) {
           chain.axis = 'V';
-          if (hy >= LOGICAL_H - 115) chain.dirY = -1;
+          if (hy >= PLAYER_MAX_Y - 14) chain.dirY = -1;
           else if (hy <= 92) chain.dirY = 1;
           else if (Math.random() < 0.28) chain.dirY = -chain.dirY;
           chain.corridorDistLeft = 62 + Math.random() * 78;
@@ -713,9 +730,9 @@ export function updateCentoids(game, dt) {
         hy += chain.dirY * step;
         angle = chain.dirY > 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
         chain.corridorDistLeft -= step;
-        const hitEdge = (chain.dirY > 0 && hy >= LOGICAL_H - 92) || (chain.dirY < 0 && hy <= 76);
+        const hitEdge = (chain.dirY > 0 && hy >= PLAYER_MAX_Y) || (chain.dirY < 0 && hy <= 76);
         if (hitEdge) {
-          hy = clamp(hy, 76, LOGICAL_H - 92);
+          hy = clamp(hy, 76, PLAYER_MAX_Y);
           chain.dirY = -chain.dirY;
         }
         if (hitEdge || chain.corridorDistLeft <= 0) {
@@ -750,6 +767,21 @@ export function updateCentoids(game, dt) {
       seg.x = pos.x;
       seg.y = pos.y;
       seg.angle = pos.angle;
+    }
+
+    // Remove escaped Challenge serpent chain once all segments clear the screen (no kill credit)
+    if (chain.escaping) {
+      const allOffscreen = segs.every(s =>
+        s.x < -34 || s.x > LOGICAL_W + 34 || s.y < -34 || s.y > LOGICAL_H + 34
+      );
+      if (allOffscreen) {
+        for (let ri = game.enemies.length - 1; ri >= 0; ri--) {
+          if (game.enemies[ri].isCentoid && game.enemies[ri].centoidChainId === chainId) {
+            game.enemies.splice(ri, 1);
+          }
+        }
+        game.centoidChains.delete(chainId);
+      }
     }
   }
 }

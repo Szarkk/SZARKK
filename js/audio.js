@@ -139,6 +139,26 @@ export class SynthEngine {
     this.tone(440, 880, 0.16, 'sine', 0.18, 0.07);
   }
 
+  playPrismStart() {
+    this.tone(523.25, 783.99, 0.14, 'triangle', 0.14, 0);
+    this.tone(783.99, 1174.66, 0.16, 'sine', 0.13, 0.06);
+  }
+
+  playPrismGlitch() {
+    this.noise(0.11, 0.10, 2600);
+    this.tone(860, 420, 0.06, 'square', 0.09, 0);
+    this.tone(540, 1080, 0.07, 'square', 0.09, 0.06);
+  }
+
+  playPrismTick(step = 0) {
+    const base = 440 + (step % 6) * 75;
+    this.tone(base, base * 1.18, 0.038, 'square', 0.09, 0);
+  }
+
+  playPrismReveal(type) {
+    this.playPowerupPickup(type);
+  }
+
   playElectroBall() {
     this.tone(920, 520, 0.11, 'sine', 0.14);
     this.tone(1340, 760, 0.09, 'triangle', 0.1, 0.02);

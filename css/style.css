@@ -14,9 +14,9 @@
   --null-red: #ff1e42;
   --purple: #c44dff;
   --white-core: #ecffff;
-  --font-display: 'Press Start 2P', 'Silkscreen', ui-monospace, monospace;
-  --font-arcade: 'Silkscreen', 'Pixelify Sans', ui-monospace, monospace;
-  --font-body: 'Pixelify Sans', 'Silkscreen', ui-monospace, monospace;
+  --font-display: 'Silkscreen', ui-monospace, monospace;
+  --font-arcade: 'Silkscreen', ui-monospace, monospace;
+  --font-body: 'Silkscreen', ui-monospace, monospace;
 }
 
 *, *::before, *::after {
@@ -38,6 +38,7 @@ html, body {
   background-color: var(--bg-void);
   color: var(--white-core);
   font-family: var(--font-arcade);
+  font-synthesis-weight: none;
   overscroll-behavior: none;
   touch-action: none;
 }
@@ -60,7 +61,7 @@ button {
   border: 1.5px solid #00f6ff;
   border-radius: 8px;
   font-family: inherit;
-  font-weight: 700;
+  font-weight: 400;
   letter-spacing: 0.9px;
   box-shadow: 0 0 10px rgba(0, 246, 255, 0.34);
   cursor: pointer;
@@ -274,12 +275,12 @@ body.pixel-mode #game-canvas {
   image-rendering: crisp-edges;
 }
 
-/* Optional Toggleable CRT Scanline + Vignette Filter */
+/* Full-Cabinet Toggleable CRT Scanline + Vignette Filter (Covers Entire Game!) */
 #crt-overlay {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 6;
+  z-index: 999;
   background:
     repeating-linear-gradient(
       0deg,
@@ -289,7 +290,7 @@ body.pixel-mode #game-canvas {
       transparent 3px
     ),
     radial-gradient(ellipse at center, transparent 58%, rgba(0, 4, 14, 0.56) 100%);
-  opacity: 0.7;
+  opacity: 0.68;
   transition: opacity 0.2s ease;
 }
 
@@ -1493,11 +1494,14 @@ body.pixel-mode #game-canvas {
 }
 
 /* =========================================================================
-   1UP RESERVE POWER-UP CAPSULE READY SLOTS (CONSISTENT PIXELATED + GLOW)
+   1UP RESERVE POWER-UP CAPSULE READY SLOTS (FIXED BAR HEIGHT, STACKABLE x2/x3)
    ========================================================================= */
 #powerup-gauge-bar {
-  min-height: 44px;
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
   align-items: center;
+  box-sizing: border-box;
 }
 
 .pwr-slot.is-ready-slot {
@@ -1516,7 +1520,7 @@ body.pixel-mode #game-canvas {
   flex: 0 1 auto;
   width: min(92%, 156px);
   min-width: 44px;
-  height: 34px;
+  height: 32px;
   padding: 0 6px;
   background: var(--px-bg);
   display: inline-flex;
@@ -1545,33 +1549,48 @@ body.pixel-mode #game-canvas {
 .pwr-ready-btn::before {
   left: 4px;
   box-shadow:
-    0 24px 0 0 var(--px-pip),
+    0 22px 0 0 var(--px-pip),
     2px 0 0 0 var(--px-pip),
     0 2px 0 0 var(--px-pip),
-    2px 24px 0 0 var(--px-pip),
-    0 22px 0 0 var(--px-pip);
+    2px 22px 0 0 var(--px-pip),
+    0 20px 0 0 var(--px-pip);
 }
 
 .pwr-ready-btn::after {
   right: 4px;
   box-shadow:
-    0 24px 0 0 var(--px-pip),
+    0 22px 0 0 var(--px-pip),
     -2px 0 0 0 var(--px-pip),
     0 2px 0 0 var(--px-pip),
-    -2px 24px 0 0 var(--px-pip),
-    0 22px 0 0 var(--px-pip);
+    -2px 22px 0 0 var(--px-pip),
+    0 20px 0 0 var(--px-pip);
 }
 
 .pwr-ready-canvas {
   position: relative;
   z-index: 1;
-  width: 23px;
-  height: 23px;
+  width: 42px;
+  height: 32px;
   display: block;
   pointer-events: none;
   flex-shrink: 0;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+}
+
+.pwr-ready-stack {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  z-index: 2;
+  padding: 1px 3px;
+  font-family: var(--font-arcade);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.2px;
+  color: #ffffff;
+  background: rgba(2, 8, 20, 0.88);
+  text-shadow: 1px 1px 0 #02060d, 0 0 5px var(--px-pip);
+  pointer-events: none;
 }
 
 .pwr-ready-btn:hover {
@@ -1615,13 +1634,13 @@ body.pixel-mode #game-canvas {
 
 /* =========================================================================
    TRANSPARENT FLOATING THIN GAUGE OVERLAY (NO BACKDROP UI, NO POWER-UP NAME)
-   Shown directly above #powerup-gauge-bar when active power-ups & READY buttons coexist
+   Always inset cleanly INSIDE the Plasma Arena Border (never shifts/shrinks)
    ========================================================================= */
 .floating-gauge-overlay {
   position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 5px;
+  left: var(--flt-gauge-side, 16px);
+  right: var(--flt-gauge-side, 16px);
+  bottom: var(--flt-gauge-bottom, 14px);
   z-index: 16;
   display: flex;
   flex-direction: row;
@@ -1674,33 +1693,9 @@ body.pixel-mode #game-canvas {
   transition: width 0.06s linear;
 }
 
+.pwr-gauge-ticks,
 .flt-pwr-ticks {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0;
-}
-
-.flt-pwr-slot.seg-6 .flt-pwr-ticks {
-  opacity: 1;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent calc(16.6667% - 1px),
-    rgba(2, 8, 18, 0.85) calc(16.6667% - 1px),
-    rgba(2, 8, 18, 0.85) 16.6667%
-  );
-}
-
-.flt-pwr-slot.seg-24 .flt-pwr-ticks {
-  opacity: 1;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0%,
-    transparent calc(4.1667% - 1px),
-    rgba(2, 8, 18, 0.85) calc(4.1667% - 1px),
-    rgba(2, 8, 18, 0.85) 4.1667%
-  );
+  display: none !important;
 }
 
 .flt-pwr-slot.pwr-cyan .flt-pwr-val { color: #9efcff; }
@@ -2936,9 +2931,9 @@ body.sandbox-active #status-bar {
 .btn-pair { gap: 11px; }
 .mode-toggle-row, .lb-tabs { gap: 9px; }
 .sbx-strip-group { gap: 6px; }
-.sandbox-pwr-corner { bottom: 32px; right: 10px; gap: 7px; }
+.sandbox-pwr-corner { bottom: var(--sbx-corner-bottom, 40px); right: 10px; gap: 7px; }
 .sbx-corner-body { gap: 7px; }
-.sandbox-deploy-bar { bottom: 32px; }
+.sandbox-deploy-bar { bottom: var(--sbx-corner-bottom, 40px); }
 .sbx-pwr-tray { gap: 6px; padding: 8px; }
 .sbx-pwr-tray-list { gap: 6px; }
 .sbx-chip-grid { gap: 7px; }
@@ -3070,7 +3065,7 @@ body.sandbox-active #status-bar {
 .skins-scroll { gap: 11px; }
 .archive-scroll { gap: 11px; }
 .lb-scroll { gap: 7px; padding: 8px 10px; }
-#powerup-gauge-bar { padding: 6px 7px 8px 7px; gap: 6px; }
+#powerup-gauge-bar { height: 46px; min-height: 46px; max-height: 46px; padding: 4px 8px; gap: 6px; box-sizing: border-box; }
 #powerup-gauge-bar.pwr-multi .pwr-gauge-meta { font-size: 6.8px; letter-spacing: 0.1px; }
 
 /* 1) Universal 1-Step Pixel-Curved Corners (2px stepped pixel curve) for compact buttons, pills & chips */
@@ -3549,7 +3544,7 @@ button.pwr-ready-btn {
   --px-halo: rgba(0, 246, 255, 0.50);
   border: 0 !important;
   border-radius: 0 !important;
-  margin: 2px 2px;
+  margin: 0 2px;
   box-shadow:
     0 -2px 0 0 var(--px-top),
     0  2px 0 0 var(--px-bot),
@@ -3560,7 +3555,7 @@ button.pwr-ready-btn {
     inset  2px 0 0 0 var(--px-in),
     inset -2px 0 0 0 var(--px-in),
     0 0 11px 0 var(--px-halo),
-    0 4px 0 0 rgba(0, 0, 0, 0.65) !important;
+    0 3px 0 0 rgba(0, 0, 0, 0.65) !important;
 }
 
 button.pwr-ready-btn:hover {
@@ -3624,4 +3619,516 @@ button.pwr-ready-btn.pwr-plasma {
   --px-bot: #6e3ef2;
   --px-in: rgba(45, 255, 122, 0.28);
   --px-halo: rgba(52, 255, 122, 0.54);
+}
+
+/* 9) NEXUS ARCHIVE — DATA-DRIVEN FIELD GUIDE STYLES (DESKTOP & MOBILE) */
+.field-guide-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fg-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 246, 255, 0.22);
+}
+
+.fg-jump-btn {
+  --px-bdr: rgba(0, 246, 255, 0.55);
+  flex: 1 1 auto;
+  min-width: 72px;
+  padding: 4px 7px;
+  font-size: 7.4px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  background: rgba(3, 14, 28, 0.94);
+  color: #bfefff;
+}
+
+.fg-jump-btn.fg-acc-emerald { --px-bdr: rgba(0, 255, 170, 0.65); color: #b6ffe6; }
+.fg-jump-btn.fg-acc-amber { --px-bdr: rgba(255, 153, 0, 0.68); color: #ffd996; }
+.fg-jump-btn.fg-acc-purple { --px-bdr: rgba(196, 77, 255, 0.68); color: #ebbfff; }
+.fg-jump-btn.fg-acc-gold { --px-bdr: rgba(255, 212, 71, 0.72); color: #ffe99c; }
+.fg-jump-btn.fg-acc-red { --px-bdr: rgba(255, 30, 66, 0.72); color: #ffb3c2; }
+
+.fg-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scroll-margin-top: 6px;
+}
+
+.fg-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 2px 4px;
+  border-bottom: 1.5px solid rgba(0, 246, 255, 0.36);
+}
+
+.fg-section.fg-acc-emerald .fg-section-head { border-bottom-color: rgba(0, 255, 170, 0.45); }
+.fg-section.fg-acc-amber .fg-section-head { border-bottom-color: rgba(255, 153, 0, 0.45); }
+.fg-section.fg-acc-purple .fg-section-head { border-bottom-color: rgba(196, 77, 255, 0.48); }
+.fg-section.fg-acc-gold .fg-section-head { border-bottom-color: rgba(255, 212, 71, 0.5); }
+.fg-section.fg-acc-red .fg-section-head { border-bottom-color: rgba(255, 30, 66, 0.52); }
+
+.fg-section-title {
+  font-family: var(--font-display);
+  font-size: 9.5px;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+  color: #ffffff;
+  text-shadow: 1px 1px 0 #020814, 0 0 8px rgba(0, 246, 255, 0.65);
+}
+
+.fg-section.fg-acc-emerald .fg-section-title { color: #b6ffe6; }
+.fg-section.fg-acc-amber .fg-section-title { color: #ffd996; }
+.fg-section.fg-acc-purple .fg-section-title { color: #f0c8ff; }
+.fg-section.fg-acc-gold .fg-section-title { color: #ffe68c; }
+.fg-section.fg-acc-red .fg-section-title { color: #ffb4c2; }
+
+.fg-section-kicker {
+  font-size: 7.2px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  color: rgba(176, 226, 245, 0.72);
+}
+
+.fg-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fg-card {
+  --px-bdr: rgba(0, 246, 255, 0.52);
+  padding: 8px 10px;
+  background: rgba(4, 15, 30, 0.92);
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow:
+    0 -2px 0 0 var(--px-bdr),
+    0  2px 0 0 var(--px-bdr),
+   -2px 0 0 0 var(--px-bdr),
+    2px 0 0 0 var(--px-bdr),
+    0  3px 0 0 rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+}
+
+.fg-card.fg-acc-emerald { --px-bdr: rgba(0, 255, 170, 0.62); }
+.fg-card.fg-acc-amber { --px-bdr: rgba(255, 153, 0, 0.66); }
+.fg-card.fg-acc-gold { --px-bdr: rgba(255, 212, 71, 0.68); }
+.fg-card.fg-acc-yellow { --px-bdr: rgba(255, 230, 64, 0.7); }
+.fg-card.fg-acc-red { --px-bdr: rgba(255, 30, 66, 0.72); }
+.fg-card.fg-acc-purple { --px-bdr: rgba(196, 77, 255, 0.72); }
+.fg-card.fg-acc-clone { --px-bdr: rgba(114, 102, 255, 0.75); }
+.fg-card.fg-acc-plasma { --px-bdr: rgba(204, 255, 0, 0.76); background: rgba(18, 14, 38, 0.94); }
+
+.fg-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fg-name {
+  font-size: 9.2px;
+  font-weight: 700;
+  letter-spacing: 0.45px;
+  color: #ffffff;
+  text-shadow: 1px 1px 0 #020814;
+}
+
+.fg-tag {
+  padding: 2px 6px;
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.35px;
+  color: #d6fbff;
+  background: rgba(2, 10, 22, 0.9);
+  border: 1px solid var(--px-bdr);
+  white-space: nowrap;
+}
+
+.fg-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fg-line {
+  font-family: var(--font-body);
+  font-size: 10px;
+  line-height: 1.56;
+  letter-spacing: 0.2px;
+  color: #d6f4ff;
+  text-transform: none;
+  font-weight: 400;
+}
+
+.fg-archive-hint {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0.2px;
+  color: #b8e8ff;
+  text-align: left;
+  padding: 6px 9px;
+  background: rgba(0, 42, 72, 0.44);
+  border-left: 2px solid rgba(0, 246, 255, 0.72);
+}
+
+/* =========================================================================
+   10) UNIFIED SILKSCREEN REGULAR (400) TYPOGRAPHY HIERARCHY
+   - Single cohesive crisp 1px pixel typeface across every title, button,
+     chip, badge & description, scaled cleanly by visual hierarchy
+   ========================================================================= */
+
+/* Hero & modal display headings (stepped up for Silkscreen proportions) */
+.nexus-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: 2px;
+}
+
+.nexus-title.szarkk-title {
+  font-size: 36px;
+  letter-spacing: 5px;
+  padding-left: 5px;
+}
+
+.nexus-title.modal-heading {
+  font-size: 19px;
+  letter-spacing: 1.2px;
+}
+
+.archive-heading {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 1px;
+}
+
+.arcade-btn {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 400;
+  letter-spacing: 1.4px;
+}
+
+@media (max-width: 430px) {
+  .nexus-title.szarkk-title { font-size: 28px; letter-spacing: 4px; padding-left: 4px; }
+  .nexus-title.modal-heading { font-size: 16.5px; }
+  .archive-heading { font-size: 14px; }
+  #overlay-leaderboard .archive-heading { font-size: 13.5px; }
+  .arcade-btn { font-size: 13.5px; }
+}
+
+/* Readable body prose & descriptions (Silkscreen 400 w/ airy line-height) */
+.archive-desc {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.58;
+  letter-spacing: 0.2px;
+  color: #d6f4ff;
+  text-transform: none;
+}
+
+.skin-desc {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1.54;
+  letter-spacing: 0.2px;
+  color: #d2f0ff;
+  text-transform: none;
+}
+
+.ctrl-hint-line,
+.guide-list {
+  font-family: var(--font-body);
+  font-size: 9.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0.2px;
+  color: #d2f0ff;
+}
+
+.guide-list strong {
+  color: #ffffff;
+  font-weight: 400;
+}
+
+.lb-empty {
+  font-family: var(--font-body);
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.58;
+}
+
+.nexus-subtitle.szarkk-acronym {
+  font-family: var(--font-body);
+  font-size: 8.2px;
+  font-weight: 400;
+  letter-spacing: 0.55px;
+  line-height: 1.45;
+}
+
+/* Metadata chips, badges, tags, selects & hints (compact Silkscreen 400) */
+.tier-badge {
+  font-family: var(--font-body);
+  font-size: 8.2px;
+  font-weight: 400;
+  letter-spacing: 0.35px;
+  padding: 2px 6px;
+}
+
+.stat-chip {
+  font-family: var(--font-body);
+  font-size: 8.4px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+  padding: 2px 6px;
+}
+
+.fg-tag {
+  font-family: var(--font-body);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+}
+
+.fg-section-kicker {
+  font-family: var(--font-body);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.35px;
+  color: rgba(186, 232, 250, 0.84);
+}
+
+.fg-jump-btn {
+  font-family: var(--font-body);
+  font-size: 8.2px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+  padding: 5px 6px;
+}
+
+.skin-badge,
+.skin-equip-pill {
+  font-family: var(--font-body);
+  font-size: 7.8px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+
+.skin-sprite-status {
+  font-family: var(--font-body);
+  font-size: 7.8px;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+}
+
+.sbx-sec-title {
+  font-family: var(--font-body);
+  font-size: 9.8px;
+  font-weight: 400;
+  letter-spacing: 0.55px;
+}
+
+.sbx-sec-hint,
+.sbx-field span,
+.sbx-field-sub,
+.sbx-inf-pill {
+  font-family: var(--font-body);
+  font-size: 8px;
+  font-weight: 400;
+  letter-spacing: 0.3px;
+}
+
+.sbx-select {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.25px;
+}
+
+.desktop-keys {
+  font-family: var(--font-body);
+  font-size: 8.4px;
+  font-weight: 400;
+  letter-spacing: 0.25px;
+}
+
+.desktop-keys strong {
+  font-weight: 400;
+}
+
+.lb-confirm-msg,
+.go-save-status {
+  font-family: var(--font-body);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.35px;
+}
+
+/* Crisp 1px Silkscreen Regular (400) for all Arcade UI titles, buttons, HUD & gauges */
+.fg-section-title {
+  font-family: var(--font-arcade);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.6px;
+}
+
+.archive-name {
+  font-family: var(--font-arcade);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.45px;
+}
+
+.fg-name {
+  font-family: var(--font-arcade);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.35px;
+}
+
+.skin-name {
+  font-family: var(--font-arcade);
+  font-size: 11.5px;
+  font-weight: 400;
+  letter-spacing: 0.4px;
+}
+
+.hud-label,
+.hud-value,
+.hud-pill,
+.status-pill,
+.nexus-subtitle,
+.version-badge,
+.menu-meta-row,
+.mode-btn,
+.lb-tab-btn,
+.go-mode-badge,
+.nexus-cta,
+.go-save-label,
+.arcade-input,
+.lb-table-head,
+.lb-row,
+.lb-rank,
+.lb-tag,
+.lb-score,
+.ctrl-box-label,
+.auto-toggle-btn,
+.archive-kicker,
+.archive-back-btn,
+.report-val,
+.record-banner,
+.pwr-gauge-meta,
+.pwr-ready-stack,
+.flt-pwr-val,
+.dock-status,
+#lr-fire-pill,
+.drag-label,
+.sbx-pill,
+.sbx-pwr-item,
+.sbx-corner-btn,
+.sbx-deploy-tag,
+.sbx-dep-btn,
+.sbx-mini-exit,
+.sbx-action-btn,
+.sbx-seg-btn,
+.sbx-chip,
+.skin-render-label {
+  font-weight: 400;
+}
+
+.pwr-gauge-meta {
+  font-size: 8.5px;
+  letter-spacing: 0.25px;
+}
+
+#powerup-gauge-bar.pwr-multi .pwr-gauge-meta {
+  font-size: 7.8px;
+  letter-spacing: 0.15px;
+}
+
+.flt-pwr-val {
+  font-size: 8.5px;
+  letter-spacing: 0.3px;
+}
+
+.pwr-ready-stack {
+  font-size: 9px;
+}
+
+.sbx-pill {
+  font-size: 8.2px;
+  letter-spacing: 0.3px;
+}
+
+.sbx-corner-btn {
+  font-size: 8.4px;
+  letter-spacing: 0.3px;
+}
+
+.sbx-chip {
+  font-size: 8.4px;
+}
+
+.sbx-pwr-item {
+  font-size: 9px;
+}
+
+.hud-pill {
+  font-size: 8.4px;
+}
+
+/* Hard Mode Round 1 Light Prism Reveal Button (full-width pixel FX canvas) */
+#powerup-gauge-bar.pwr-prism {
+  border-top-color: rgba(255, 255, 255, 0.85);
+}
+
+button.pwr-ready-btn.is-prism-reveal {
+  --px-bg: #11162c;
+  --px-pip: #ffffff;
+  --px-top: #ffffff;
+  --px-sides: #00f6ff;
+  --px-bot: #ff52c8;
+  --px-in: rgba(255, 255, 255, 0.26);
+  --px-halo: rgba(180, 240, 255, 0.62);
+  padding: 0;
+  overflow: hidden;
+  cursor: default;
+  opacity: 1;
+  pointer-events: none;
+}
+
+button.pwr-ready-btn.is-prism-reveal:active {
+  transform: none !important;
+}
+
+.pwr-prism-canvas {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }

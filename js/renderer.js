@@ -53,7 +53,7 @@ import {
   drawTractorBeam
 } from './sprites.js';
 
-const FONT_ARCADE_DISPLAY = '"Press Start 2P", "Silkscreen", ui-monospace, monospace';
+const FONT_ARCADE_DISPLAY = '"Silkscreen", ui-monospace, monospace';
 const FONT_ARCADE_UI = '"Silkscreen", ui-monospace, monospace';
 
 /**
@@ -227,7 +227,7 @@ function drawMeasurementGridUnderlay(ctx) {
   ctx.strokeRect(box0Left + 0.5, box0Top + 0.5, cell - 1, cell - 1);
 
   // 6) Fighter-box coordinate labels (Columns: -5..0..+5 along top; Rows: 0F..14F up left margin)
-  ctx.font = `700 7.2px ${FONT_ARCADE_UI}`;
+  ctx.font = `400 7.6px ${FONT_ARCADE_UI}`;
   ctx.textAlign = 'center';
   for (let col = -5; col <= 5; col++) {
     const cx = originX + col * cell;
@@ -310,7 +310,7 @@ function drawShipLightningRuler(ctx, game) {
 
     // Vertical 1F..4F scale labels (only once on rightmost fighter when dual)
     if (ox === offsets[offsets.length - 1]) {
-      ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
+      ctx.font = `400 8px ${FONT_ARCADE_UI}`;
       ctx.fillStyle = COLORS.yellow;
       ctx.textAlign = 'center';
       for (let f = 1; f <= 4; f++) {
@@ -333,7 +333,7 @@ function drawMeasurementGridOverlay(ctx, game) {
 
   // Enemy Hitbox Radius circles (size comparison!) + Edge-to-Edge Chain Jump rings & pair distances
   const measured = game.enemies.filter(e => !e.isCentoid || e.isCentoidHead);
-  ctx.font = `700 7.5px ${FONT_ARCADE_UI}`;
+  ctx.font = `400 8px ${FONT_ARCADE_UI}`;
   ctx.textAlign = 'center';
 
   for (const e of measured) {
@@ -1397,7 +1397,7 @@ export function renderFrame(game) {
   // Floating Score & Combat Popups (authentic 32-bit arcade bitmap text with crisp black outline!)
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.font = `700 9.5px ${FONT_ARCADE_UI}`;
+  ctx.font = `400 10px ${FONT_ARCADE_UI}`;
   ctx.lineJoin = 'round';
   ctx.lineWidth = 2.6;
   for (const pop of game.popups) {
@@ -1474,6 +1474,50 @@ export function renderFrame(game) {
     drawPlasmaArenaBorder(ctx, game.plasmaRingState, game.clock, isPixelPlayerFx, !!game.sandboxMode);
   }
 
+  // 13c) Challenge Extra Round 20s Serpent Escape Countdown Pill
+  if (
+    game.isChallengeStage &&
+    game.sectorPhase === 'CHALLENGE' &&
+    (game.challengeSerpentTimer > 0 || game.challengeSerpentEscaping)
+  ) {
+    ctx.save();
+    const hasPlasmaPill = !!(game.plasmaRingState && game.plasmaRingState.borderActive);
+    const pillY = hasPlasmaPill ? (game.sandboxMode ? 55 : 29) : (game.sandboxMode ? 36 : 10);
+    const pillW = 178;
+    const pillX = Math.round(LOGICAL_W * 0.5 - pillW * 0.5);
+    const left = Math.max(0, game.challengeSerpentTimer || 0);
+    const maxT = Math.max(1, game.challengeSerpentMax || 20);
+    const ratio = clamp(left / maxT, 0, 1);
+    const escaping = !!game.challengeSerpentEscaping;
+    const critical = escaping || left < 4.0;
+    const warning = !critical && left < 8.0;
+    const col = critical ? COLORS.nullRed : (warning ? COLORS.amber : COLORS.centoidGreen);
+    const blink = critical ? (0.58 + 0.42 * Math.abs(Math.sin(game.clock * 16))) : 1;
+
+    ctx.globalAlpha = 0.94 * blink;
+    ctx.fillStyle = 'rgba(6, 12, 24, 0.9)';
+    ctx.fillRect(pillX, pillY, pillW, 17);
+    ctx.fillStyle = col;
+    ctx.fillRect(pillX, pillY, pillW, 1);
+    ctx.fillRect(pillX, pillY, 3, 17);
+    ctx.fillRect(pillX + pillW - 3, pillY, 3, 17);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
+    ctx.fillRect(pillX + 3, pillY + 14, pillW - 6, 2);
+    if (!escaping) {
+      ctx.fillStyle = col;
+      ctx.fillRect(pillX + 3, pillY + 14, Math.round((pillW - 6) * ratio), 2);
+    }
+    ctx.font = `400 8px ${FONT_ARCADE_UI}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = critical ? '#ffd2dc' : (warning ? '#ffe49e' : '#c4ffd8');
+    ctx.fillText(
+      escaping ? 'SERPENTS ESCAPING!' : `SERPENTS ESCAPE // ${left.toFixed(1)}s`,
+      LOGICAL_W * 0.5,
+      pillY + 10
+    );
+    ctx.restore();
+  }
+
   // Sandbox Measurement Grid live overlay (enemy hitboxes & edge-to-edge jump distances — NO ship yellow ruler!)
   if (game.sandboxMode && game.sandboxShowGrid) {
     drawMeasurementGridOverlay(ctx, game);
@@ -1508,7 +1552,7 @@ export function renderFrame(game) {
     ctx.fillRect(bx, by + 2, 2, bh - 4);
     ctx.fillRect(bx + bw - 2, by + 2, 2, bh - 4);
     ctx.textAlign = 'center';
-    ctx.font = `700 8.2px ${FONT_ARCADE_UI}`;
+    ctx.font = `400 8.5px ${FONT_ARCADE_UI}`;
     ctx.fillStyle = col;
     ctx.shadowColor = col;
     ctx.shadowBlur = 5;
@@ -1525,9 +1569,9 @@ export function renderFrame(game) {
   ) {
     ctx.save();
     const maxTextW = LOGICAL_W - 48; // 432px safe inner width (24px clear margin inside 480px frame)
-    const titleFont = `400 13.5px ${FONT_ARCADE_DISPLAY}`;
-    const subFont = `700 9.5px ${FONT_ARCADE_UI}`;
-    const noteFont = `700 9px ${FONT_ARCADE_UI}`;
+    const titleFont = `400 17px ${FONT_ARCADE_DISPLAY}`;
+    const subFont = `400 10px ${FONT_ARCADE_UI}`;
+    const noteFont = `400 9.5px ${FONT_ARCADE_UI}`;
     const titleLineH = 21;
     const subLineH = 14;
     const noteLineH = 14;

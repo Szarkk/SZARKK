@@ -607,14 +607,18 @@ export function queueReadyPowerup(game, type) {
   return entry;
 }
 
-export function activateReadyPowerup(game, readyId = null) {
+export function activateReadyPowerup(game, typeOrId = null) {
   if (!game || game.state !== 'PLAYING') return false;
+  if (game.prismReveal && game.prismReveal.active) return false;
   if (!game.player || !game.player.alive || game.player.capturedById) return false;
   if (!Array.isArray(game.readyPowerups) || game.readyPowerups.length === 0) return false;
 
-  const idx = readyId !== null
-    ? game.readyPowerups.findIndex(r => r && r.id === readyId)
-    : 0;
+  let idx = 0;
+  if (typeof typeOrId === 'string') {
+    idx = game.readyPowerups.findIndex(r => (typeof r === 'string' ? r : (r && r.type)) === typeOrId);
+  } else if (typeOrId !== null) {
+    idx = game.readyPowerups.findIndex(r => r && r.id === typeOrId);
+  }
   if (idx < 0) return false;
 
   const [entry] = game.readyPowerups.splice(idx, 1);
@@ -635,6 +639,7 @@ export function updatePowerupTimers(game, dt) {
   // Fighter Clones run a 20.0s timer that PAUSES between sectors, waves, and challenge banners!
   if (hasPowerup(game, 'CLONE')) {
     const inPauseWindow =
+      game.sectorPhase === 'PRISM_INTRO' ||
       game.sectorPhase === 'BANNER' ||
       game.sectorPhase === 'CHALLENGE_BANNER' ||
       game.sectorPhase === 'CHALLENGE_REWARD' ||
@@ -661,6 +666,7 @@ export function updatePowerupTimers(game, dt) {
 
 export function updatePowerupCapsules(game, dt) {
   const inTransition =
+    game.sectorPhase === 'PRISM_INTRO' ||
     game.sectorPhase === 'BANNER' ||
     game.sectorPhase === 'CHALLENGE_BANNER' ||
     game.sectorPhase === 'CHALLENGE_REWARD' ||

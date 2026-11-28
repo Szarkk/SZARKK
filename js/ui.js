@@ -56,6 +56,8 @@ import {
   getAurexSkinMeta,
   getEnemySkinMeta
 } from './skins.js';
+import { FIELD_GUIDE_ENTRIES, FIELD_GUIDE_SECTIONS } from './field_guide.js';
+import { getCapsulePrismStyle, renderPrismRevealFrame } from './prism_reveal.js';
 
 export function cacheDomElements(game) {
   game.canvas = document.getElementById('game-canvas');
@@ -102,6 +104,10 @@ export function cacheDomElements(game) {
   game.overlayStart = document.getElementById('overlay-start');
   game.overlayControls = document.getElementById('overlay-controls');
   game.overlayArchive = document.getElementById('overlay-archive');
+  game.archiveScroll = document.getElementById('archive-scroll');
+  game.fieldGuideScroll = document.getElementById('field-guide-scroll');
+  game.btnArchiveTabCards = document.getElementById('btn-archive-tab-cards');
+  game.btnArchiveTabGuide = document.getElementById('btn-archive-tab-guide');
   game.overlayLeaderboard = document.getElementById('overlay-leaderboard');
   game.overlaySkins = document.getElementById('overlay-skins');
   game.skinsList = document.getElementById('skins-list');
@@ -188,8 +194,105 @@ export function buildArchiveCards(game) {
   }
 }
 
+export function buildFieldGuide(game) {
+  const container = game.fieldGuideScroll || document.getElementById('field-guide-scroll');
+  if (!container) return;
+  container.innerHTML = '';
+
+  // Compact quick-jump pill bar at the top of the Field Guide
+  const nav = document.createElement('div');
+  nav.className = 'fg-nav';
+  nav.setAttribute('aria-label', 'Field Guide Sections');
+  for (const sec of FIELD_GUIDE_SECTIONS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `fg-jump-btn fg-acc-${sec.accent}`;
+    btn.textContent = sec.label;
+    btn.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      const target = document.getElementById(`fg-sec-${sec.id}`);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+    nav.appendChild(btn);
+  }
+  container.appendChild(nav);
+
+  // Subtle cross-link note clarifying Archive (sprites/stats) vs Field Guide (rules/secrets)
+  const hint = document.createElement('div');
+  hint.className = 'fg-archive-hint';
+  hint.textContent = 'Systems, matchups & hidden rules — switch to ARCHIVE for individual ship, enemy & capsule sprites and full stat cards.';
+  container.appendChild(hint);
+
+  // Render every section purely from FIELD_GUIDE_SECTIONS & FIELD_GUIDE_ENTRIES
+  for (const sec of FIELD_GUIDE_SECTIONS) {
+    const entries = FIELD_GUIDE_ENTRIES.filter(entry => entry.section === sec.id);
+    if (entries.length === 0) continue;
+
+    const sectionEl = document.createElement('section');
+    sectionEl.id = `fg-sec-${sec.id}`;
+    sectionEl.className = `fg-section fg-acc-${sec.accent}`;
+
+    const head = document.createElement('div');
+    head.className = 'fg-section-head';
+    const titleEl = document.createElement('h3');
+    titleEl.className = 'fg-section-title';
+    titleEl.textContent = sec.title;
+    const kickerEl = document.createElement('span');
+    kickerEl.className = 'fg-section-kicker';
+    kickerEl.textContent = sec.kicker;
+    head.append(titleEl, kickerEl);
+    sectionEl.appendChild(head);
+
+    const list = document.createElement('div');
+    list.className = 'fg-entry-list';
+    for (const item of entries) {
+      const card = document.createElement('article');
+      card.className = `fg-card fg-acc-${item.accent || sec.accent}`;
+
+      const top = document.createElement('div');
+      top.className = 'fg-card-top';
+      const nameEl = document.createElement('span');
+      nameEl.className = 'fg-name';
+      nameEl.textContent = item.name;
+      top.appendChild(nameEl);
+
+      if (item.tag) {
+        const tagEl = document.createElement('span');
+        tagEl.className = 'fg-tag';
+        tagEl.textContent = item.tag;
+        top.appendChild(tagEl);
+      }
+      card.appendChild(top);
+
+      const linesWrap = document.createElement('div');
+      linesWrap.className = 'fg-lines';
+      for (const text of (item.lines || [])) {
+        const p = document.createElement('p');
+        p.className = 'fg-line';
+        p.textContent = text;
+        linesWrap.appendChild(p);
+      }
+      card.appendChild(linesWrap);
+      list.appendChild(card);
+    }
+
+    sectionEl.appendChild(list);
+    container.appendChild(sectionEl);
+  }
+}
+
+export function syncArchiveTabsUI(game) {
+  const isGuide = game.archiveTab === 'GUIDE';
+  if (game.btnArchiveTabCards) game.btnArchiveTabCards.classList.toggle('selected', !isGuide);
+  if (game.btnArchiveTabGuide) game.btnArchiveTabGuide.classList.toggle('selected', isGuide);
+  if (game.archiveScroll) game.archiveScroll.classList.toggle('hidden', isGuide);
+  if (game.fieldGuideScroll) game.fieldGuideScroll.classList.toggle('hidden', !isGuide);
+}
+
 export function renderArchivePreviews(game) {
-  if (game.overlayArchive.classList.contains('hidden')) return;
+  if (game.overlayArchive.classList.contains('hidden') || game.archiveTab === 'GUIDE') return;
   const t = game.clock;
   for (const p of game.archivePreviews) {
     const c = p.ctx;
@@ -546,6 +649,8 @@ export function resizeCanvas(game) {
   const rect = game.stageContainer.getBoundingClientRect();
   const availW = Math.max(180, rect.width);
   const availH = Math.max(240, rect.height);
+  game._lastStageW = availW;
+  game._lastStageH = availH;
   const aspect = LOGICAL_W / LOGICAL_H;
 
   let cssW = availW;
@@ -560,6 +665,20 @@ export function resizeCanvas(game) {
 
   game.canvas.style.width = `${cssW}px`;
   game.canvas.style.height = `${cssH}px`;
+
+  // Keep the mini floating gauge permanently inset cleanly INSIDE the Plasma Arena Border
+  // (5px containment rails + 12px corner reflector blocks) on every viewport, never shrinking!
+  if (game.stageContainer) {
+    const scale = cssW / LOGICAL_W;
+    const canvasLeft = Math.max(0, (availW - cssW) * 0.5);
+    const canvasBottom = Math.max(0, (availH - cssH) * 0.5);
+    const fltSide = Math.ceil(canvasLeft + 16 * scale);
+    const fltBottom = Math.ceil(canvasBottom + 14 * scale);
+    const sbxBottom = Math.ceil(fltBottom + 26);
+    game.stageContainer.style.setProperty('--flt-gauge-side', `${fltSide}px`);
+    game.stageContainer.style.setProperty('--flt-gauge-bottom', `${fltBottom}px`);
+    game.stageContainer.style.setProperty('--sbx-corner-bottom', `${sbxBottom}px`);
+  }
 
   if (game.renderMode === RENDER_MODES.PIXEL) {
     // 32-Bit Native 480x640 (1:1 PixelLab buffer, dpr=1, nearest-neighbor upscaled via CSS)
@@ -584,9 +703,9 @@ export function syncControlsUI(game) {
 
   game.btnAuto.textContent = `AUTO:${game.autoFire ? 'ON' : 'OFF'}`;
   game.btnAuto.className = `hud-pill ${game.autoFire ? 'auto-on' : 'auto-off'}`;
-  game.btnCrt.className = `hud-pill ${game.crtEnabled ? '' : 'is-off'}`;
-  game.btnSfx.className = `hud-pill ${game.sfxEnabled ? '' : 'is-off'}`;
-  game.crtOverlay.classList.toggle('crt-off', !game.crtEnabled);
+  if (game.btnCrt) game.btnCrt.className = `hud-pill ${game.crtEnabled ? '' : 'is-off'}`;
+  if (game.btnSfx) game.btnSfx.className = `hud-pill ${game.sfxEnabled ? '' : 'is-off'}`;
+  if (game.crtOverlay) game.crtOverlay.classList.toggle('crt-off', !game.crtEnabled);
 
   if (game.btnModeNormal) game.btnModeNormal.classList.toggle('selected', !game.hardMode);
   if (game.btnModeHard) game.btnModeHard.classList.toggle('selected', game.hardMode);
@@ -608,9 +727,15 @@ export function syncControlsUI(game) {
     modalAuto.className = `auto-toggle-btn ${game.autoFire ? 'on' : 'off'}`;
   }
   const btnCtrlCrt = document.getElementById('btn-ctrl-crt');
-  if (btnCtrlCrt) btnCtrlCrt.textContent = `CRT: ${game.crtEnabled ? 'ON' : 'OFF'}`;
+  if (btnCtrlCrt) {
+    btnCtrlCrt.textContent = `CRT: ${game.crtEnabled ? 'ON' : 'OFF'}`;
+    btnCtrlCrt.className = `auto-toggle-btn ${game.crtEnabled ? 'on' : 'off'}`;
+  }
   const btnCtrlSfx = document.getElementById('btn-ctrl-sfx');
-  if (btnCtrlSfx) btnCtrlSfx.textContent = `SFX: ${game.sfxEnabled ? 'ON' : 'OFF'}`;
+  if (btnCtrlSfx) {
+    btnCtrlSfx.textContent = `SFX: ${game.sfxEnabled ? 'ON' : 'OFF'}`;
+    btnCtrlSfx.className = `auto-toggle-btn ${game.sfxEnabled ? 'on' : 'off'}`;
+  }
 
   writeLS(STORAGE_KEYS.auto, game.autoFire ? '1' : '0');
   writeLS(STORAGE_KEYS.crt, game.crtEnabled ? '1' : '0');
@@ -708,9 +833,26 @@ export function updateHUD(game) {
   game.elLives.innerHTML = html;
 }
 
-function buildReadySlot(game, entry, barClsFor) {
-  const type = typeof entry === 'string' ? entry : entry.type;
-  const readyId = typeof entry === 'string' ? null : entry.id;
+function groupReadyPowerups(readyList) {
+  if (!Array.isArray(readyList) || readyList.length === 0) return [];
+  const grouped = [];
+  const byType = new Map();
+  for (const item of readyList) {
+    const type = typeof item === 'string' ? item : (item && item.type);
+    if (!type) continue;
+    let bucket = byType.get(type);
+    if (!bucket) {
+      bucket = { type, count: 0 };
+      byType.set(type, bucket);
+      grouped.push(bucket);
+    }
+    bucket.count++;
+  }
+  return grouped;
+}
+
+function buildReadySlot(game, group, barClsFor) {
+  const { type, count } = group;
   const cls = barClsFor(type);
 
   const slot = document.createElement('div');
@@ -720,17 +862,24 @@ function buildReadySlot(game, entry, barClsFor) {
   btn.type = 'button';
   btn.className = `pwr-ready-btn ${cls}`;
   btn.dataset.readyType = type;
-  if (readyId !== null) btn.dataset.readyId = String(readyId);
+  btn.dataset.readyCount = String(count);
   const fullName = getPowerupDisplayName(type, false);
-  btn.setAttribute('aria-label', `Activate ${fullName}`);
-  btn.title = `Activate ${fullName}`;
+  btn.setAttribute('aria-label', count > 1 ? `Activate ${fullName} (x${count})` : `Activate ${fullName}`);
+  btn.title = count > 1 ? `Activate ${fullName} (x${count})` : `Activate ${fullName}`;
 
   const cv = document.createElement('canvas');
-  cv.width = 47;
-  cv.height = 47;
+  cv.width = 84;
+  cv.height = 64;
   cv.className = 'pwr-ready-canvas';
   cv.setAttribute('aria-hidden', 'true');
   btn.appendChild(cv);
+
+  if (count > 1) {
+    const stackBadge = document.createElement('span');
+    stackBadge.className = 'pwr-ready-stack';
+    stackBadge.textContent = `x${count}`;
+    btn.appendChild(stackBadge);
+  }
 
   btn.addEventListener('pointerdown', (e) => {
     e.stopPropagation();
@@ -740,22 +889,24 @@ function buildReadySlot(game, entry, barClsFor) {
     e.stopPropagation();
     e.currentTarget.blur();
     game.synth.unlock();
-    activateReadyPowerup(game, readyId);
+    activateReadyPowerup(game, type);
   });
 
   slot.appendChild(btn);
   const ctx = cv.getContext('2d');
   if (ctx) {
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, 47, 47);
-    // Razor-sharp integer-snapped capsule (px = 5 on 47x47 -> 23x23 CSS px, zero blur, zero floating!)
-    drawPixelCapsule(ctx, 23.5, 23.5, type, 0, 5, true);
+    ctx.setTransform(2, 0, 0, 2, 0, 0);
+    ctx.clearRect(0, 0, 42, 32);
+    // Regular in-game capsule size (scale 1.0) + full neon glow (stationary, zero animated borders!)
+    drawPixelCapsule(ctx, 21, 16, type, Math.PI / 14, 1.0, false);
   }
   return slot;
 }
 
-export function renderReadyCapsuleButtons() {
-  // Ready button capsules are stationary integer-snapped pixel sprites rendered once on build.
+export function renderReadyCapsuleButtons(game) {
+  if (game && game.prismReveal && game.prismReveal.active && game._prismEls) {
+    renderPrismRevealFrame(game, game._prismEls.btn, game._prismEls.canvas, game._prismEls.bar);
+  }
 }
 
 function buildFloatingGaugeSlots(game, activeTypes, slotClsFor) {
@@ -767,6 +918,14 @@ function buildFloatingGaugeSlots(game, activeTypes, slotClsFor) {
   if (activeTypes.length === 0) {
     flt.classList.add('hidden');
     return;
+  }
+
+  // Ensure floating gauge insets match current stage dimensions even across instant resizes
+  if (game.stageContainer) {
+    const r = game.stageContainer.getBoundingClientRect();
+    if (Math.abs(r.width - (game._lastStageW || 0)) > 1 || Math.abs(r.height - (game._lastStageH || 0)) > 1) {
+      resizeCanvas(game);
+    }
   }
 
   flt.classList.remove('hidden');
@@ -781,10 +940,7 @@ function buildFloatingGaugeSlots(game, activeTypes, slotClsFor) {
     track.className = 'flt-pwr-track';
     const fill = document.createElement('div');
     fill.className = 'flt-pwr-fill';
-    const ticks = document.createElement('div');
-    ticks.className = 'flt-pwr-ticks';
-    ticks.setAttribute('aria-hidden', 'true');
-    track.append(fill, ticks);
+    track.appendChild(fill);
 
     slot.append(elVal, track);
     flt.appendChild(slot);
@@ -792,37 +948,57 @@ function buildFloatingGaugeSlots(game, activeTypes, slotClsFor) {
   }
 }
 
-function buildPowerupGaugeSlots(game, activeTypes, readyList) {
+function buildPowerupGaugeSlots(game, activeTypes, readyGroups, prismActive = false) {
   const bar = game.pwrGaugeBar;
   bar.innerHTML = '';
+  bar.style.borderTopColor = '';
   game._pwrSlotEls = {};
   game._readyCapsuleCanvases = [];
+  game._prismEls = null;
 
-  const barClsFor = (t) =>
-    t === 'CYAN' ? 'pwr-cyan'
-      : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow'
-          : (t === 'PLASMA' ? 'pwr-plasma'
-            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple'))));
-  const slotClsFor = (t) =>
-    t === 'CYAN' ? 'pwr-cyan'
-      : (t === 'RED' ? 'pwr-red'
-        : (t === 'YELLOW' ? 'pwr-yellow seg-24'
-          : (t === 'PLASMA' ? 'pwr-plasma'
-            : (t === 'CLONE' ? 'pwr-clone' : 'pwr-purple seg-6'))));
+  const barClsFor = (t) => getCapsulePrismStyle(t).cls;
+  const slotClsFor = (t) => getCapsulePrismStyle(t).cls;
 
-  const readyEntries = Array.isArray(readyList) ? readyList : [];
-  const splitFloating = activeTypes.length > 0 && readyEntries.length > 0;
+  // Hard Mode Round 1 Light Prism opener — hides the free capsule behind a luminous prism button
+  // that dissolves/glitches into the revealed power-up right before the Round 1 title card!
+  if (prismActive && game.prismReveal && game.prismReveal.active) {
+    buildFloatingGaugeSlots(game, [], slotClsFor);
+    bar.className = 'pwr-prism';
+
+    const slot = document.createElement('div');
+    slot.className = 'pwr-slot is-ready-slot is-prism-slot';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pwr-ready-btn is-prism-reveal';
+    btn.disabled = true;
+    btn.dataset.prismAnim = game.prismReveal.animId;
+    btn.dataset.prismTarget = game.prismReveal.targetType;
+    btn.setAttribute('aria-label', 'Light Prism Revealing Free Power-Up');
+
+    const cv = document.createElement('canvas');
+    cv.width = 320;
+    cv.height = 64;
+    cv.className = 'pwr-prism-canvas';
+    cv.setAttribute('aria-hidden', 'true');
+    btn.appendChild(cv);
+
+    slot.appendChild(btn);
+    bar.appendChild(slot);
+    game._prismEls = { btn, canvas: cv, bar };
+    renderPrismRevealFrame(game, btn, cv, bar);
+    return;
+  }
+
+  const splitFloating = activeTypes.length > 0 && readyGroups.length > 0;
 
   // When BOTH active power-ups and Ready buttons exist, shift active gauges up as a thin
-  // transparent-backdrop bar above the gauge UI so Ready buttons stay clean and uncramped!
+  // transparent-backdrop bar cleanly inset inside the Plasma Border!
   if (splitFloating) {
     buildFloatingGaugeSlots(game, activeTypes, slotClsFor);
-    bar.className = readyEntries.length === 1
-      ? barClsFor(typeof readyEntries[0] === 'string' ? readyEntries[0] : readyEntries[0].type)
-      : 'pwr-multi';
-    for (const entry of readyEntries) {
-      bar.appendChild(buildReadySlot(game, entry, barClsFor));
+    bar.className = readyGroups.length === 1 ? barClsFor(readyGroups[0].type) : 'pwr-multi';
+    for (const grp of readyGroups) {
+      bar.appendChild(buildReadySlot(game, grp, barClsFor));
     }
     return;
   }
@@ -830,7 +1006,7 @@ function buildPowerupGaugeSlots(game, activeTypes, readyList) {
   // Hide transparent floating bar whenever only gauges, only buttons, or neither are present
   buildFloatingGaugeSlots(game, [], slotClsFor);
 
-  const totalSlots = activeTypes.length + readyEntries.length;
+  const totalSlots = activeTypes.length + readyGroups.length;
   if (totalSlots === 0) {
     bar.className = 'pwr-empty';
     const slot = document.createElement('div');
@@ -842,7 +1018,6 @@ function buildPowerupGaugeSlots(game, activeTypes, readyList) {
       </div>
       <div class="pwr-gauge-track">
         <div class="pwr-gauge-fill" style="width:0%"></div>
-        <div class="pwr-gauge-ticks" aria-hidden="true"></div>
       </div>
     `;
     bar.appendChild(slot);
@@ -850,9 +1025,7 @@ function buildPowerupGaugeSlots(game, activeTypes, readyList) {
   }
 
   if (totalSlots === 1) {
-    const soleType = activeTypes.length === 1
-      ? activeTypes[0]
-      : (typeof readyEntries[0] === 'string' ? readyEntries[0] : readyEntries[0].type);
+    const soleType = activeTypes.length === 1 ? activeTypes[0] : readyGroups[0].type;
     bar.className = barClsFor(soleType);
   } else {
     bar.className = 'pwr-multi';
@@ -874,18 +1047,15 @@ function buildPowerupGaugeSlots(game, activeTypes, readyList) {
     track.className = 'pwr-gauge-track';
     const fill = document.createElement('div');
     fill.className = 'pwr-gauge-fill';
-    const ticks = document.createElement('div');
-    ticks.className = 'pwr-gauge-ticks';
-    ticks.setAttribute('aria-hidden', 'true');
-    track.append(fill, ticks);
+    track.appendChild(fill);
 
     slot.append(meta, track);
     bar.appendChild(slot);
     game._pwrSlotEls[type] = { elName, elVal, fill };
   }
 
-  for (const entry of readyEntries) {
-    bar.appendChild(buildReadySlot(game, entry, barClsFor));
+  for (const grp of readyGroups) {
+    bar.appendChild(buildReadySlot(game, grp, barClsFor));
   }
 }
 
@@ -893,20 +1063,24 @@ export function updateStatusPills(game) {
   const p = game.player;
 
   if (game.pwrGaugeBar) {
+    const prismActive = !!(game.prismReveal && game.prismReveal.active);
     const activeTypes = getActivePowerups(game);
-    const readyList = Array.isArray(game.readyPowerups) ? game.readyPowerups : [];
+    const readyGroups = groupReadyPowerups(game.readyPowerups);
     const activeKey = activeTypes.length > 0 ? activeTypes.join('|') : 'EMPTY';
-    const readyKey = readyList.length > 0
-      ? `R:${readyList.map(r => (typeof r === 'string' ? r : `${r.id}:${r.type}`)).join(',')}`
+    const readyKey = readyGroups.length > 0
+      ? `R:${readyGroups.map(g => `${g.type}x${g.count}`).join(',')}`
       : 'R:NONE';
-    const key = `${activeKey}#${readyKey}`;
+    const prismKey = prismActive
+      ? `P:${game.prismReveal.animId}:${game.prismReveal.targetType}`
+      : 'P:NONE';
+    const key = `${activeKey}#${readyKey}#${prismKey}`;
     if (key !== game._pwrGaugeKey) {
       game._pwrGaugeKey = key;
-      buildPowerupGaugeSlots(game, activeTypes, readyList);
+      buildPowerupGaugeSlots(game, activeTypes, readyGroups, prismActive);
       if (game.sandboxMode) syncSandboxPowerupTray(game);
     }
 
-    const splitFloating = activeTypes.length > 0 && readyList.length > 0;
+    const splitFloating = activeTypes.length > 0 && readyGroups.length > 0;
     const compact = splitFloating || activeTypes.length >= 2;
     for (const type of activeTypes) {
       const refs = splitFloating ? (game._fltSlotEls && game._fltSlotEls[type]) : game._pwrSlotEls[type];
@@ -1060,6 +1234,7 @@ export function openModal(game, which, returnTo) {
   }
   hideAllOverlays(game);
   if (which === 'ARCHIVE') {
+    syncArchiveTabsUI(game);
     game.overlayArchive.classList.remove('hidden');
   } else if (which === 'LEADERBOARD') {
     game.lbViewMode = game.hardMode ? 'HARD' : 'NORMAL';
@@ -1174,18 +1349,38 @@ export function bindEvents(game) {
     syncControlsUI(game);
   });
 
-  game.btnCrt.addEventListener('click', (e) => {
-    e.currentTarget.blur();
-    game.crtEnabled = !game.crtEnabled;
-    syncControlsUI(game);
-  });
+  if (game.btnCrt) {
+    game.btnCrt.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.crtEnabled = !game.crtEnabled;
+      syncControlsUI(game);
+    });
+  }
 
-  game.btnSfx.addEventListener('click', (e) => {
-    e.currentTarget.blur();
-    game.sfxEnabled = !game.sfxEnabled;
-    game.synth.setEnabled(game.sfxEnabled);
-    syncControlsUI(game);
-  });
+  if (game.btnSfx) {
+    game.btnSfx.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.sfxEnabled = !game.sfxEnabled;
+      game.synth.setEnabled(game.sfxEnabled);
+      syncControlsUI(game);
+    });
+  }
+
+  if (game.btnArchiveTabCards) {
+    game.btnArchiveTabCards.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.archiveTab = 'ARCHIVE';
+      syncArchiveTabsUI(game);
+    });
+  }
+
+  if (game.btnArchiveTabGuide) {
+    game.btnArchiveTabGuide.addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      game.archiveTab = 'GUIDE';
+      syncArchiveTabsUI(game);
+    });
+  }
 
   game.btnPause.addEventListener('click', (e) => {
     e.currentTarget.blur();

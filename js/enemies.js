@@ -9,6 +9,7 @@ import {
   CENTOPHAGE_START_SECTOR,
   CHAIN_LIGHTNING_DISABLE_DUR,
   CHAIN_LIGHTNING_REPEL_DIST,
+  CHALLENGE_CENTOID_TIME_LIMIT,
   CHALLENGE_ELITE_START,
   CHALLENGE_EXTRA_ROUND_START,
   CHALLENGE_INTERVAL,
@@ -270,6 +271,9 @@ export function beginSector(game, num) {
   game.challengeNum = 0;
   game.challengeSubRound = 0;
   game.challengeExtraRounds = 0;
+  game.challengeSerpentTimer = 0;
+  game.challengeSerpentMax = 0;
+  game.challengeSerpentEscaping = false;
   game.sectorWave = 1;
   game.sectorTotalWaves = STANDARD_WAVES_PER_SECTOR;
 
@@ -1059,6 +1063,9 @@ export function buildChallengeWaveQueue(game, challengeNum) {
   game.challengeTotal = game.waveQueue.length;
   game.challengeRegMastersSpawned = game.waveQueue.filter(it => isMasterEnemyType(it.type)).length;
   game.challengeInExtra = false;
+  game.challengeSerpentTimer = 0;
+  game.challengeSerpentMax = 0;
+  game.challengeSerpentEscaping = false;
   game.waveSpawnTimer = 0;
 }
 
@@ -1445,6 +1452,12 @@ export function startChallengeExtraRound(game, effChallengeNum, subRound, forced
   game.challengeExtraTotal = (game.challengeExtraTotal || 0) + items.length;
   game.challengeExtraMastersSpawned =
     (game.challengeExtraMastersSpawned || 0) + items.filter(it => isMasterEnemyType(it.type)).length;
+  const hasSerpents = items.some(it =>
+    it.isCentoidSpawn || it.type === 'CENTOID' || it.type === 'ALPHA_CENTOID' || it.type === 'CENTOPHAGE'
+  );
+  game.challengeSerpentTimer = hasSerpents ? CHALLENGE_CENTOID_TIME_LIMIT : 0;
+  game.challengeSerpentMax = hasSerpents ? CHALLENGE_CENTOID_TIME_LIMIT : 0;
+  game.challengeSerpentEscaping = false;
   game.waveQueue = items;
 }
 
@@ -1802,6 +1815,9 @@ export function finishChallengeStage(game) {
   }
 
   game.justFinishedChallenge = true;
+  game.challengeSerpentTimer = 0;
+  game.challengeSerpentMax = 0;
+  game.challengeSerpentEscaping = false;
   game.sectorPhase = 'CLEARED';
   game.phaseTimer = 2.4;
 }
@@ -1976,6 +1992,25 @@ export function updateSectorPhase(game, dt) {
     game.waveSpawnTimer += dt;
     while (game.waveQueue.length > 0 && game.waveQueue[0].delay <= game.waveSpawnTimer) {
       spawnEnemyFromItem(game, game.waveQueue.shift());
+    }
+
+    // Challenge Extra Round 20s serpent escape timer (Centoids / Super Centoids / Centophages)
+    if (game.sectorPhase === 'CHALLENGE' && (game.challengeSerpentTimer > 0 || game.challengeSerpentEscaping)) {
+      const hasLivingSerpent = game.enemies.some(e => e.isCentoid);
+      const hasQueuedSerpent = game.waveQueue.some(q => q.isCentoidSpawn);
+      if (!hasLivingSerpent && !hasQueuedSerpent) {
+        game.challengeSerpentTimer = 0;
+        game.challengeSerpentEscaping = false;
+      } else if (!game.challengeSerpentEscaping && game.challengeSerpentTimer > 0) {
+        game.challengeSerpentTimer = Math.max(0, game.challengeSerpentTimer - dt);
+        if (game.challengeSerpentTimer <= 0) {
+          game.challengeSerpentEscaping = true;
+          game.spawnPopup(LOGICAL_W * 0.5, 132, 'SERPENTS ESCAPING!', COLORS.nullRed, 1.5);
+          if (game.synth) {
+            game.synth.tone(720, 260, 0.24, 'sawtooth', 0.16, 0);
+          }
+        }
+      }
     }
     if (game.waveQueue.length === 0) {
       if (game.sectorPhase === 'ENTRY') {

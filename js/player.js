@@ -216,7 +216,7 @@ export function damagePlayer(game) {
   const deathX = p.x;
   const deathY = p.y;
 
-  // Dying preserves conserved weapons, resets Master no-death streaks, AND instantly clears Fighter Clones!
+  // Dying preserves conserved weapons & active Fighter Clones (fair like other power-ups), while resetting Master no-death streaks!
   p.alive = false;
   p.respawnTimer = 1.75;
   p.vibrateAmp = 0;
@@ -232,17 +232,6 @@ export function damagePlayer(game) {
   game.masterNullStreak = 0;
   game.masterFluxRewardSpawned = false;
   game.masterNullRewardSpawned = false;
-  if (game.fighterClones && game.fighterClones.length > 0) {
-    for (const cl of game.fighterClones) {
-      game.spawnDeleteBurst(cl.x, cl.y, COLORS.clonePurple, 12, 140, 'PLAYER');
-    }
-  }
-  if (hasPowerup(game, 'CLONE')) {
-    removePowerupSlot(game, 'CLONE', true);
-  } else {
-    game.fighterClones = [];
-    game.cloneTimer = 0;
-  }
   game.redLaserActive = false;
   game.redLaserPulseTimer = 0;
   game.activeLaserBeams = [];

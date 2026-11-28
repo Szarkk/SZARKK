@@ -63,9 +63,11 @@ import {
 import { createPixelExplosion, createPowerupPickupFx } from './renderers/saturn_fx.js';
 import { spriteLoader } from './sprite_loader.js';
 import { spawnSpriteEffect, updatePlayerAnimation, updateSpriteEffects } from './animator.js';
+import { startHardModePrismIntro, updatePrismReveal } from './prism_reveal.js';
 import {
   bindEvents,
   buildArchiveCards,
+  buildFieldGuide,
   buildSkinCards,
   cacheDomElements,
   hideAllOverlays,
@@ -75,6 +77,7 @@ import {
   resetInputs,
   resizeCanvas,
   showGameOverOverlay,
+  syncArchiveTabsUI,
   syncControlsUI,
   syncSkinsUI,
   updateHUD,
@@ -95,6 +98,7 @@ export class SzarkkGame {
     this.hardMode = false;
     this.lbViewMode = 'NORMAL';
     this.skinsTab = 'SHIPS';
+    this.archiveTab = 'ARCHIVE';
     this.aurexSkin = loadAurexSkinId();
     this.enemySkin = loadEnemySkinId();
     this.renderMode = loadRenderMode();
@@ -155,12 +159,14 @@ export class SzarkkGame {
     ];
 
     buildArchiveCards(this);
+    buildFieldGuide(this);
     buildSkinCards(this);
     this.resetGameData();
     bindEvents(this);
     bindSandboxEvents(this);
     syncControlsUI(this);
     syncSkinsUI(this);
+    syncArchiveTabsUI(this);
     updateHUD(this);
     resizeCanvas(this);
 
@@ -229,6 +235,9 @@ export class SzarkkGame {
     this.challengeExtraMastersSpawned = 0;
     this.challengeExtraMastersKilled = 0;
     this.challengeRewardedRoots = new Set();
+    this.challengeSerpentTimer = 0;
+    this.challengeSerpentMax = 0;
+    this.challengeSerpentEscaping = false;
     this.lastFormationStyle = null;
     this.lastEntryPattern = null;
     this.formationStyle = 'PHALANX';
@@ -248,6 +257,7 @@ export class SzarkkGame {
     this.powerup = createPowerupState();
     this.readyPowerups = []; // Unstacked reserve power-ups earned from 1UP ({ id, type })
     this.readyIdSeq = 0;
+    this.prismReveal = null; // Hard Mode Round 1 Light Prism -> Capsule opener
     this.arcWaveState = createArcWaveState();
     this.plasmaRingState = createPlasmaRingState();
 
@@ -313,7 +323,12 @@ export class SzarkkGame {
     this.state = 'PLAYING';
     this.player.invulnTimer = 0; // No blinking at game start
     syncSandboxUI(this);
-    beginSector(this, 1);
+    if (this.hardMode && !this.sandboxMode && startHardModePrismIntro(this)) {
+      updateHUD(this);
+      updateStatusPills(this);
+    } else {
+      beginSector(this, 1);
+    }
   }
 
   startSandbox() {
@@ -582,6 +597,7 @@ export class SzarkkGame {
     }
     if (this.fieldDebuff && !this.fieldDebuff.indefinite) {
       const inTransition =
+        this.sectorPhase === 'PRISM_INTRO' ||
         this.sectorPhase === 'BANNER' ||
         this.sectorPhase === 'CHALLENGE_BANNER' ||
         this.sectorPhase === 'CHALLENGE_REWARD' ||
@@ -598,7 +614,14 @@ export class SzarkkGame {
     updatePowerupTimers(this, dt);
     updatePlayer(this, dt);
     updatePlayerAnimation(this, dt);
-    updateSectorPhase(this, dt);
+    if (this.sectorPhase === 'PRISM_INTRO' && this.prismReveal && this.prismReveal.active) {
+      updatePrismReveal(this, dt, () => {
+        updateStatusPills(this);
+        beginSector(this, 1);
+      });
+    } else {
+      updateSectorPhase(this, dt);
+    }
     updatePowerupCapsules(this, dt);
     updateEnemies(this, dt);
     updateEnforcerWingsAndThreads(this, dt);

@@ -1277,14 +1277,20 @@ export function updateFighterClonesAndBolts(game, dt) {
     if (cl.hitFlash > 0) cl.hitFlash = Math.max(0, cl.hitFlash - dt);
 
     if (!cl.detached) {
-      // Tethered in left / right / back formation around player for 0.8s
-      cl.x = clamp(p.x + cl.ox, 22, LOGICAL_W - 22);
-      cl.y = clamp(p.y + cl.oy, PLAYER_MIN_Y - 12, LOGICAL_H - 18);
-      if (!inPauseWindow) {
-        cl.tetherTimer -= dt;
-        if (cl.tetherTimer <= 0) {
-          cl.detached = true;
-          cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off (clean disperse, no explosion!)
+      // If player dies or is captured mid-tether, break off immediately so clones keep fighting!
+      if (!p.alive || p.capturedById) {
+        cl.detached = true;
+        cl.invulnTimer = Math.max(cl.invulnTimer || 0, CLONE_IFRAMES);
+      } else {
+        // Tethered in left / right / back formation around player for 0.8s
+        cl.x = clamp(p.x + cl.ox, 22, LOGICAL_W - 22);
+        cl.y = clamp(p.y + cl.oy, PLAYER_MIN_Y - 12, LOGICAL_H - 18);
+        if (!inPauseWindow) {
+          cl.tetherTimer -= dt;
+          if (cl.tetherTimer <= 0) {
+            cl.detached = true;
+            cl.invulnTimer = CLONE_IFRAMES; // 1.0s invincibility frames upon breaking off (clean disperse, no explosion!)
+          }
         }
       }
     } else {

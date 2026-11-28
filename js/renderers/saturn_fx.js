@@ -1242,8 +1242,11 @@ export function drawPlasmaAimGuide(ctx, player, ps, time = 0, isPixel = true) {
   ctx.fillStyle = '#2dff7a';
   ctx.fillRect(hx - 2, hy - 2, 4, 4);
 
-  // 4) Compact aiming prompt & 4.0s countdown bar right beneath the stopped fighter
-  const promptY = Math.min(LOGICAL_H - 12, Math.round(player.y + 34));
+  // 4) Compact aiming prompt & 4.0s countdown bar — place cleanly ABOVE the fighter when near
+  //    the bottom so it never overlaps the Plasma Border or the mini floating gauge overlay
+  const promptY = player.y > LOGICAL_H - 82
+    ? Math.max(46, Math.round(player.y - 38))
+    : Math.min(LOGICAL_H - 36, Math.round(player.y + 34));
   const aimLeft = Math.max(0, ps.aimTimer !== undefined ? ps.aimTimer : 4.0);
   const aimMax = Math.max(0.1, ps.aimMax || 4.0);
   const urgent = ps.phase === 'AIMING' && aimLeft < 1.25;
@@ -1251,7 +1254,7 @@ export function drawPlasmaAimGuide(ctx, player, ps, time = 0, isPixel = true) {
     ? (ps.randomAutoFire ? `AUTO-FIRE (${ps.shotsLeft})` : `FIRING PLASMA (${ps.shotsLeft})`)
     : `AIM & FIRE (${aimLeft.toFixed(1)}s)`;
   ctx.globalAlpha = 0.94;
-  ctx.font = '700 8px "Silkscreen", ui-monospace, monospace';
+  ctx.font = '400 8.5px "Silkscreen", ui-monospace, monospace';
   ctx.textAlign = 'center';
   const boxW = 122;
   const bx = Math.round(player.x - boxW * 0.5);
@@ -1405,7 +1408,7 @@ export function drawPlasmaArenaBorder(ctx, ps, time = 0, isPixel = true, isSandb
   ctx.fillStyle = expiring ? COLORS.yellow : '#2dff7a';
   ctx.fillRect(pillX, pillY, 3, 15);
   ctx.fillRect(pillX + pillW - 3, pillY, 3, 15);
-  ctx.font = '700 7.6px "Silkscreen", ui-monospace, monospace';
+  ctx.font = '400 8.2px "Silkscreen", ui-monospace, monospace';
   ctx.textAlign = 'center';
   ctx.fillStyle = expiring ? COLORS.yellow : COLORS.centophageAcid;
   ctx.fillText(label, LOGICAL_W * 0.5, pillY + 10);

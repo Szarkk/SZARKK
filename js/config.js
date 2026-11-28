@@ -2,7 +2,7 @@
    SZARKK — CONSTANTS, LOGICAL PLAYFIELD, COMBAT TUNING & NEXUS ARCHIVE
    ========================================================================= */
 
-export const GAME_VERSION = 'Alpha Test 0.1.3';
+export const GAME_VERSION = 'Alpha Test 0.1.4';
 export const LOGICAL_W = 480;
 export const LOGICAL_H = 640;
 
@@ -33,6 +33,7 @@ export const CHALLENGE_INTERVAL = 2;            // Bonus Challenge stage after e
 export const CHALLENGE_ELITE_START = 2;         // Starting at Challenge 2 (after Sec 04), 2x HP Elite Raiders spawn
 export const CHALLENGE_EXTRA_ROUND_START = 2;   // Starting at Challenge 2+, 2 extra tactical rounds spawn
 export const CHALLENGE_MASTER_START = 3;        // Starting at Challenge 3 (after Sec 06), guarded Master Enforcers spawn
+export const CHALLENGE_CENTOID_TIME_LIMIT = 20.0; // Challenge Extra Rounds: surviving Centoids/Super Centoids/Centophages escape after 20s!
 export const HARD_MODE_SECTOR_OFFSET = 5;       // Hard Mode starts at Sec 06+ intensity (H01 = eff. Sec 06, full waves & Masters live)
 export const HARD_MODE_CHALLENGE_OFFSET = 2;    // Hard Mode H-CH.01 starts at Challenge 3+ (Guarded Masters + Extra Rounds)
 
@@ -238,6 +239,11 @@ export const STORAGE_KEYS = {
   renderMode: 'szarkk_render_mode'
 };
 
+const _fmtSec = (n) => `SEC ${String(n).padStart(2, '0')}`;
+const _fmtPct = (v) => `${Math.round(v * 100)}%`;
+const _HOMING_VOLLEYS = Math.round(POWERUP_MAX_ENERGY / CYAN_SHOT_ENERGY_COST);
+const _LASER_SECS = Math.round(POWERUP_MAX_ENERGY / RED_LASER_DRAIN_PER_SEC);
+
 export const ARCHIVE_ENTRIES = [
   {
     id: 'PLAYER',
@@ -255,88 +261,88 @@ export const ARCHIVE_ENTRIES = [
   {
     id: 'CAPSULE_CYAN',
     name: 'HOMING MISSILES',
-    badge: 'POWER-UP • SEC 02 W3+',
+    badge: `POWER-UP • ${_fmtSec(CYAN_POWERUP_START_SECTOR)} W${CYAN_POWERUP_START_WAVE}+`,
     badgeClass: 'elite-cyan',
     cardClass: 'tier-pwr-cyan',
     stats: [
-      { text: '30 VOLLEYS (GAUGE)', cls: 'gold' },
+      { text: `${_HOMING_VOLLEYS} VOLLEYS (GAUGE)`, cls: 'gold' },
       { text: 'STACKABLE', cls: 'emerald' },
       { text: '±2 PLANE TRACKING', cls: '' },
       { text: '1-HIT NULL THREAD', cls: '' },
       { text: '1.3x VS NULL ENF', cls: 'warn' }
     ],
-    desc: 'Cyan power-up (Sector 02 Wave 3+) — shoot the capsule to charge 30 manual volleys of twin forward-launched homing missiles that track enemies, Enforcer Wings, and capsules within 2 planes on either side! Stacks with different power-ups, shatters crimson Null Threads in 1 hit, and deals 1.3x damage to Elite/Master Enforcers [Null].'
+    desc: `Cyan power-up (${_fmtSec(CYAN_POWERUP_START_SECTOR)} Wave ${CYAN_POWERUP_START_WAVE}+) — shoot the capsule to charge ${_HOMING_VOLLEYS} manual volleys of twin forward-launched homing missiles that track enemies, Enforcer Wings, and capsules within 2 planes on either side! Stacks with different power-ups, shatters crimson Null Threads in 1 hit, and deals 1.3x damage to Elite & Master Null Enforcers.`
   },
   {
     id: 'CAPSULE_RED',
     name: 'CONTINUOUS LASER',
-    badge: 'POWER-UP • SEC 03+',
+    badge: `POWER-UP • ${_fmtSec(RED_POWERUP_START_SECTOR)}+`,
     badgeClass: 'elite-red',
     cardClass: 'tier-pwr-red',
     stats: [
       { text: 'PIERCING LASER', cls: 'warn' },
-      { text: '11s ACTIVE FIRE', cls: 'gold' },
+      { text: `${_LASER_SECS}s ACTIVE FIRE`, cls: 'gold' },
       { text: 'STACKABLE', cls: 'emerald' },
       { text: '2x VS NORMAL TIER', cls: '' },
       { text: '1.3x VS FLUX ENF', cls: '' }
     ],
-    desc: 'Red power-up (Sector 03+) — shoot the capsule to charge 11s of active high-frequency nose-locked laser firing (drains ONLY while firing, 0.1 dmg @ 20x tick rate so fast swipes never miss). Deals 2x DPS to Normal tier enemies, pierces straight through ships (blocked only by Null Threads; converts into slowed dissolving red bolts through Flux Threads), and deals 1.3x damage to Elite/Master Enforcers [Flux].'
+    desc: `Red power-up (${_fmtSec(RED_POWERUP_START_SECTOR)}+) — shoot the capsule to charge ${_LASER_SECS}s of active high-frequency nose-locked laser firing (drains ONLY while firing, ${RED_LASER_TICK_DMG} dmg @ ${RED_LASER_TICK_MULT}x tick rate so fast swipes never miss). Deals 2x DPS to Normal tier enemies, pierces straight through ships (blocked only by Null Threads; converts into slowed dissolving red bolts through Flux Threads), and deals 1.3x damage to Elite & Master Flux Enforcers.`
   },
   {
     id: 'CAPSULE_PURPLE',
     name: 'ARC WAVE',
-    badge: 'POWER-UP • SEC 04+',
+    badge: `POWER-UP • ${_fmtSec(PURPLE_POWERUP_START_SECTOR)}+`,
     badgeClass: 'deploy',
     cardClass: 'tier-pwr-purple',
     stats: [
-      { text: '6 WIDE WAVES (0.5 DMG)', cls: '' },
+      { text: `${ARC_WAVE_MAX} WIDE WAVES (${ARC_WAVE_DMG} DMG)`, cls: '' },
       { text: 'STACKABLE', cls: 'emerald' },
       { text: 'VOIDS BULLETS', cls: 'gold' },
       { text: '2x AOE CANNON', cls: 'warn' }
     ],
-    desc: 'Purple power-up (Sector 04+) — shoot the capsule to charge 6 wide bullet-voiding Arc Waves (0.5 dmg each)! After the 6th wave, double-tap Fire to unleash a massive 2x-radius AOE Cannon Shot (Tap 1 supercharges with violent vibration; Tap 2 fires, or auto-fires after 3s).'
+    desc: `Purple power-up (${_fmtSec(PURPLE_POWERUP_START_SECTOR)}+) — shoot the capsule to charge ${ARC_WAVE_MAX} wide bullet-voiding Arc Waves (${ARC_WAVE_DMG} dmg each)! After the ${ARC_WAVE_MAX}th wave, double-tap Fire to unleash a massive 2x-radius AOE Cannon Shot (Tap 1 supercharges with violent vibration; Tap 2 fires, or auto-fires after ${CANNON_AUTO_FIRE_DELAY}s).`
   },
   {
     id: 'CAPSULE_YELLOW',
     name: 'CHAIN LIGHTNING',
-    badge: 'POWER-UP • SEC 07+',
+    badge: `POWER-UP • ${_fmtSec(YELLOW_POWERUP_START_SECTOR)}+`,
     badgeClass: 'commander',
     cardClass: 'tier-pwr-yellow',
     stats: [
-      { text: '24 SHOTS (3x BOLTS)', cls: 'gold' },
+      { text: `${CHAIN_LIGHTNING_MAX_SHOTS} SHOTS (${CHAIN_LIGHTNING_BURST_COUNT}x BOLTS)`, cls: 'gold' },
       { text: 'RICOCHET & REPEL', cls: '' },
       { text: 'DEATH CROSS ZAP', cls: 'emerald' },
-      { text: 'JUMPS +8 (200px)', cls: 'warn' }
+      { text: `JUMPS +${CHAIN_LIGHTNING_MAX_JUMPS} (${CHAIN_LIGHTNING_JUMP_RANGE}px)`, cls: 'warn' }
     ],
-    desc: 'Yellow power-up (Sector 07+ & 10% Pulsar drop) — charges 24 shots fired as rapid 3-bolt bursts across a front 270° arc, chaining up to 200px across 8 targets! While shooting lightning, incoming bullets ricochet into enemies and colliding enemy planes bounce 3 planes back with firing disabled for 4s. Dying with Chain Lightning unleashes a full-screen Cross Lightning blast that one-shots everything in its path and chains regular damage!'
+    desc: `Yellow power-up (${_fmtSec(YELLOW_POWERUP_START_SECTOR)}+ & ${_fmtPct(PULSAR_DROP_CHANCE)} Pulsar drop) — charges ${CHAIN_LIGHTNING_MAX_SHOTS} shots fired as rapid ${CHAIN_LIGHTNING_BURST_COUNT}-bolt bursts across a front 270° arc, chaining up to ${CHAIN_LIGHTNING_JUMP_RANGE}px across ${CHAIN_LIGHTNING_MAX_JUMPS} targets! While shooting lightning, incoming bullets ricochet into enemies and colliding enemy planes bounce 3 planes back with firing disabled for ${CHAIN_LIGHTNING_DISABLE_DUR}s. Dying with Chain Lightning unleashes a full-screen Cross Lightning blast.`
   },
   {
     id: 'CAPSULE_CLONE',
     name: 'FIGHTER CLONES',
-    badge: 'POWER-UP • SEC 07+',
+    badge: `POWER-UP • ${_fmtSec(CLONE_POWERUP_START_SECTOR)}+`,
     badgeClass: 'deploy',
     cardClass: 'tier-pwr-clone',
     stats: [
-      { text: '3 HOLOGRAMS (4 HP)', cls: 'emerald' },
-      { text: '20s TIMER (PAUSES)', cls: 'gold' },
+      { text: `3 HOLOGRAMS (${CLONE_HP} HP)`, cls: 'emerald' },
+      { text: `${CLONE_DURATION}s TIMER (PAUSES)`, cls: 'gold' },
       { text: '2x BOLT SPEED', cls: '' },
       { text: 'STACKABLE', cls: '' }
     ],
-    desc: 'Dark blue & purple power-up (Sector 07+ & 20% Super Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after 0.8s with 1s invincibility frames and 4 HP each, firing dark purple bolts at 2x speed for 20s (timer pauses between sectors & challenges; clones vanish if you die).'
+    desc: `Dark blue & purple power-up (${_fmtSec(CLONE_POWERUP_START_SECTOR)}+ & ${_fmtPct(ALPHA_CENTOID_DROP_CHANCE)} Super Centoid drop) — deploys 3 hologram clones (left, right, back) that break off after ${CLONE_BREAKOFF_TIME}s with ${CLONE_IFRAMES}s invincibility frames and ${CLONE_HP} HP each, firing dark purple bolts at 2x speed for ${CLONE_DURATION}s (timer pauses between sectors & challenges; clones stay active if you die).`
   },
   {
     id: 'CAPSULE_PLASMA',
     name: 'PLASMA RINGS',
-    badge: 'POWER-UP • SEC 08+',
+    badge: `POWER-UP • ${_fmtSec(PLASMA_POWERUP_START_SECTOR)}+`,
     badgeClass: 'centophage',
     cardClass: 'tier-pwr-plasma',
     stats: [
-      { text: '3 PIERCING RINGS', cls: 'emerald' },
-      { text: '0.25s AIMED BURST', cls: 'gold' },
-      { text: '8s RICOCHET BORDER', cls: '' },
-      { text: '25% CENTOPHAGE DROP', cls: 'warn' }
+      { text: `${PLASMA_RING_COUNT} PIERCING RINGS`, cls: 'emerald' },
+      { text: `${PLASMA_RING_SHOT_INTERVAL}s AIMED BURST`, cls: 'gold' },
+      { text: `${PLASMA_BORDER_DUR}s RICOCHET BORDER`, cls: '' },
+      { text: `${_fmtPct(CENTOPHAGE_DROP_PLASMA)} CENTOPHAGE DROP`, cls: 'warn' }
     ],
-    desc: 'Green, dark-purple & yellow Plasma Capsule (Sector 08+ & 25% Centophage drop) — wraps your ship in a temporary damage-blocking shield while lighting up the arena borders. You have 4s to aim a guided line in any direction and fire 3 large piercing Plasma Rings (0.25s apart), or the ship auto-fires them in 3 random directions! Grants 0.5s post-fire invincibility; the 8s ricochet border timer starts on the first enemy or wall impact.'
+    desc: `Green, dark-purple & yellow Plasma Capsule (${_fmtSec(PLASMA_POWERUP_START_SECTOR)}+ & ${_fmtPct(CENTOPHAGE_DROP_PLASMA)} Centophage drop) — wraps your ship in a temporary damage-blocking shield while lighting up the arena borders. You have ${PLASMA_AIM_TIMEOUT}s to aim a guided line in any direction and fire ${PLASMA_RING_COUNT} large piercing Plasma Rings (${PLASMA_RING_SHOT_INTERVAL}s apart), or auto-fire in ${PLASMA_RING_COUNT} random directions! Grants 0.5s post-fire invincibility; the ${PLASMA_BORDER_DUR}s ricochet border timer starts on the first enemy or wall impact.`
   },
   {
     id: 'DRONE',
@@ -349,7 +355,7 @@ export const ARCHIVE_ENTRIES = [
       { text: 'PTS: 50 / 100', cls: 'gold' },
       { text: 'DROP: 0.1%', cls: '' }
     ],
-    desc: 'Geometric lower-rank scouts that swarm in sweeping dives. Fragile in combat, with a rare 0.1% capsule drop chance starting in Sector 02 Wave 3.'
+    desc: `Geometric lower-rank scouts that swarm in sweeping dives. Fragile in combat, with a rare 0.1% capsule drop chance starting in ${_fmtSec(CYAN_POWERUP_START_SECTOR)} Wave ${CYAN_POWERUP_START_WAVE}.`
   },
   {
     id: 'INTERCEPTOR',
@@ -371,124 +377,124 @@ export const ARCHIVE_ENTRIES = [
     badgeClass: 'commander',
     cardClass: 'tier-commander',
     stats: [
-      { text: 'HP: 3', cls: '' },
+      { text: `HP: ${V1_ENFORCER_HP}`, cls: '' },
       { text: 'PTS: 150 / 400', cls: 'gold' },
       { text: 'FLUX/NULL SYNERGY', cls: 'warn' },
       { text: 'TRACTOR BEAM', cls: 'emerald' }
     ],
-    desc: 'Advanced-tier arch commander (20% slower movement, lower fire rate). Deploys a Tractor Beam to capture your Aurex Fighter. At 1 HP near a Cyan Enforcer it shifts Cyan and bursts an AOE +30% speed buff on death; near a Red Enforcer it shifts Red and bursts an AOE +33% HP buff on death.'
+    desc: `Advanced-tier arch commander (${V1_ENFORCER_HP} HP, 20% slower movement, lower fire rate). Deploys a Tractor Beam to capture your Aurex Fighter. At 1 HP near a Cyan Enforcer it shifts Cyan and bursts an AOE +30% speed buff on death; near a Red Enforcer it shifts Red and bursts an AOE +33% HP buff on death.`
   },
   {
     id: 'CENTOID',
     name: 'CENTOID',
-    badge: 'ADVANCED • SEC 04+',
+    badge: `ADVANCED • ${_fmtSec(CENTOID_START_SECTOR)}+`,
     badgeClass: 'player',
     cardClass: 'tier-centoid',
     stats: [
-      { text: '8 SEGMENTS', cls: '' },
-      { text: 'HEAD: 4 HP / SEG: 1 HP', cls: 'gold' },
+      { text: `${CENTOID_SEGMENTS} SEGMENTS`, cls: '' },
+      { text: `HEAD: ${CENTOID_HEAD_HP} HP / SEG: 1 HP`, cls: 'gold' },
       { text: 'HEADSHOT = INSTA-CLEAR', cls: 'emerald' },
-      { text: 'SPLITS (MAX 2)', cls: 'warn' }
+      { text: `SPLITS (MAX ${CENTOID_MAX_SPLITS})`, cls: 'warn' }
     ],
-    desc: 'Green & gold 8-segment cyber-serpent (Sector 04+). Reinforced 4 HP head with 1 HP body segments. Zig-zags strictly horizontally across the arena, stepping down and rebounding upward at the bottom. Destroy the head to erase the entire Centoid at once without splitting!'
+    desc: `Green & gold ${CENTOID_SEGMENTS}-segment cyber-serpent (${_fmtSec(CENTOID_START_SECTOR)}+). Reinforced ${CENTOID_HEAD_HP} HP head with 1 HP body segments. Zig-zags horizontally across the arena, stepping down and rebounding upward at the bottom. Destroy the head to erase the entire Centoid at once without splitting!`
   },
   {
     id: 'ALPHA_CENTOID',
     name: 'SUPER CENTOID',
-    badge: 'ELITE • SEC 07+',
+    badge: `ELITE • ${_fmtSec(ALPHA_CENTOID_START_SECTOR)}+`,
     badgeClass: 'deploy',
     cardClass: 'tier-alpha',
     stats: [
-      { text: '10 SEGMENTS', cls: 'warn' },
-      { text: 'HEAD: 6 HP / SEG: 2 HP', cls: 'gold' },
+      { text: `${SUPER_CENTOID_SEGMENTS} SEGMENTS`, cls: 'warn' },
+      { text: `HEAD: ${SUPER_CENTOID_HEAD_HP} HP / SEG: ${ALPHA_CENTOID_SEG_HP} HP`, cls: 'gold' },
       { text: '90° CORRIDOR PATH', cls: '' },
-      { text: 'DROP: 20% CLONES', cls: 'emerald' }
+      { text: `DROP: ${_fmtPct(ALPHA_CENTOID_DROP_CHANCE)} CLONES`, cls: 'emerald' }
     ],
-    desc: 'Elite dark-blue, purple & pink 10-segment serpent (Sector 07+) with a 6 HP head and 2 HP body segments that snaps along sharp 90° corridors like Null Threads. Splitting caps at 2 living snakes; headshots erase the entire chain. 20% chance to drop Fighter Clones.'
+    desc: `Elite dark-blue, purple & pink ${SUPER_CENTOID_SEGMENTS}-segment serpent (${_fmtSec(ALPHA_CENTOID_START_SECTOR)}+) with a ${SUPER_CENTOID_HEAD_HP} HP head and ${ALPHA_CENTOID_SEG_HP} HP body segments that snaps along sharp 90° corridors like Null Threads. Splitting caps at ${CENTOID_MAX_SPLITS} living snakes; headshots erase the entire chain. ${_fmtPct(ALPHA_CENTOID_DROP_CHANCE)} chance to drop Fighter Clones.`
   },
   {
     id: 'CENTOPHAGE',
     name: 'CENTOPHAGE',
-    badge: 'MASTER • SEC 08+',
+    badge: `MASTER • ${_fmtSec(CENTOPHAGE_START_SECTOR)}+`,
     badgeClass: 'centophage',
     cardClass: 'tier-centophage',
     stats: [
-      { text: '6+ SEGMENTS', cls: 'emerald' },
-      { text: 'HEAD: 8 HP / SEG: 3 HP', cls: 'warn' },
-      { text: '1.8x SPEED', cls: 'gold' },
-      { text: 'DROP: 25% PLASMA / 7%C / 7%L', cls: '' }
+      { text: `${CENTOPHAGE_SEGMENTS}+ SEGMENTS`, cls: 'emerald' },
+      { text: `HEAD: ${CENTOPHAGE_HEAD_HP} HP / SEG: ${CENTOPHAGE_SEG_HP} HP`, cls: 'warn' },
+      { text: `${CENTOPHAGE_SPEED_MULT}x SPEED`, cls: 'gold' },
+      { text: `DROP: ${_fmtPct(CENTOPHAGE_DROP_PLASMA)}P / ${_fmtPct(CENTOPHAGE_DROP_CLONE)}C / ${_fmtPct(CENTOPHAGE_DROP_LIGHTNING)}L`, cls: '' }
     ],
-    desc: 'Master-tier parasitic Overlord Centoid (Sector 08+) moving 1.8x faster than Centoids & Super Centoids. Every 2s has an 80% chance to chase down a random non-Centoid entity (6s cooldown on miss) and devour it to grow its chain: +1 segment for Normal, +2 for Advanced, and +3 for Elite prey! Independent drops: 25% Plasma Rings, 7% Clones, 7% Chain Lightning.'
+    desc: `Master-tier parasitic Overlord Centoid (${_fmtSec(CENTOPHAGE_START_SECTOR)}+) moving ${CENTOPHAGE_SPEED_MULT}x faster than Centoids & Super Centoids. Every ${CENTOPHAGE_CHECK_INTERVAL}s rolls ${_fmtPct(CENTOPHAGE_CHASE_CHANCE)} to hunt a non-Centoid entity (${CENTOPHAGE_FAIL_COOLDOWN}s cooldown on miss) and devour it to grow: +1 segment for Normal, +2 for Advanced, and +3 for Elite prey! Independent drops: ${_fmtPct(CENTOPHAGE_DROP_PLASMA)} Plasma Rings, ${_fmtPct(CENTOPHAGE_DROP_CLONE)} Clones, ${_fmtPct(CENTOPHAGE_DROP_LIGHTNING)} Chain Lightning.`
   },
   {
     id: 'PULSAR',
     name: 'PULSAR',
-    badge: 'ELITE • SEC 07+',
+    badge: `ELITE • ${_fmtSec(PULSAR_START_SECTOR)}+`,
     badgeClass: 'commander',
     cardClass: 'tier-pulsar',
     stats: [
-      { text: 'HP: 6', cls: '' },
-      { text: '2s FIRE JAM ORBS', cls: 'warn' },
-      { text: '4s 2x SLOW SPARKS', cls: '' },
-      { text: 'DROP: 10% LIGHTNING', cls: 'gold' }
+      { text: `HP: ${PULSAR_HP}`, cls: '' },
+      { text: `${PULSAR_JAM_DUR}s FIRE JAM ORBS`, cls: 'warn' },
+      { text: `${PULSAR_SPARK_SLOW_DUR}s 2x SLOW SPARKS`, cls: '' },
+      { text: `DROP: ${_fmtPct(PULSAR_DROP_CHANCE)} LIGHTNING`, cls: 'gold' }
     ],
-    desc: 'Yellow elite-sized fighter with twin lightning rods (Sector 07+). Drops leaf-falling electro balls every 3s that jam your firing for 2s (no HP damage), and explodes on death into downward sparks that halve fire rate for 4s. 10% chance to drop Chain Lightning.'
+    desc: `Yellow elite-sized fighter with twin lightning rods (${_fmtSec(PULSAR_START_SECTOR)}+). Drops leaf-falling electro balls every ${PULSAR_FIRE_INTERVAL}s that jam your firing for ${PULSAR_JAM_DUR}s (no HP damage), and explodes on death into downward sparks that halve fire rate for ${PULSAR_SPARK_SLOW_DUR}s. ${_fmtPct(PULSAR_DROP_CHANCE)} chance to drop Chain Lightning.`
   },
   {
     id: 'FLUX_ENFORCER',
     name: 'ELITE ENFORCER [FLUX]',
-    badge: 'ELITE • SEC 02 W3+',
+    badge: `ELITE • ${_fmtSec(ELITE_FLUX_START_SECTOR)} W${ELITE_FLUX_START_WAVE}+`,
     badgeClass: 'elite-cyan',
     cardClass: 'tier-flux',
     stats: [
-      { text: 'HP: 6 (12 IN CH.2+)', cls: '' },
-      { text: '10% ABDUCT / WAVE', cls: 'emerald' },
+      { text: `HP: ${ELITE_ENFORCER_HP} (${ELITE_ENFORCER_HP * 2} IN CH.${CHALLENGE_ELITE_START}+)`, cls: '' },
+      { text: `${_fmtPct(ELITE_ABDUCTION_CHANCE)} ABDUCT / WAVE`, cls: 'emerald' },
       { text: 'DROP: 10%C / 2%R / 2%P', cls: 'gold' },
-      { text: '9x SLOW + DISSOLVE', cls: 'warn' }
+      { text: `${FLUX_THREAD_BULLET_SLOW}x SLOW + DISSOLVE`, cls: 'warn' }
     ],
-    desc: 'Deploys starting at Sector 02 Wave 3. Takes 6 hits to destroy and dives slower than normal ships (10% chance per wave for an Elite to attempt abduction). Launches curved cyan Enforcer Wings (12% surge) whose double-length Flux Threads slow your ship 4s, slow passing bullets 9x (dissolving after 2s), and turn Red Lasers into slowed dissolving bolts.'
+    desc: `Deploys starting at ${_fmtSec(ELITE_FLUX_START_SECTOR)} Wave ${ELITE_FLUX_START_WAVE}. Takes ${ELITE_ENFORCER_HP} hits to destroy and dives slower than normal ships (${_fmtPct(ELITE_ABDUCTION_CHANCE)} chance per wave for an Elite to attempt abduction). Launches curved cyan Enforcer Wings (${_fmtPct(ELITE_SURGE_CHANCE)} surge) whose double-length Flux Threads slow your ship 4s, slow passing bullets ${FLUX_THREAD_BULLET_SLOW}x (dissolving after ${SLOWED_BULLET_DISSOLVE_TIME}s), and turn Red Lasers into slowed dissolving bolts.`
   },
   {
     id: 'NULL_ENFORCER',
     name: 'ELITE ENFORCER [NULL]',
-    badge: 'ELITE • SEC 03+',
+    badge: `ELITE • ${_fmtSec(ELITE_NULL_START_SECTOR)}+`,
     badgeClass: 'elite-red',
     cardClass: 'tier-null',
     stats: [
-      { text: 'HP: 6 (12 IN CH.2+)', cls: '' },
-      { text: '10% ABDUCT / WAVE', cls: 'emerald' },
+      { text: `HP: ${ELITE_ENFORCER_HP} (${ELITE_ENFORCER_HP * 2} IN CH.${CHALLENGE_ELITE_START}+)`, cls: '' },
+      { text: `${_fmtPct(ELITE_ABDUCTION_CHANCE)} ABDUCT / WAVE`, cls: 'emerald' },
       { text: 'DROP: 10%R / 2%C / 2%P', cls: 'gold' },
-      { text: '6-HIT THREAD WALL', cls: 'warn' }
+      { text: `${NULL_THREAD_HITS}-HIT THREAD WALL`, cls: 'warn' }
     ],
-    desc: 'Deploys starting at Sector 03. Takes 6 hits to destroy and dives slower than normal ships (10% chance per wave for an Elite to attempt abduction). Launches 90° crimson Enforcer Wings (12% surge) whose Null Threads BLOCK shots (6 hits to break) and inflict 1s Slow + 4s -20% DMG. In Challenge 2+, raids independently with 2x HP (12) and fires twin Enforcer Wings.'
+    desc: `Deploys starting at ${_fmtSec(ELITE_NULL_START_SECTOR)}. Takes ${ELITE_ENFORCER_HP} hits to destroy and dives slower than normal ships (${_fmtPct(ELITE_ABDUCTION_CHANCE)} chance per wave for an Elite to attempt abduction). Launches 90° crimson Enforcer Wings (${_fmtPct(ELITE_SURGE_CHANCE)} surge) whose Null Threads BLOCK shots (${NULL_THREAD_HITS} hits to break) and inflict 1s Slow + 4s -20% DMG. In Challenge ${CHALLENGE_ELITE_START}+, raids independently with 2x HP (${ELITE_ENFORCER_HP * 2}) and fires twin Enforcer Wings.`
   },
   {
     id: 'MASTER_FLUX_ENFORCER',
     name: 'MASTER ENFORCER [FLUX]',
-    badge: 'MASTER • SEC 06+',
+    badge: `MASTER • ${_fmtSec(MASTER_START_SECTOR)}+`,
     badgeClass: 'elite-cyan',
     cardClass: 'tier-flux',
     stats: [
-      { text: 'HP: 18', cls: 'warn' },
+      { text: `HP: ${MASTER_ENFORCER_HP}`, cls: 'warn' },
       { text: 'CYAN AURA', cls: '' },
       { text: 'DROP: 25%C / 5%R / 10%P', cls: 'gold' },
-      { text: '10-KILL STREAK REWARD', cls: 'emerald' }
+      { text: `${MASTER_STREAK_REWARD_COUNT}-KILL STREAK REWARD`, cls: 'emerald' }
     ],
-    desc: 'Master-tier Flux dreadnought ringed in a radiant cyan aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Cyan reward capsule! On Hard Mode, re-entering after a dive can trigger a 4s Flux Field (1.5x slower move & fire rate).'
+    desc: `Master-tier Flux dreadnought ringed in a radiant cyan aura (${_fmtSec(MASTER_START_SECTOR)}+ alongside Elites, and guarded in Challenge ${CHALLENGE_MASTER_START}+ / Hard Mode). Kill ${MASTER_STREAK_REWARD_COUNT} without dying for a glowing Cyan reward capsule! On Hard Mode, re-entering after a dive can trigger a ${HARD_FIELD_DEBUFF_DUR}s Flux Field (1.5x slower move & fire rate).`
   },
   {
     id: 'MASTER_NULL_ENFORCER',
     name: 'MASTER ENFORCER [NULL]',
-    badge: 'MASTER • SEC 06+',
+    badge: `MASTER • ${_fmtSec(MASTER_START_SECTOR)}+`,
     badgeClass: 'elite-red',
     cardClass: 'tier-null',
     stats: [
-      { text: 'HP: 18', cls: 'warn' },
+      { text: `HP: ${MASTER_ENFORCER_HP}`, cls: 'warn' },
       { text: 'CRIMSON AURA', cls: '' },
       { text: 'DROP: 25%R / 5%C / 10%P', cls: 'gold' },
-      { text: '10-KILL STREAK REWARD', cls: 'emerald' }
+      { text: `${MASTER_STREAK_REWARD_COUNT}-KILL STREAK REWARD`, cls: 'emerald' }
     ],
-    desc: 'Master-tier Null warframe blazing with a crimson-red aura (Sector 06+ alongside Elites, and guarded in Challenge 3+ / Hard Mode). Kill 10 without dying for a glowing Red reward capsule! On Hard Mode, re-entering after a dive can trigger a 4s Null Field (reduces player damage to 0.33x).'
+    desc: `Master-tier Null warframe blazing with a crimson-red aura (${_fmtSec(MASTER_START_SECTOR)}+ alongside Elites, and guarded in Challenge ${CHALLENGE_MASTER_START}+ / Hard Mode). Kill ${MASTER_STREAK_REWARD_COUNT} without dying for a glowing Red reward capsule! On Hard Mode, re-entering after a dive can trigger a ${HARD_FIELD_DEBUFF_DUR}s Null Field (reduces player damage to ${NULL_FIELD_DMG_MULT}x).`
   },
   {
     id: 'ENFORCER_WING',
@@ -499,7 +505,7 @@ export const ARCHIVE_ENTRIES = [
     stats: [
       { text: 'HP: 1', cls: '' },
       { text: 'PTS: 150', cls: 'gold' },
-      { text: 'THREAD ~4.8s (2x)', cls: 'warn' }
+      { text: `THREAD ~${THREAD_LIFETIME}s (2x)`, cls: 'warn' }
     ],
     desc: 'High-speed drones launched by Elite & Master Enforcers. Flux Wings carve double-length curved cyan Flux Threads; Null Wings snap along extended 90° crimson Null Thread corridors.'
   }

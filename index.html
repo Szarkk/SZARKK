@@ -3,35 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>SZARKK — Alpha Test 0.1.3</title>
+  <title>SZARKK — Alpha Test 0.1.4</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@500;600;700&family=Press+Start+2P&family=Silkscreen:wght@400;700&display=swap">
-  <link rel="stylesheet" href="css/style.css?v=0.1.3l">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400&display=swap">
+  <link rel="stylesheet" href="css/style.css?v=0.1.4">
   <script type="importmap">
     {
       "imports": {
         "./js/animator.js": "./js/animator.js?v=0.1.3",
-        "./js/audio.js": "./js/audio.js?v=0.1.3",
-        "./js/config.js": "./js/config.js?v=0.1.3a",
-        "./js/enemies.js": "./js/enemies.js?v=0.1.3f",
+        "./js/audio.js": "./js/audio.js?v=0.1.3q",
+        "./js/config.js": "./js/config.js?v=0.1.4",
+        "./js/enemies.js": "./js/enemies.js?v=0.1.3s",
         "./js/enforcers.js": "./js/enforcers.js?v=0.1.3",
+        "./js/field_guide.js": "./js/field_guide.js?v=0.1.3s",
         "./js/leaderboard.js": "./js/leaderboard.js?v=0.1.3",
-        "./js/main.js": "./js/main.js?v=0.1.3g",
-        "./js/player.js": "./js/player.js?v=0.1.3",
-        "./js/powerups.js": "./js/powerups.js?v=0.1.3g",
-        "./js/projectiles.js": "./js/projectiles.js?v=0.1.3",
-        "./js/renderer.js": "./js/renderer.js?v=0.1.3e",
+        "./js/main.js": "./js/main.js?v=0.1.3s",
+        "./js/player.js": "./js/player.js?v=0.1.3r",
+        "./js/powerups.js": "./js/powerups.js?v=0.1.3q",
+        "./js/prism_reveal.js": "./js/prism_reveal.js?v=0.1.3q",
+        "./js/projectiles.js": "./js/projectiles.js?v=0.1.3r",
+        "./js/renderer.js": "./js/renderer.js?v=0.1.4",
         "./js/renderers/saturn_enemy_sprites.js": "./js/renderers/saturn_enemy_sprites.js?v=0.1.3",
-        "./js/renderers/saturn_fx.js": "./js/renderers/saturn_fx.js?v=0.1.3",
+        "./js/renderers/saturn_fx.js": "./js/renderers/saturn_fx.js?v=0.1.3o",
         "./js/renderers/saturn_pixel_sprites.js": "./js/renderers/saturn_pixel_sprites.js?v=0.1.3",
         "./js/sandbox.js": "./js/sandbox.js?v=0.1.3k",
         "./js/skins.js": "./js/skins.js?v=0.1.3",
-        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.3e",
+        "./js/special_enemies.js": "./js/special_enemies.js?v=0.1.3s",
         "./js/sprite_loader.js": "./js/sprite_loader.js?v=0.1.3",
         "./js/sprite_manifest.js": "./js/sprite_manifest.js?v=0.1.3",
         "./js/sprites.js": "./js/sprites.js?v=0.1.3j",
-        "./js/ui.js": "./js/ui.js?v=0.1.3k",
+        "./js/ui.js": "./js/ui.js?v=0.1.3q",
         "./js/utils.js": "./js/utils.js?v=0.1.3"
       }
     }
@@ -61,8 +63,6 @@
 
       <div class="hud-right">
         <button type="button" id="btn-auto" class="hud-pill auto-off" title="Toggle Auto-Fire (F)">AUTO:OFF</button>
-        <button type="button" id="btn-crt" class="hud-pill" title="Toggle CRT Scanlines">CRT</button>
-        <button type="button" id="btn-sfx" class="hud-pill" title="Toggle Sound (M)">SFX</button>
         <button type="button" id="btn-pause" class="hud-pill" title="Pause Game (P)">||</button>
       </div>
     </header>
@@ -72,7 +72,6 @@
          ===================================================================== -->
     <main id="stage-container">
       <canvas id="game-canvas" aria-label="SZARKK Playfield"></canvas>
-      <div id="crt-overlay"></div>
 
       <!-- LIVE NON-BLOCKING DEBUFF COUNTDOWN BARS -->
       <div id="status-bar" aria-live="polite">
@@ -293,7 +292,7 @@
             </div>
             <h1 class="nexus-title szarkk-title">SZARKK</h1>
             <div class="nexus-subtitle szarkk-acronym">SENTIENT ZENITH AUGMENTATION RECURSIVE KNOWLEDGE KERNEL</div>
-            <div class="version-badge" id="menu-version">Alpha Test 0.1.3</div>
+            <div class="version-badge" id="menu-version">Alpha Test 0.1.4</div>
             <div class="wire-accent">
               <span class="wire-line"></span>
               <span class="wire-diamond"></span>
@@ -320,19 +319,29 @@
             </div>
             <div class="btn-pair">
               <button type="button" id="btn-open-archive" class="nexus-cta secondary">NEXUS ARCHIVE</button>
-              <button type="button" id="btn-open-controls" class="nexus-cta secondary">CONTROLS</button>
+              <button type="button" id="btn-open-controls" class="nexus-cta secondary">SETTINGS</button>
             </div>
           </div>
         </div>
       </section>
 
       <!-- ===================================================================
-           CONTROLS & DISPLAY MODAL (ACCESSIBLE FROM MENU & PAUSE)
+           SETTINGS & CONTROLS MODAL (ACCESSIBLE FROM MENU & PAUSE)
            =================================================================== -->
       <section id="overlay-controls" class="overlay modal-top hidden">
         <div class="nexus-card">
-          <div class="nexus-subtitle">// INPUT MATRIX //</div>
-          <h2 class="nexus-title modal-heading">CONTROLS &amp; DISPLAY</h2>
+          <div class="nexus-subtitle">// SYSTEM MATRIX //</div>
+          <h2 class="nexus-title modal-heading">SETTINGS</h2>
+
+          <div class="ctrl-box">
+            <div class="ctrl-box-top">
+              <span class="ctrl-box-label">DISPLAY &amp; AUDIO</span>
+            </div>
+            <div class="btn-pair">
+              <button type="button" id="btn-ctrl-crt" class="auto-toggle-btn on">CRT: ON</button>
+              <button type="button" id="btn-ctrl-sfx" class="auto-toggle-btn on">SFX: ON</button>
+            </div>
+          </div>
 
           <div class="ctrl-box">
             <div class="ctrl-box-top">
@@ -342,15 +351,10 @@
             <div id="ctrl-modal-hint" class="ctrl-hint-line">Conserve power-ups freely when Auto-Fire is OFF, or toggle ON for continuous fire.</div>
           </div>
 
-          <div class="btn-pair">
-            <button type="button" id="btn-ctrl-crt" class="nexus-cta secondary">CRT: ON</button>
-            <button type="button" id="btn-ctrl-sfx" class="nexus-cta secondary">SFX: ON</button>
-          </div>
-
           <div class="guide-list">
             <div><strong>2D DODGE ZONE:</strong> Move freely anywhere across the bottom 2/5ths of the arena to weave through enemy fire.</div>
             <div><strong>TOUCH CONTROLS:</strong> Touch and drag <strong>anywhere below the dotted line</strong> (no need to touch the ship) while holding/tapping <strong>FIRE</strong> with your other thumb.</div>
-            <div><strong>DESKTOP KEYS:</strong> <strong>WASD</strong> or <strong>Arrow Keys</strong> Move (2D) &bull; <strong>Space / Z / Click</strong> Fire &bull; <strong>F</strong> Auto-Fire &bull; <strong>P / Esc</strong> Pause &bull; <strong>M</strong> Mute.</div>
+            <div><strong>DESKTOP KEYS:</strong> <strong>WASD</strong> or <strong>Arrow Keys</strong> Move (2D) &bull; <strong>Space / Z / Click</strong> Fire &bull; <strong>E</strong> Ready &bull; <strong>F</strong> Auto-Fire &bull; <strong>P / Esc</strong> Pause &bull; <strong>M</strong> Mute.</div>
           </div>
 
           <button type="button" id="btn-ctrl-back" class="nexus-cta">&#9664; BACK</button>
@@ -358,7 +362,7 @@
       </section>
 
       <!-- ===================================================================
-           NEXUS ARCHIVE (SHIP, ENEMY & POWER-UP GLOSSARY MODAL)
+           NEXUS ARCHIVE (GLOSSARY CARDS + DATA-DRIVEN FIELD GUIDE TAB)
            =================================================================== -->
       <section id="overlay-archive" class="overlay modal-top hidden">
         <div class="archive-shell">
@@ -369,7 +373,16 @@
             </div>
             <button type="button" id="btn-archive-back" class="archive-back-btn">&#9664; BACK</button>
           </div>
+
+          <div class="skins-tabs-wrap">
+            <div class="lb-tabs" role="tablist" aria-label="Archive View">
+              <button type="button" id="btn-archive-tab-cards" class="lb-tab-btn selected">ARCHIVE</button>
+              <button type="button" id="btn-archive-tab-guide" class="lb-tab-btn">FIELD GUIDE</button>
+            </div>
+          </div>
+
           <div id="archive-scroll" class="archive-scroll"></div>
+          <div id="field-guide-scroll" class="archive-scroll field-guide-scroll hidden"></div>
         </div>
       </section>
 
@@ -460,13 +473,13 @@
         <div class="nexus-card">
           <div class="nexus-subtitle">// NEXUS SUSPENDED //</div>
           <h2 class="nexus-title modal-heading">SYSTEM PAUSED</h2>
-          <div class="version-badge" id="pause-version">Alpha Test 0.1.3</div>
+          <div class="version-badge" id="pause-version">Alpha Test 0.1.4</div>
 
           <button type="button" id="btn-resume" class="nexus-cta">RESUME</button>
 
           <div class="btn-pair">
             <button type="button" id="btn-pause-archive" class="nexus-cta secondary">NEXUS ARCHIVE</button>
-            <button type="button" id="btn-pause-controls" class="nexus-cta secondary">CONTROLS</button>
+            <button type="button" id="btn-pause-controls" class="nexus-cta secondary">SETTINGS</button>
           </div>
 
           <div class="btn-pair">
@@ -588,8 +601,11 @@
         </button>
       </div>
     </nav>
+
+    <!-- FULL-CABINET TOGGLEABLE CRT SCANLINE + VIGNETTE OVERLAY -->
+    <div id="crt-overlay" aria-hidden="true"></div>
   </div>
 
-  <script type="module" src="js/main.js?v=0.1.3g"></script>
+  <script type="module" src="js/main.js?v=0.1.3s"></script>
 </body>
 </html>
